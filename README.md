@@ -1,5 +1,5 @@
 # Sage Edge Scheduler (SES)
-#### Lead: [Yongho Kim](mailto:yongho.kim@anl.gov) 
+#### Lead: Kate Keahey and [Yongho Kim](mailto:yongho.kim@anl.gov) 
 
 ### Overview:
 
