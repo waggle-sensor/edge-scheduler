@@ -1,0 +1,9 @@
+apps:
+  - name: rabbitmq
+    version: 3.6-node
+  - name: plugin-metsense
+    version: 4.1.1
+  - name: plugin-media-streaming
+    version: 0.1.0
+  - name: water-analyzer
+    version: 0.1.0
