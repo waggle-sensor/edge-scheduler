@@ -1,0 +1,34 @@
+{
+    "user_id": "gemblerz",
+    "goal_name": "water analysis",
+    "priority": 90,
+    "target_nodes": ["001e06107e48"],
+    "rules": [],
+    "sensors": [],
+    "apps": [
+        [["raining and daytime"],
+            [{
+                "name": "cam_bottom_live",
+                "image": "waggle/plugin-media-streaming:0.1.0",
+                "arguments": ["-device", "/dev/waggle_cam_bottom"]
+            },
+            {
+                "name": "water-analyzer",
+                "image": "waggle/water-analyzer:0.1.0",
+                "arguments": ["-param1", "100"]
+            }]
+        ],
+        [["raining and nighttime"],
+            [{
+                "name": "cam_bottom_live",
+                "image": "waggle/plugin-media-streaming:0.1.0",
+                "arguments": ["-device", "/dev/waggle_cam_bottom"]
+            },
+            {
+                "name": "water-analyzer",
+                "image": "waggle/water-analyzer:0.1.0",
+                "arguments": ["-param1", "200"]
+            }]
+        ]
+    ]
+}

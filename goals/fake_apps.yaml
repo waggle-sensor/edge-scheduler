@@ -1,9 +1,46 @@
 apps:
   - name: rabbitmq
     version: 3.6-node
+    # basecommand: rabbitmq-server
+    # arguments: 
+    profile:
+      default:
+        - cpu: 1500m
+          memory: 256Mi
   - name: plugin-metsense
     version: 4.1.1
+    # basecommand: python3 /app/plugin_node
+    # arguments: 
+    profile:
+      default:
+        - cpu: 250m
+          memory: 50Mi
   - name: plugin-media-streaming
     version: 0.1.0
+    # basecommand: /bin/sh /app/stream.sh
+    # arguments: 
+    profile:
+      default:
+        - cpu: 1300m
+          memory: 100Mi
+      fps>30:
+        - cpu: 1500m
+          memory: 100Mi
   - name: water-analyzer
     version: 0.1.0
+    # basecommand: python3 /app/plugin_node
+    # arguments: -param1 50
+    profile:
+      default:
+        - cpu: 4000m
+          memory: 1Gi
+      burst:
+        - cpu: 7000m
+          memory: 1Gi
+      depth:
+        - cpu: 4000m
+          memory: 2Gi
+      # alternate:
+      #   - arguments: -param1 150 
+      #     cpu: 4000m
+      #     memory: 2Gi
