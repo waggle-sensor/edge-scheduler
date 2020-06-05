@@ -1,9 +1,10 @@
 ### Node Configuration Generation
 
+One of the SES outputs is a node configuration that is later pulled by target nodes and interpreted by the local scheduler running inside the target nodes. The node configuration is a guide book given from the cloud that helps nodes determine what to do in order to support scientific problems. The guide book has many chapters to support more than one scientific problems and the local scheduler is capable of switching between chapters depending on the context perceived locally.
 
 #### Testing The Configuration Generation Process
 
-A fake edge code repository (ECR) supports the process as the process needs to access the ECR to retreive information about the registered applications. The fake ECR hosts a local webserver via Flask and accepts requests on registering apps, returning information about queried app, and listing the apps it has.
+A fake edge code repository (ECR) supports generation of node configuration as this process needs to access ECR to retreive information about the registered applications. The fake ECR hosts a local webserver via Flask and accepts requests on registering apps, returning information about queried app, and listing the apps it has.
 
 To register a set of fake apps,
 ```
