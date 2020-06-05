@@ -137,13 +137,10 @@ def getprofile():
         return "No query value given"
     
     if len(result) > 0:
-        if len(result) > 1:
-            nested_result = {}
-            for profile in result:
-                nested_result[profile['profile']] = profile
-            return nested_result
-        else:
-            return result
+        nested_result = {}
+        for profile in result:
+            nested_result[profile['profile']] = profile
+        return nested_result
     else:
         return "Not found"
 

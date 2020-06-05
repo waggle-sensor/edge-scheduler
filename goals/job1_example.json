@@ -6,10 +6,10 @@
     "rules": [],
     "sensors": [],
     "apps": [
-        [ ["True"],
+        [["True"],
             [{
                 "name": "rabbitmq",
-                "image": "waggle/plugin-rabbitmq:3.6-node",
+                "image": "waggle/rabbitmq:3.6-node",
                 "ports": [15672]
             }]
         ]
