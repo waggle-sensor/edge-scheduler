@@ -108,19 +108,27 @@ def do_from_file(file_path):
         template['header']['priority'] = request['priority']
     if 'target_nodes' in request:
         template['header']['target_nodes'] = request['target_nodes']
-    # for sensor in request['sensors']:
 
     # generate body
-    # template['body']['rules'] = request['rules']
-    # template['body']['sensors'] = request['sensors']
+    template['body']['rules'] = request['rules']
+    container = []
+    for app in request['sensors']:
+        container.append(get_app_configuration(app))
+    containers = {'containers': container}
+    config_out = {'spec': containers}
+    template['body']['sensor_config'] = config_out
+    
     app_config = []
-    for conditions, apps in request['apps']:
+    for config_name, config in request['apps'].items():
+        conditions = config['conditions']
+        apps = config['configuration']
         container = []
         assert type(apps) is list
         for app in apps:
             container.append(get_app_configuration(app))
         containers = {'containers': container}
-        app_config.append({str(conditions): {'spec': containers}})
+        config_out = [{'conditions': conditions}, {'spec': containers}]
+        app_config.append({config_name: config_out})
     template['body']['app_config'] = app_config
 
     print(yaml.dump(template, default_flow_style=False))

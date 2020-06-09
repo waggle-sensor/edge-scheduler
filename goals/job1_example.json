@@ -5,13 +5,16 @@
     "target_nodes": ["001e06107e48"],
     "rules": [],
     "sensors": [],
-    "apps": [
-        [["True"],
-            [{
-                "name": "rabbitmq",
+    "apps": {
+        "default": {
+            "conditions": [
+                "True"
+            ],
+            "configuration": [
+                {"name": "rabbitmq",
                 "image": "waggle/rabbitmq:3.6-node",
-                "ports": [15672]
-            }]
-        ]
-    ]
+                "ports": [15672]}
+            ]
+        }
+    }
 }
