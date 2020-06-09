@@ -1,10 +1,10 @@
 ### Node Configuration Generation
 
-One of the SES outputs is a node configuration that is later pulled by target nodes and interpreted by the local scheduler running inside the target nodes. The node configuration is a guide book given from the cloud that helps nodes determine what to do in order to support scientific problems. The guide book has many chapters to support more than one scientific problems and the local scheduler is capable of switching between chapters depending on the context perceived locally.
+One of the SES outputs is a node configuration that is later pulled by target nodes and interpreted by the local scheduler running inside the target nodes. The node configuration is a guide book given from the cloud that helps nodes determine what to do in order to support the scientific problem. The guide book provides many sections and troubleshootings that each specifies what to do when something occurrs. This allows the local scheduler to switch between sections depending on the troubleshooting guide and the context perceived locally.
 
-#### Testing The Configuration Generation Process
+#### Emulating The Configuration Generation Process
 
-A fake edge code repository (ECR) supports generation of node configuration as this process needs to access ECR to retreive information about the registered applications. The fake ECR hosts a local webserver via Flask and accepts requests on registering apps, returning information about queried app, and listing the apps it has.
+A fake edge code repository (ECR) supports the process of node configuration generation as the process needs to access ECR to retreive information about the registered applications. The fake ECR hosts a local webserver via Flask and accepts requests on registering apps, returning information about queried app, and listing the apps that have been registered.
 
 To register a set of fake apps,
 ```
@@ -17,4 +17,32 @@ $ curl http://localhost:5000/listapp
 ```
 
 Then run the script to generate a goal,
-
+```
+$ python3 translate.py -f job1_example.json
+body:
+  app_config:
+  - default:
+    - conditions:
+      - 'True'
+    - spec:
+        containers:
+        - image: waggle/rabbitmq:3.6-node
+          name: rabbitmq
+          ports:
+          - containerPort: 15672
+          resources:
+            limits:
+            - cpu: 1500m
+            - memory: 256Mi
+  rules: []
+  sensor_config:
+    spec:
+      containers: []
+header:
+  goal_id: 32fe2840-c385-4ef1-8746-3d57767e4b44
+  goal_name: simple job
+  priority: 50
+  target_nodes:
+  - 001e06107e48
+  user_id: gemblerz
+```
