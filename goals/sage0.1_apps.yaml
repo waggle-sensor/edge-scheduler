@@ -1,0 +1,20 @@
+apps:
+  - name: rabbitmq
+    version: nc
+    profile:
+      default:
+        - cpu: 1500m
+          memory: 256Mi
+  - name: media-streamer
+    version: 0.1.0
+    profile:
+      default:
+        - cpu: 1300m
+          memory: 50Mi
+  - name: smoke-detector
+    version: 0.4.0
+    namespace: sagecontinuum
+    profile:
+      default:
+        - cpu: 1000m
+          memory: 300Mi
