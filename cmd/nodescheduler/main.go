@@ -1,12 +1,13 @@
 package main
 
-import (
-	"fmt"
-)
-
 func main() {
-	var a Haha
-	a.Name = "hello"
-	fmt.Printf("%v", a)
-	fmt.Printf("hellow rodl")
+	InfoLogger.Printf("initializing...")
+	InitializeValidator()
+	InitializeJobManager()
+
+	// dryRun := flag.Bool("dry-run", false, "To emulate scheduler")
+	// flag.Parse()
+	go RunValidator()
+	go RunJobManager()
+	createRouter()
 }
