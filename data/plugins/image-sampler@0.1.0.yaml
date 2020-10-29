@@ -1,0 +1,17 @@
+---
+name: image-sampler
+version: 0.1.0
+tags:
+  - sample
+  - sampling
+hardware:
+  - camera
+architecture:
+  - amd64
+profile:
+  - name: everyhour
+    knobs:
+      interval: 3600
+    require:
+      cpu: 200
+      memory: 50

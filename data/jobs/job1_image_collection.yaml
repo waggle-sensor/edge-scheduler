@@ -1,0 +1,10 @@
+---
+name: job image collection
+plugintags:
+  - sampling
+nodetags:
+  - greenhouse
+conditions:
+  - Daytime(Now) -> Run(Cloud)
+rules:
+  - sunriseTime <= sysTime <= sunsetTime -> Daytime(Now)
