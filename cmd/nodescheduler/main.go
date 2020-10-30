@@ -1,18 +1,21 @@
 package main
 
-import (
-	"github.com/sagecontinuum/ses/pkg/cloudscheduler"
-	"github.com/sagecontinuum/ses/pkg/util"
-)
+import "flag"
 
 func main() {
-	util.InfoLogger.Printf("initializing...")
-	cloudscheduler.InitializeValidator()
-	cloudscheduler.InitializeJobManager()
+	dryRun := flag.Bool("dry-run", false, "To emulate scheduler")
+	flag.Parse()
 
-	// dryRun := flag.Bool("dry-run", false, "To emulate scheduler")
-	// flag.Parse()
-	go cloudscheduler.RunValidator()
-	go cloudscheduler.RunJobManager()
-	cloudscheduler.CreateRouter()
+	InitializeKB()
+	InitializeK3s()
+	InitializeGoalManager()
+
+	if !*dryRun {
+		InitializeMeasureCollector("localhost:5672")
+		go RunMeasureCollector(chanFromMeasure)
+	}
+
+	go RunScheduler(chanTriggerScheduler, dryRun)
+	go RunKnowledgebase(chanFromMeasure, chanTriggerScheduler)
+	createRouter()
 }

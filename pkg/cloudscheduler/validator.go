@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/sagecontinuum/ses/pkg/datatype"
-	"github.com/sagecontinuum/ses/pkg/util"
+	"github.com/sagecontinuum/ses/pkg/logger"
 	"gopkg.in/yaml.v2"
 )
 
@@ -19,16 +19,16 @@ var (
 // InitializeValidator initializes the validator
 func InitializeValidator() {
 	nodes, _ = getNodesFromDirectory()
-	// util.InfoLogger.Printf("%v", nodes)
+	// logger.Info.Printf("%v", nodes)
 	plugins, _ = getPluginsFromDirectory()
-	// util.InfoLogger.Printf("%v", plugins)
+	// logger.Info.Printf("%v", plugins)
 	chanToValidator = make(chan *datatype.Job)
 }
 
 // ValidateJobAndCreateScienceGoal validates user job and returns a science goals
 // created from the job. It also returns a list of errors in validation if any
 func ValidateJobAndCreateScienceGoal(job *datatype.Job) (scienceGoal *datatype.ScienceGoal, errorList []error) {
-	util.InfoLogger.Printf("Validating %s...", job.Name)
+	logger.Info.Printf("Validating %s...", job.Name)
 	scienceGoal = new(datatype.ScienceGoal)
 	scienceGoal.ID = job.ID
 	scienceGoal.Name = job.Name
@@ -42,7 +42,7 @@ func ValidateJobAndCreateScienceGoal(job *datatype.Job) (scienceGoal *datatype.S
 				errorList = append(errorList, fmt.Errorf("%s:%s not exist in ECR", plugin.Name, plugin.Version))
 				continue
 			}
-			util.InfoLogger.Printf("%s:%s exists in ECR", plugin.Name, plugin.Version)
+			logger.Info.Printf("%s:%s exists in ECR", plugin.Name, plugin.Version)
 
 			// Check 2: node supports hardware requirements of the plugin
 			supported, unsupportedHardwareList := node.GetPluginHardwareUnsupportedList(plugin)
@@ -50,7 +50,7 @@ func ValidateJobAndCreateScienceGoal(job *datatype.Job) (scienceGoal *datatype.S
 				errorList = append(errorList, fmt.Errorf("%s:%s required hardware not supported by %s: %v", plugin.Name, plugin.Version, node.Name, unsupportedHardwareList))
 				continue
 			}
-			util.InfoLogger.Printf("%s:%s hardware %v supported by %s", plugin.Name, plugin.Version, plugin.Hardware, node.Name)
+			logger.Info.Printf("%s:%s hardware %v supported by %s", plugin.Name, plugin.Version, plugin.Hardware, node.Name)
 
 			// Check 3: architecture of the plugin is supported by node
 			supported, supportedDevices := node.GetPluginArchitectureSupportedDevices(plugin)
@@ -58,7 +58,7 @@ func ValidateJobAndCreateScienceGoal(job *datatype.Job) (scienceGoal *datatype.S
 				errorList = append(errorList, fmt.Errorf("%s:%s architecture not supported by %s", plugin.Name, plugin.Version, node.Name))
 				continue
 			}
-			util.InfoLogger.Printf("%s:%s architecture %v supported by %v of node %s", plugin.Name, plugin.Version, plugin.Architecture, supportedDevices, node.Name)
+			logger.Info.Printf("%s:%s architecture %v supported by %v of node %s", plugin.Name, plugin.Version, plugin.Architecture, supportedDevices, node.Name)
 
 			// Check 4: the required resource is available in node devices
 			for _, device := range supportedDevices {
@@ -71,7 +71,7 @@ func ValidateJobAndCreateScienceGoal(job *datatype.Job) (scienceGoal *datatype.S
 				for _, profile := range profiles {
 					err := plugin.RemoveProfile(profile)
 					if err != nil {
-						util.ErrorLogger.Printf("%s", err)
+						logger.Error.Printf("%s", err)
 					}
 				}
 			}
@@ -95,7 +95,7 @@ func ValidateJobAndCreateScienceGoal(job *datatype.Job) (scienceGoal *datatype.S
 	// 		errorList = append(errorList, fmt.Errorf("%s:%s not exist in ECR", plugin.Name, plugin.Version))
 	// 		continue
 	// 	}
-	// 	util.InfoLogger.Printf("%s:%s exists in ECR", plugin.Name, plugin.Version)
+	// 	logger.Info.Printf("%s:%s exists in ECR", plugin.Name, plugin.Version)
 	//
 	// 	// Check 2: plugins run on target nodes and supported by node hardware and resource
 	// 	for _, node := range job.Nodes {
@@ -104,19 +104,19 @@ func ValidateJobAndCreateScienceGoal(job *datatype.Job) (scienceGoal *datatype.S
 	// 			errorList = append(errorList, fmt.Errorf("%s:%s architecture not supported by %s", plugin.Name, plugin.Version, node.Name))
 	// 			continue
 	// 		}
-	// 		util.InfoLogger.Printf("%s:%s architecture %v supported by %v of node %s", plugin.Name, plugin.Version, plugin.Architecture, supportedDevices, node.Name)
+	// 		logger.Info.Printf("%s:%s architecture %v supported by %v of node %s", plugin.Name, plugin.Version, plugin.Architecture, supportedDevices, node.Name)
 	//
 	// 		supported, unsupportedHardwareList := node.GetPluginHardwareUnsupportedList(plugin)
 	// 		if !supported {
 	// 			errorList = append(errorList, fmt.Errorf("%s:%s required hardware not supported by %s: %v", plugin.Name, plugin.Version, node.Name, unsupportedHardwareList))
 	// 			continue
 	// 		}
-	// 		util.InfoLogger.Printf("%s:%s hardware %v supported by %s", plugin.Name, plugin.Version, plugin.Hardware, node.Name)
+	// 		logger.Info.Printf("%s:%s hardware %v supported by %s", plugin.Name, plugin.Version, plugin.Hardware, node.Name)
 	//
 	// 		for _, device := range supportedDevices {
 	// 			profiles := device.GetUnsupportedPluginProfiles(plugin)
-	// 			util.InfoLogger.Printf("hi")
-	// 			util.InfoLogger.Printf("%v", profiles)
+	// 			logger.Info.Printf("hi")
+	// 			logger.Info.Printf("%v", profiles)
 	// 			// if !supported {
 	// 			// 	errorList = append(errorList, fmt.Errorf(
 	// 			// 		"%s:%s not enough resources to be run on %s device of %s node",
@@ -135,7 +135,7 @@ func ValidateJobAndCreateScienceGoal(job *datatype.Job) (scienceGoal *datatype.S
 	// 				}
 	// 			}
 	//
-	// 			util.InfoLogger.Printf("%v\n", plugin)
+	// 			logger.Info.Printf("%v\n", plugin)
 	// 		}
 	//
 	// 		// Check 3: if the profiles satisfy the minimum performance requirement of job
@@ -158,10 +158,10 @@ func RunValidator() {
 		scienceGoal, errorList := ValidateJobAndCreateScienceGoal(job)
 		if errorList != nil {
 			for _, err := range errorList {
-				util.ErrorLogger.Printf("%s", err)
+				logger.Error.Printf("%s", err)
 			}
 		}
-		util.InfoLogger.Printf("%+v\n", scienceGoal)
+		logger.Info.Printf("%+v\n", scienceGoal)
 		chanToJobManager <- scienceGoal
 	}
 }
@@ -276,7 +276,7 @@ func getNode(name string) (datatype.Node, error) {
 // 	foundNodes := getNodesByTags(job.NodeTags)
 // 	job.Nodes = foundNodes
 //
-// 	util.InfoLogger.Printf("%v", job)
+// 	logger.Info.Printf("%v", job)
 //
 // 	// jobName := "Example Job"
 // 	//
@@ -296,7 +296,7 @@ func getNode(name string) (datatype.Node, error) {
 // 			ErrorLogger.Printf("%s", err)
 // 		}
 // 	} else {
-// 		util.InfoLogger.Printf("%+v\n", scienceGoal)
+// 		logger.Info.Printf("%+v\n", scienceGoal)
 // 		dat, _ := yaml.Marshal(scienceGoal)
 // 		ioutil.WriteFile("sciencegoal.yaml", dat, 0644)
 //

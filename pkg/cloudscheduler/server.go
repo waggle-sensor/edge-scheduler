@@ -10,7 +10,7 @@ import (
 	guuid "github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/sagecontinuum/ses/pkg/datatype"
-	"github.com/sagecontinuum/ses/pkg/util"
+	"github.com/sagecontinuum/ses/pkg/logger"
 	yaml "gopkg.in/yaml.v2"
 	// "github.com/urfave/negroni"
 )
@@ -94,7 +94,7 @@ func handlerJobStatus(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	if r.Method == GET {
 		log.Printf("hit GET")
-		util.InfoLogger.Printf("Job status of %s", vars["id"])
+		logger.Info.Printf("Job status of %s", vars["id"])
 		if goal, ok := scienceGoals[vars["id"]]; ok {
 			respondJSON(w, http.StatusOK, goal)
 		} else {
@@ -147,6 +147,7 @@ func handlerGoalForNode(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// CreateRouter builds REST api handlers and opens a port
 func CreateRouter() {
 	mainRouter = mux.NewRouter()
 	r := mainRouter
@@ -165,5 +166,5 @@ func CreateRouter() {
 	// api.Handle("/goals", http.HandlerFunc(handlerGoals)).Methods(http.MethodGet, http.MethodPost, http.MethodPut)
 	api.Handle("/goals/{nodeName}", http.HandlerFunc(handlerGoalForNode)).Methods(http.MethodGet)
 
-	util.InfoLogger.Fatalln(http.ListenAndServe("0.0.0.0:9770", r))
+	logger.Info.Fatalln(http.ListenAndServe("0.0.0.0:9770", r))
 }
