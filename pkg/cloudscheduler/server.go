@@ -1,4 +1,4 @@
-package server
+package cloudscheduler
 
 import (
 	"encoding/json"
@@ -9,6 +9,8 @@ import (
 
 	guuid "github.com/google/uuid"
 	"github.com/gorilla/mux"
+	"github.com/sagecontinuum/ses/pkg/datatype"
+	"github.com/sagecontinuum/ses/pkg/util"
 	yaml "gopkg.in/yaml.v2"
 	// "github.com/urfave/negroni"
 )
@@ -60,7 +62,7 @@ func handlerSubmitJobs(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			fmt.Println(err)
 		}
-		var job Job
+		var job datatype.Job
 		_ = yaml.Unmarshal(yamlFile, &job)
 		job.ID = guuid.New().String()
 		log.Printf("%v", job)
@@ -92,7 +94,7 @@ func handlerJobStatus(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	if r.Method == GET {
 		log.Printf("hit GET")
-		InfoLogger.Printf("Job status of %s", vars["id"])
+		util.InfoLogger.Printf("Job status of %s", vars["id"])
 		if goal, ok := scienceGoals[vars["id"]]; ok {
 			respondJSON(w, http.StatusOK, goal)
 		} else {
@@ -145,7 +147,7 @@ func handlerGoalForNode(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func createRouter() {
+func CreateRouter() {
 	mainRouter = mux.NewRouter()
 	r := mainRouter
 
@@ -163,5 +165,5 @@ func createRouter() {
 	// api.Handle("/goals", http.HandlerFunc(handlerGoals)).Methods(http.MethodGet, http.MethodPost, http.MethodPut)
 	api.Handle("/goals/{nodeName}", http.HandlerFunc(handlerGoalForNode)).Methods(http.MethodGet)
 
-	InfoLogger.Fatalln(http.ListenAndServe("0.0.0.0:9770", r))
+	util.InfoLogger.Fatalln(http.ListenAndServe("0.0.0.0:9770", r))
 }

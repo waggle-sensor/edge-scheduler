@@ -1,4 +1,4 @@
-package sciencegoal
+package datatype
 
 // ScienceGoal structs local goals and success criteria
 type ScienceGoal struct {

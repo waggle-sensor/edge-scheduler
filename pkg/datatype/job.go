@@ -1,4 +1,4 @@
-package job
+package datatype
 
 // Job structs user request for jobs
 type Job struct {

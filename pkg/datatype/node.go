@@ -1,4 +1,4 @@
-package node
+package datatype
 
 // Node structs information about nodes
 type Node struct {

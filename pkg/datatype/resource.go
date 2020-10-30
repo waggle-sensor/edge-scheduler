@@ -1,4 +1,4 @@
-package resource
+package datatype
 
 // Resource structs resources used in scheduling
 type Resource struct {
