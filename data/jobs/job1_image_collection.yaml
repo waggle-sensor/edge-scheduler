@@ -5,6 +5,6 @@ plugintags:
 nodetags:
   - greenhouse
 conditions:
-  - Daytime(Now) -> Run(Cloud)
+  - Daytime(Now) -> Run(Sampler)
 rules:
   - sunriseTime <= sysTime <= sunsetTime -> Daytime(Now)

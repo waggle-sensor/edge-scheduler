@@ -14,6 +14,19 @@ type Plugin struct {
 	Profile      []Profile `yaml:"profile,omitempty"`
 }
 
+// type Plugin struct {
+// 	Name      string   `yaml:"name"`
+// 	Image     string   `yaml:"image"`
+// 	Ports     []Port   `yaml:"ports"`
+// 	Args      []string `yaml:"args"`
+// 	Resources struct {
+// 		Requests []Resource `yaml:"requests"`
+// 		Limits   []Resource `yaml:"limits"`
+// 	}
+// 	Env     map[string]string `yaml:"env"`
+// 	Configs map[string]string `yaml:"configs"`
+// }
+
 // RemoveProfile removes an existing Profile by name
 func (p *Plugin) RemoveProfile(profileToBeDeleted Profile) error {
 	for index, profile := range p.Profile {

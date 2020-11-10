@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/sagecontinuum/ses/pkg/logger"
 	"github.com/streadway/amqp"
 )
 
 var (
 	host         string
 	conn         *amqp.Connection
-	exchangeName string = "messages"
+	exchangeName = "messages"
 )
 
 type RMQMessage struct {
@@ -28,16 +29,16 @@ func InitializeMeasureCollector(hostUrl string) {
 
 func RunMeasureCollector(toKnowledgebase chan RMQMessage) {
 	for {
-		InfoLogger.Print("Measure collector (re)starts...")
+		logger.Info.Print("Measure collector (re)starts...")
 		c, err := getConnection()
 		if err != nil {
-			ErrorLogger.Print(err.Error())
+			logger.Error.Print(err.Error())
 			continue
 		}
 
 		ch, err := c.Channel()
 		if err != nil {
-			ErrorLogger.Print(err.Error())
+			logger.Error.Print(err.Error())
 			continue
 		}
 
@@ -73,11 +74,11 @@ func RunMeasureCollector(toKnowledgebase chan RMQMessage) {
 		go func() {
 			for msg := range msgs {
 				// TODO: should drop messages going to Beehive
-				InfoLogger.Printf("%s received", msg.Body)
-				InfoLogger.Printf("%s", msg.RoutingKey)
+				logger.Info.Printf("%s received", msg.Body)
+				logger.Info.Printf("%s", msg.RoutingKey)
 				var rmqMessage RMQMessage
 				json.Unmarshal(msg.Body, &rmqMessage)
-				InfoLogger.Printf("%v", rmqMessage)
+				logger.Info.Printf("%v", rmqMessage)
 				// TODO: We want to filter out ones going to Beehive
 				// TODO: We should do the filtering by setting a proper routingkey
 				if rmqMessage.Scope == "node" {
@@ -87,8 +88,8 @@ func RunMeasureCollector(toKnowledgebase chan RMQMessage) {
 		}()
 
 		err = <-closeNotifyChan
-		ErrorLogger.Print(err.Error())
-		InfoLogger.Print("Measure collector restarting in 5 seconds...")
+		logger.Error.Print(err.Error())
+		logger.Info.Print("Measure collector restarting in 5 seconds...")
 		time.Sleep(5 * time.Second)
 	}
 }

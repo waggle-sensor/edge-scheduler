@@ -3,12 +3,10 @@ package nodescheduler
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 
 	"github.com/gorilla/mux"
-	"gopkg.in/yaml.v2"
 	// "github.com/urfave/negroni"
 )
 
@@ -20,8 +18,7 @@ const (
 
 var (
 	// Channels for IPC
-	chanFromMeasure      chan RMQMessage = make(chan RMQMessage)
-	chanTriggerScheduler chan string     = make(chan string)
+	chanFromMeasure = make(chan RMQMessage)
 
 	mainRouter *mux.Router
 )
@@ -74,7 +71,6 @@ func handlerGoals(w http.ResponseWriter, r *http.Request) {
 	if r.Method == GET {
 		// clauses := PrintClauses()
 		// respondJSON(w, http.StatusOK, clauses)
-		Test()
 	} else if r.Method == POST {
 		log.Printf("hit POST")
 
@@ -85,15 +81,15 @@ func handlerGoals(w http.ResponseWriter, r *http.Request) {
 		// if err != nil {
 		// 	respondJSON(w, http.StatusOK, "ERROR")
 		// }
-		yamlFile, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-			fmt.Println(err)
-		}
-		var goal Goal
-		_ = yaml.Unmarshal(yamlFile, &goal)
-		log.Printf("%v", goal)
-		RegisterGoal(goal)
-		chanTriggerScheduler <- "api server"
+		// yamlFile, err := ioutil.ReadAll(r.Body)
+		// if err != nil {
+		// 	fmt.Println(err)
+		// }
+		// var goal Goal
+		// _ = yaml.Unmarshal(yamlFile, &goal)
+		// log.Printf("%v", goal)
+		// RegisterGoal(goal)
+		chanTriggerSchedule <- "received new goal via api"
 		respondJSON(w, http.StatusOK, "")
 	}
 }

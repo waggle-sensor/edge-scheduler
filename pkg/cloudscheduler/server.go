@@ -130,20 +130,24 @@ func handlerGoals(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerGoalForNode(w http.ResponseWriter, r *http.Request) {
+	var goals []*datatype.ScienceGoal
 	vars := mux.Vars(r)
 	if r.Method == GET {
 		nodeName := vars["nodeName"]
 		for _, scienceGoal := range scienceGoals {
 			for _, subGoal := range scienceGoal.SubGoals {
 				if subGoal.Node.Name == nodeName {
-					dat, _ := yaml.Marshal(scienceGoal)
-					ioutil.WriteFile("sciencegoal.yaml", dat, 0644)
-					respondYAML(w, http.StatusOK, scienceGoal)
-					return
+					goals = append(goals, scienceGoal)
+					// dat, _ := yaml.Marshal(scienceGoal)
+					// ioutil.WriteFile("sciencegoal.yaml", dat, 0644)
+					// respondYAML(w, http.StatusOK, scienceGoal)
+					// return
 				}
 			}
 		}
-		respondYAML(w, http.StatusOK, `{"response": "No goals found"}`)
+		// dat, _ := yaml.Marshal(goals)
+		respondYAML(w, http.StatusOK, goals)
+		// respondYAML(w, http.StatusOK, `[{"response": "No goals found"}]`)
 	}
 }
 

@@ -6,8 +6,6 @@ import (
 	"io/ioutil"
 	"strings"
 
-	"gopkg.in/yaml.v2"
-
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -72,89 +70,89 @@ func TerminatePlugin(plugin string) bool {
 	return true
 }
 
-func CreateK3sPod(pluginConfig PluginConfig) *appsv1.Deployment {
-	var pod appsv1.Deployment
-	var volumes []apiv1.Volume
-
-	// Build containers
-	var containers []apiv1.Container
-	for _, plugin := range pluginConfig.Plugins {
-		var container apiv1.Container
-		container.Name = strings.ToLower(plugin.Name)
-		container.Image = plugin.Image
-		if len(plugin.Args) > 0 {
-			container.Args = plugin.Args
-		}
-		if len(plugin.Env) > 0 {
-			var envs []apiv1.EnvVar
-			for k, v := range plugin.Env {
-				var env apiv1.EnvVar
-				env.Name = k
-				env.Value = v
-				envs = append(envs, env)
-			}
-			container.Env = envs
-		}
-
-		// Configure data-shim
-		if value, ok := plugin.Configs["dataConfig"]; ok {
-			var configMapName = strings.ToLower(pluginConfig.Name + "-" + plugin.Name)
-			err := createDataConfigMap(configMapName, value)
-			if err != nil {
-				panic(err.Error())
-			}
-			// Create a volume for Spec
-			var volume apiv1.Volume
-			var configMap apiv1.ConfigMapVolumeSource
-			configMap.Name = configMapName
-			volume.Name = "data-shim"
-			volume.ConfigMap = &configMap
-			// volume.ConfigMap = &apiv1.ConfigMapVolumeSource{
-			// 	Name: configMapName,
-			// }
-			volumes = append(volumes, volume)
-
-			// Create a volume mount for container
-			container.VolumeMounts = []apiv1.VolumeMount{
-				{
-					Name:      "data-shim",
-					MountPath: "/run/waggle",
-				},
-			}
-		}
-		containers = append(containers, container)
-	}
-
-	// Set plugin name and namespace
-	pod.ObjectMeta = metav1.ObjectMeta{
-		Name:      strings.ToLower(pluginConfig.Name),
-		Namespace: namespace,
-	}
-
-	pod.Spec = appsv1.DeploymentSpec{
-		Replicas: int32Ptr(1),
-		Selector: &metav1.LabelSelector{
-			MatchLabels: map[string]string{
-				"app": strings.ToLower(pluginConfig.Name),
-			},
-		},
-		Template: apiv1.PodTemplateSpec{
-			ObjectMeta: metav1.ObjectMeta{
-				Labels: map[string]string{
-					"app": strings.ToLower(pluginConfig.Name),
-				},
-			},
-			Spec: apiv1.PodSpec{
-				Containers: containers,
-				Volumes:    volumes,
-			},
-		},
-	}
-	d, _ := yaml.Marshal(&pod)
-	fmt.Printf("--- t dump:\n%s\n\n", string(d))
-	fmt.Printf("%v", pod)
-	return &pod
-}
+// func CreateK3sPod(pluginConfig PluginConfig) *appsv1.Deployment {
+// 	var pod appsv1.Deployment
+// 	var volumes []apiv1.Volume
+//
+// 	// Build containers
+// 	var containers []apiv1.Container
+// 	for _, plugin := range pluginConfig.Plugins {
+// 		var container apiv1.Container
+// 		container.Name = strings.ToLower(plugin.Name)
+// 		container.Image = plugin.Image
+// 		if len(plugin.Args) > 0 {
+// 			container.Args = plugin.Args
+// 		}
+// 		if len(plugin.Env) > 0 {
+// 			var envs []apiv1.EnvVar
+// 			for k, v := range plugin.Env {
+// 				var env apiv1.EnvVar
+// 				env.Name = k
+// 				env.Value = v
+// 				envs = append(envs, env)
+// 			}
+// 			container.Env = envs
+// 		}
+//
+// 		// Configure data-shim
+// 		if value, ok := plugin.Configs["dataConfig"]; ok {
+// 			var configMapName = strings.ToLower(pluginConfig.Name + "-" + plugin.Name)
+// 			err := createDataConfigMap(configMapName, value)
+// 			if err != nil {
+// 				panic(err.Error())
+// 			}
+// 			// Create a volume for Spec
+// 			var volume apiv1.Volume
+// 			var configMap apiv1.ConfigMapVolumeSource
+// 			configMap.Name = configMapName
+// 			volume.Name = "data-shim"
+// 			volume.ConfigMap = &configMap
+// 			// volume.ConfigMap = &apiv1.ConfigMapVolumeSource{
+// 			// 	Name: configMapName,
+// 			// }
+// 			volumes = append(volumes, volume)
+//
+// 			// Create a volume mount for container
+// 			container.VolumeMounts = []apiv1.VolumeMount{
+// 				{
+// 					Name:      "data-shim",
+// 					MountPath: "/run/waggle",
+// 				},
+// 			}
+// 		}
+// 		containers = append(containers, container)
+// 	}
+//
+// 	// Set plugin name and namespace
+// 	pod.ObjectMeta = metav1.ObjectMeta{
+// 		Name:      strings.ToLower(pluginConfig.Name),
+// 		Namespace: namespace,
+// 	}
+//
+// 	pod.Spec = appsv1.DeploymentSpec{
+// 		Replicas: int32Ptr(1),
+// 		Selector: &metav1.LabelSelector{
+// 			MatchLabels: map[string]string{
+// 				"app": strings.ToLower(pluginConfig.Name),
+// 			},
+// 		},
+// 		Template: apiv1.PodTemplateSpec{
+// 			ObjectMeta: metav1.ObjectMeta{
+// 				Labels: map[string]string{
+// 					"app": strings.ToLower(pluginConfig.Name),
+// 				},
+// 			},
+// 			Spec: apiv1.PodSpec{
+// 				Containers: containers,
+// 				Volumes:    volumes,
+// 			},
+// 		},
+// 	}
+// 	d, _ := yaml.Marshal(&pod)
+// 	fmt.Printf("--- t dump:\n%s\n\n", string(d))
+// 	fmt.Printf("%v", pod)
+// 	return &pod
+// }
 
 func int32Ptr(i int32) *int32 { return &i }
 
