@@ -8,12 +8,22 @@ type ScienceGoal struct {
 	Conditions []string  `yaml:"conditions,omitempty"`
 }
 
+// GetMySubGoal returns the subgoal assigned to node
+func (sg *ScienceGoal) GetMySubGoal(nodeName string) *SubGoal {
+	for _, subGoal := range sg.SubGoals {
+		if subGoal.Node.Name == nodeName {
+			return &subGoal
+		}
+	}
+	return nil
+}
+
 // SubGoal structs node-specific goal along with conditions and rules
 type SubGoal struct {
 	Node       Node     `yaml:"node,omitempty"`
 	Plugins    []Plugin `yaml:"plugins,omitempty"`
-	Conditions []string `yaml:"conditions,omitempty"`
 	Rules      []string `yaml:"rules,omitempty"`
+	Statements []string `yaml:"statements,omitempty"`
 }
 
 // type Goal struct {

@@ -1,3 +1,0 @@
-rule goal01,Daytime(Now) ==> Run(Cloud),Daytime(Now) ==> Run(Smoke)
-expr goal01,env.system.time > 10 ==> Daytime(Now)
-measure env.system.time,123,11

@@ -24,7 +24,6 @@ type ZMQMessage struct {
 }
 
 func launchKB() {
-
 	args := []string{pathToPythonKB}
 	for {
 		if _, err := os.Stat(pathToIPCSocket); os.IsExist(err) {

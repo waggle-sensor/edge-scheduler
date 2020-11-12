@@ -29,9 +29,6 @@ goal_rules = {}
 goal_expressions = {}
 measures = {}
 
-# measure_queue is a pipeline for measures to be stored and processed
-
-
 
 def get_rules(goal_id):
     return goal_rules[goal_id]
@@ -39,6 +36,11 @@ def get_rules(goal_id):
 
 def get_expressions():
     return goal_expressions
+
+
+def add_measure(name, value):
+    # TODO: we may want to save values with their timestamp
+    measures[name.replace(".", "_")] = value
 
 
 def gomas_subst(s, x):
@@ -119,14 +121,12 @@ def inferencing(goal_id, alpha):
             clauses.append(clause)
 
 
-def check_triggers(msg):
-    subject = msg.name.replace(".", "_")
-    value = msg.value
+def check_triggers(subject, value):
+    subject = subject.replace(".", "_")
     for topic in goal_expressions:
         if subject in topic:
             for fact, expression, goal_id in goal_expressions[topic]:
                 try:
-
                     if eval(expression, measures):
                         yield goal_id
                 except Exception as ex:
@@ -150,7 +150,7 @@ def check_status_change(goal_ids):
                 if k == x:
                     if v not in plugin_status or plugin_status[v] != "Run":
                         plugin_status[v] = "Run"
-                        yield "Run {}".format(v)
+                        yield "Runnable {}".format(v)
 
         plugins_to_stop = inferencing(goal_id, "Stop(x)")
         for p in plugins_to_stop:
@@ -158,13 +158,9 @@ def check_status_change(goal_ids):
                 if k == x:
                     if v not in plugin_status or plugin_status[v] != "Stop":
                         plugin_status[v] = "Stop"
-                        yield "Stop {}".format(v)
+                        yield "Stoppable {}".format(v)
 
         goal_status[goal_id] = plugin_status
-
-
-def add_measure(measure):
-    measures[measure.name.replace(".", "_")] = measure.value
 
 
 """
@@ -182,12 +178,6 @@ def extract_variables_from_predicate_symbol(expr):
     return re.findall(r"\b[a-z]", expr)
 
 
-def handle_ping(msg):
-    msg['result'] = "pong"
-    msg['return_code'] = 0
-    return msg
-
-
 """
     handle_rule registers rules that are expressed as first order predicate logic
 """
@@ -199,9 +189,9 @@ def handle_rule(msg):
             goal_rules[goal_id] = []
         for rule in rules:
             goal_rules[goal_id].append(expr(rule))
-        return write_response(msg, 0, 'success')
+        return True, ''
     except Exception as ex:
-        return write_response(msg, -1, str(ex))
+        return False, str(ex)
 
 
 """
@@ -223,10 +213,9 @@ def handle_expr(msg):
             if tuple(variables) not in goal_expressions:
                 goal_expressions[tuple(variables)] = []
             goal_expressions[tuple(variables)].append((fact.strip(), evaluation.strip(), goal_id))
-        return write_response(msg, 0, 'success')
+        return True, ''
     except Exception as ex:
-        print(str(ex))
-        return write_response(msg, -1, str(ex))
+        return False, str(ex)
 
 
 def handle_dump(msg):
@@ -247,9 +236,9 @@ def handle_dump(msg):
                 delete_expr.append(e)
         for d in delete_expr:
             del goal_expressions[d]
-        return write_response(msg, 0, 'success')
+        return True, ''
     except Exception as ex:
-        return write_response(msg, -1, str(ex))
+        return False, str(ex)
 
 
 """
@@ -280,57 +269,60 @@ def handle_ask(msg):
 def handle_measure(msg):
     try:
         name, timestamp, value = msg['args'][:3]
+        # TODO: now measures are only numeric values
+        if isinstance(value, str):
+            value = float(value)
         # TODO: now it keeps the latest
         #       in the future we may need to keep last x measures
         # if name not in measures.keys():
         #     measures[name] = [(timestamp, value)]
         # else:
-        message = Message(name=name, value=value, timestamp=timestamp, src='api')
-        measure_queue.put(message)
-        return write_response(msg, 0, 'success')
+        add_measure(name, value)
+        return True, ''
     except Exception as ex:
-        return write_response(msg, -1, str(ex))
+        return False, str(ex)
 
 
 handlers = {
-    'ping': handle_ping,
     'rule': handle_rule,
-    'expr': handle_expr,
+    'state': handle_expr,
     'dump': handle_dump,
     'ask': handle_ask,
     'measure': handle_measure,
 }
 
 
-# Message format
-# type ZMQMessage struct {
-# 	ReturnCode int         `json:"return_code"`
-# 	Command    string      `json:"command"`
-# 	Args       []string    `json:"body"`
-# 	Result     interface{} `json:"result"`
-# }
 def handle_message(msg):
     logging.info(f"Received {msg['command']}")
     if msg['command'] not in handlers.keys():
-        return write_response(-1, "unknown command")
+        return None
     handler = handlers[msg['command']]
     return handler(msg)
 
 
 def api_run(message_queue):
-    context = zmq.Context()
-    socket = context.socket(zmq.REP)
-    socket.bind(f"ipc://{server_path}")
-    assert socket
+    try:
+        context = zmq.Context()
+        socket = context.socket(zmq.REP)
+        socket.bind(f"ipc://{server_path}")
+        assert socket
 
-    while True:
-        json_msg = socket.recv_json()
-        if json_msg['command'] == 'ping':
-            json_msg['return_code'] = 0
-            json_msg['result'] = 'pong'
-        else:
-            message_queue.put(json_msg)
-        socket.send_json(json_msg)
+        while True:
+            json_msg = socket.recv_json()
+            response = {}
+            response.update(json_msg)
+            if json_msg['command'] == 'ping':
+                response['return_code'] = 0
+                response['result'] = 'pong'
+            else:
+                message_queue.put(json_msg)
+                response['return_code'] = 0
+                response['result'] = 'ack'
+            socket.send_json(response)
+    except Exception:
+        pass
+    finally:
+        socket.close()
 
 
 """
@@ -350,29 +342,45 @@ def rmq_run(message_queue):
             'args': [measure.name, measure.timestamp, measure.value]})
 
 
+def main():
+    try:
+        message_queue = Queue()
+        api_listener = Process(target=api_run, args=(message_queue,))
+        rmq_listener = Process(target=rmq_run, args=(message_queue,))
+
+        api_listener.start()
+        rmq_listener.start()
+
+        context = zmq.Context()
+        socket = context.socket(zmq.PAIR)
+        socket.bind(f"ipc://{event_path}")
+        assert socket
+
+        while True:
+            message = message_queue.get()
+            logging.info(f"New message arrived {message}")
+            # remote kill command
+            if message['command'] == 'terminate':
+                break
+            r, err = handle_message(message)
+            if r is False:
+                logging.error(f"Error: {err}")
+                continue
+
+            # Examine if the measure triggers any rules
+            if message['command'] == 'measure':
+                name, timestamp, value = message['args'][:3]
+                goals_to_check = list(check_triggers(name, value))
+                if len(goals_to_check) > 0:
+                    events = check_status_change(goals_to_check)
+                    for e in events:
+                        socket.send_string(e)
+    except:
+        pass
+    finally:
+        api_listener.terminate()
+        rmq_listener.terminate()
+        socket.close()
+
 if __name__ == '__main__':
-    message_queue = Queue()
-    api_listener = Process(target=api_run, args=(message_queue,))
-    rmq_listener = Process(target=rmq_run, args=(message_queue,))
-
-    api_listener.start()
-    rmq_listener.start()
-
-    context = zmq.Context()
-    socket = context.socket(zmq.PAIR)
-    socket.bind(f"ipc://{event_path}")
-    assert socket
-
-    while True:
-        message = message_queue.get()
-        logging.info(f"New measure arrived {measure}")
-        # TODO: we may want to save values with their timestamp
-        add_measure(measure)
-        logging.info(f"{goal_rules}")
-        logging.info(f"{goal_expressions}")
-        goals_to_check = list(check_triggers(measure))
-        logging.info(goals_to_check)
-        if len(goals_to_check) > 0:
-            events = check_status_change(goals_to_check)
-            for e in events:
-                socket.send(e)
+    main()

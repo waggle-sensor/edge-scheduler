@@ -4,7 +4,7 @@ plugintags:
   - sampling
 nodetags:
   - greenhouse
-conditions:
-  - Daytime(Now) -> Run(Sampler)
 rules:
+  - Daytime(Now) -> Run(Sampler)
+statements:
   - sunriseTime <= sysTime <= sunsetTime -> Daytime(Now)

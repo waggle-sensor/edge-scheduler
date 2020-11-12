@@ -16,6 +16,7 @@ var (
 	scienceGoals          map[string]*datatype.ScienceGoal
 	cloudSchedulerBaseURL string
 	nodeID                string
+	chanToGoalManager     = make(chan Event)
 )
 
 // InitializeGoalManager manages goals received from the cloud scheduler
@@ -25,46 +26,42 @@ func InitializeGoalManager() {
 	nodeID = "wb01"
 }
 
-// RunGoalManager keeps pulling science goals assigned to the node
-// from the cloud scheduler
+// RunGoalManager handles goal related events from both cloud and local
+// and keeps goals managed up-to-date with the help from the events
 func RunGoalManager() {
+	go pullingGoals()
 	for {
-		pullGoals()
-		time.Sleep(3 * time.Second)
+
 	}
 }
 
-func pullGoals() bool {
+func pullingGoals() {
 	queryURL, _ := url.Parse(cloudSchedulerBaseURL)
 	queryURL.Path = path.Join(queryURL.Path, "api/v1/goals/", nodeID)
-	logger.Info.Printf("%s", queryURL.String())
-	resp, err := http.Get(queryURL.String())
-	if err != nil {
-		logger.Error.Printf("%s", err)
-		return false
-	}
-	defer resp.Body.Close()
+	logger.Info.Printf("SES endpoint: %s", queryURL.String())
+	for {
+		time.Sleep(5 * time.Second)
+		resp, err := http.Get(queryURL.String())
+		if err != nil {
+			logger.Error.Printf("%s", err)
+			continue
+		}
+		defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		logger.Error.Printf("%s", err)
-		return false
-	}
-	var pulledGoals []datatype.ScienceGoal
-	_ = yaml.Unmarshal(body, &pulledGoals)
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			logger.Error.Printf("%s", err)
+			continue
+		}
+		var pulledGoals []datatype.ScienceGoal
+		_ = yaml.Unmarshal(body, &pulledGoals)
 
-	logger.Info.Printf("%v", pulledGoals)
-
-	triggerSchedule := false
-	for _, goal := range pulledGoals {
-		goalID := goal.ID
-		if _, ok := scienceGoals[goalID]; !ok {
-			scienceGoals[goalID] = &goal
-			triggerSchedule = true
+		// TODO: this does not account for goal status change
+		//       from SES -- may or may not happen
+		for _, goal := range pulledGoals {
+			if _, exist := scienceGoals[goal.ID]; !exist {
+				chanToGoalManager <- &goal
+			}
 		}
 	}
-	if triggerSchedule {
-		chanTriggerSchedule <- "received new goals from SES"
-	}
-	return true
 }

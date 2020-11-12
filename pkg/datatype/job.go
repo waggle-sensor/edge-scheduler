@@ -9,6 +9,6 @@ type Job struct {
 	NodeTags           []string `yaml:"nodetags,omitempty"`
 	Nodes              []Node   `yaml:"nodes,omitempty"`
 	MinimumPerformance []string `yaml:"minimumperformance,omitempty"`
-	Conditions         []string `yaml:"conditions,omitempty"`
 	Rules              []string `yaml:"rules,omitempty"`
+	Statements         []string `yaml:"statements,omitempty"`
 }

@@ -1,24 +1,24 @@
 import unittest
 import time
 import json
+from multiprocessing import Process
 
-from kb import (
-    handle_ping, handle_rule, handle_expr,
-    handle_dump, handle_ask, handle_measure,
-    check_triggers, add_measure, inferencing,
-    get_expressions, check_status_change
-)
-from util.aima_utils import (
-    Expr, expr
-)
-from waggle.plugin import Message
+import zmq
+from kb import main
 
 class TestKB(unittest.TestCase):
-    """
-        TestKB verifies the KB and its inferencing related functions work
-        NOTE: This does NOT test the interface of the KB (i.e., zmq).
-              Instead, this directly calls the handler functions
-    """
+    def setUp(self):
+        super().setUp()
+        self.kb = Process(target=main)
+        self.kb.start()
+        api_path = '/tmp/kb.sock'
+        event_path = '/tmp/event.sock'
+        context = zmq.Context()
+        self.socket_request = context.socket(zmq.REQ)
+        self.socket_request.connect(f'ipc://{api_path}')
+        self.socket_event = context.socket(zmq.PAIR)
+        self.socket_event.connect(f'ipc://{event_path}')
+
     # def test_handle_dump(self):
     #     handle_expr(
     #             {"args": [
@@ -43,59 +43,42 @@ class TestKB(unittest.TestCase):
     #     self.assertTrue(len(get_expressions()) == 0)
 
     def test_trigger(self):
-        handle_rule(
-            {"args": [
-                "goal01",
-                "Daytime(Now) ==> Run(Cloud)",
-                "Daytime(Now) ==> Run(Smoke)",
-                "Nighttime(Now) ==> Stop(Cloud)"
-        ]})
-        handle_expr(
-            {"args": [
-                "goal01",
-                "env.system.time > 10 ==> Daytime(Now)",
-                "env.system.time <= 10 ==> Nighttime(Now)"
-        ]})
-        measure = Message(
-            name='env.system.time',
-            value=11,
-            timestamp=time.time_ns()
-        )
-        add_measure(measure)
-        goals_to_check = list(check_triggers(measure))
-        print(goals_to_check)
-        events = check_status_change(goals_to_check)
-        for e in events:
-            print(e)
+        command_list = [
+            {'command': 'rule',
+             'args': [
+                'goal01',
+                'Daytime(Now) ==> Run(Sampler)',
+                'Nighttime(Now) ==> Stop(Sampler)',
+            ]},
+            {'command': 'expr',
+             'args': [
+                'goal01',
+                '6 <= env.system.time.hour <= 18 ==> Daytime(Now)',
+                '6 > env.system.time.hour ==> Nighttime(Now)',
+                'env.system.time.hour > 18 ==> Nighttime(Now)',
+            ]},
+            {'command': 'measure',
+             'args': [
+                'env.system.time.hour',
+                time.time_ns(),
+                8,
+            ]},
+        ]
+        for command in command_list:
+            self.socket_request.send_json(command)
+            self.socket_request.recv_json()
 
-        events = check_status_change(goals_to_check)
-        print("hello")
-        for e in events:
-            print(e)
+        result = self.socket_event.recv_string()
+        print(result)
+        self.assertEqual(result, "Run Sampler")
 
-        measure = Message(
-            name='env.system.time',
-            value=9,
-            timestamp=time.time_ns()
-        )
-        add_measure(measure)
-        goals_to_check = list(check_triggers(measure))
-        print(goals_to_check)
-        events = check_status_change(goals_to_check)
-        for e in events:
-            print(e)
-
-        goals_to_check = list(check_triggers(measure))
-        print(goals_to_check)
-        events = check_status_change(goals_to_check)
-        for e in events:
-            print(e)
-        # for goal_id in goals_to_check:
-
-            # plugins_to_run = inferencing(goal_id, "Stop(x)")
-            # for p in plugins_to_run:
-            #     print(p[expr('x')], type(str(p[expr('x')])))
-            # print(list(inferencing(goal_id, "Stop(x)")))
+    def tearDown(self):
+        super().tearDown()
+        self.socket_request.send_json({'command': 'terminate'})
+        self.socket_request.close()
+        self.socket_event.close()
+        # or kill kb forcefully (this may leave kb's subprocesses alive)
+        # self.kb.terminate()
 
 if __name__ == '__main__':
     unittest.main()
