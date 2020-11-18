@@ -150,7 +150,7 @@ def check_status_change(goal_ids):
                 if k == x:
                     if v not in plugin_status or plugin_status[v] != "Run":
                         plugin_status[v] = "Run"
-                        yield "Runnable {}".format(v)
+                        yield goal_id, "Runnable", str(v)
 
         plugins_to_stop = inferencing(goal_id, "Stop(x)")
         for p in plugins_to_stop:
@@ -158,7 +158,7 @@ def check_status_change(goal_ids):
                 if k == x:
                     if v not in plugin_status or plugin_status[v] != "Stop":
                         plugin_status[v] = "Stop"
-                        yield "Stoppable {}".format(v)
+                        yield goal_id, "Stoppable", str(v)
 
         goal_status[goal_id] = plugin_status
 
@@ -195,11 +195,11 @@ def handle_rule(msg):
 
 
 """
-    handle_expr extracts variables from an expression and splits
+    handle_state extracts variables from an expression and splits
     the expression by ==> that distinguishes variables from the corresponding
     fact. Later, if the expression holds true, then the fact holds true as well.
 """
-def handle_expr(msg):
+def handle_state(msg):
     try:
         goal_id = msg['args'][0]
         exprs = msg['args'][1:]
@@ -285,7 +285,7 @@ def handle_measure(msg):
 
 handlers = {
     'rule': handle_rule,
-    'state': handle_expr,
+    'state': handle_state,
     'dump': handle_dump,
     'ask': handle_ask,
     'measure': handle_measure,
@@ -373,10 +373,15 @@ def main():
                 goals_to_check = list(check_triggers(name, value))
                 if len(goals_to_check) > 0:
                     events = check_status_change(goals_to_check)
-                    for e in events:
-                        socket.send_string(e)
-    except:
-        pass
+                    for goal_id, status, plugin_name in events:
+
+                        socket.send_json({
+                            'goal_id': goal_id,
+                            'status': status,
+                            'plugin_name': plugin_name
+                        })
+    except Exception as ex:
+        print(str(ex))
     finally:
         api_listener.terminate()
         rmq_listener.terminate()

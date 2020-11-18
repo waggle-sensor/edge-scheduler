@@ -1,9 +1,10 @@
 package policy
 
-func NoSchedulingStrategy(plugins map[string]string, currentPlugins []string) (prioritizedPlugins []string) {
-	// Run them all!
-	for k, _ := range plugins {
-		prioritizedPlugins = append(prioritizedPlugins, k)
-	}
-	return
+import (
+	"github.com/sagecontinuum/ses/pkg/datatype"
+)
+
+// SimpleSchedulingPolicy simply returns the list as is
+func SimpleSchedulingPolicy(plugins []*datatype.Plugin, availableResource datatype.Resource) (prioritizedPlugins []*datatype.Plugin) {
+	return plugins
 }

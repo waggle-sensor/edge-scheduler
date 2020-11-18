@@ -50,7 +50,7 @@ class TestKB(unittest.TestCase):
                 'Daytime(Now) ==> Run(Sampler)',
                 'Nighttime(Now) ==> Stop(Sampler)',
             ]},
-            {'command': 'expr',
+            {'command': 'state',
              'args': [
                 'goal01',
                 '6 <= env.system.time.hour <= 18 ==> Daytime(Now)',
@@ -61,16 +61,22 @@ class TestKB(unittest.TestCase):
              'args': [
                 'env.system.time.hour',
                 time.time_ns(),
-                8,
+                11,
             ]},
         ]
         for command in command_list:
             self.socket_request.send_json(command)
             self.socket_request.recv_json()
 
-        result = self.socket_event.recv_string()
-        print(result)
-        self.assertEqual(result, "Run Sampler")
+        result = self.socket_event.recv_json()
+        self.assertDictEqual(
+            result,
+            {
+                'goal_id': "goal01",
+                'status': 'Runnable',
+                'plugin_name': "Sampler"
+            }
+        )
 
     def tearDown(self):
         super().tearDown()

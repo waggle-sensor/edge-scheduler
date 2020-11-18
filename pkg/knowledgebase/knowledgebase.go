@@ -1,8 +1,8 @@
 package knowledgebase
 
 import (
+	"encoding/json"
 	"os/exec"
-	"strings"
 	"time"
 
 	"github.com/sagecontinuum/ses/pkg/datatype"
@@ -12,15 +12,23 @@ import (
 
 var (
 	pathToPythonKB = "kb.py"
-	chanToKB       = make(chan Event)
+	chanToKB       = make(chan RequestToKB)
 )
+
+// RequestToKB structs a message for KB
+type RequestToKB struct {
+	ReturnCode int         `json:"return_code"`
+	Command    string      `json:"command"`
+	Args       []string    `json:"args"`
+	Result     interface{} `json:"result"`
+}
 
 // InitializeKB launches the KB engine and keeps it alive.
 // It also receives events from the engine
-func InitializeKB() {
+func InitializeKB(chanContextEvent chan<- datatype.EventPluginContext) {
 	go launchKB()
 	go runIPCToKB()
-	go runEventReceiver()
+	go runEventReceiver(chanContextEvent)
 }
 
 // RegisterRules registers rules of a goal to the KB engine
@@ -30,21 +38,17 @@ func RegisterRules(scienceGoal *datatype.ScienceGoal, nodeName string) {
 	logger.Info.Printf("Loading rules to KB...")
 	rules := []string{scienceGoal.ID}
 	rules = append(rules, mySubGoal.Rules...)
-	chanToKB <- datatype.Message {
-		datatype.RequestToKB {
-			Command: "rule",
-			Args: rules,
-		}
+	chanToKB <- RequestToKB{
+		Command: "rule",
+		Args:    rules,
 	}
 
 	logger.Info.Printf("Loading statements to KB...")
 	statements := []string{scienceGoal.ID}
 	statements = append(statements, mySubGoal.Statements...)
-	chanToKB <- datatype.Message {
-		datatype.RequestToKB {
-			Command: "state",
-			Args: statements,
-		}
+	chanToKB <- RequestToKB{
+		Command: "state",
+		Args:    statements,
 	}
 }
 
@@ -60,8 +64,12 @@ func runIPCToKB() {
 			defer socket.Destroy()
 			for {
 				request := <-chanToKB
-				byteJson, _ := json.Marshal(request)
-				err = socket.SendFrame(byteJson, goczmq.FlagNone)
+				byteJSON, _ := json.Marshal(request)
+				err = socket.SendFrame(byteJSON, goczmq.FlagNone)
+				if err != nil {
+					chanExit <- err
+					return
+				}
 				_, _, err = socket.RecvFrame()
 				if err != nil {
 					chanExit <- err
@@ -77,7 +85,7 @@ func runIPCToKB() {
 
 // runEvenReceiver receives Run, Stop events of plugins
 // from knowledgebase
-func runEventReceiver() {
+func runEventReceiver(chanToScheduler chan<- datatype.EventPluginContext) {
 	for {
 		chanExit := make(chan error)
 		go func() {
@@ -89,21 +97,20 @@ func runEventReceiver() {
 			}
 			defer socket.Destroy()
 			for {
-				message, _, err := socket.RecvFrame()
+				byteMessage, _, err := socket.RecvFrame()
 				if err != nil {
 					chanExit <- err
 					return
 				}
-				// message format must be "Runnable|Stoppable Plugin"
-				sp := strings.Split(message, " ")
-
-				chanToGoalManager <- datatype.Message{
-					datatype.EventPluginContext{
-						Name:   sp[1],
-						Status: sp[0],
-					},
+				var event datatype.EventPluginContext
+				err = json.Unmarshal(byteMessage, &event)
+				if err != nil {
+					logger.Error.Printf("Failed to parse plugin context event %s", byteMessage)
+					continue
 				}
-				logger.Info.Printf("Event received: %s", message)
+
+				chanToScheduler <- event
+				logger.Info.Printf("Event received: %v", event)
 			}
 		}()
 		err := <-chanExit

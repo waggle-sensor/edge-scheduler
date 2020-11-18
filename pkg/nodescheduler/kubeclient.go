@@ -6,6 +6,8 @@ import (
 	"io/ioutil"
 	"strings"
 
+	"github.com/sagecontinuum/ses/pkg/datatype"
+
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -18,7 +20,7 @@ var (
 	clientSet *kubernetes.Clientset
 )
 
-func InitializeK3s() {
+func InitializeK3s(chanPluginToRun chan<- *datatype.Plugin) {
 	var err error
 	clientSet, err = getClient("/root/.kube/config")
 	if err != nil {

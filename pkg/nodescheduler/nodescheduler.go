@@ -1,13 +1,16 @@
 package nodescheduler
 
 import (
-	"time"
-
+	"github.com/sagecontinuum/ses/pkg/datatype"
+	"github.com/sagecontinuum/ses/pkg/knowledgebase"
 	"github.com/sagecontinuum/ses/pkg/logger"
+	"github.com/sagecontinuum/ses/pkg/nodescheduler/policy"
 )
 
 var (
-	chanTriggerSchedule = make(chan string)
+	chanContextEventToScheduler = make(chan datatype.EventPluginContext)
+	chanJobQueue                = make(chan *datatype.ScienceGoal)
+	chanPluginToK3SClient       = make(chan *datatype.Plugin)
 )
 
 // type K3sTemplate struct {
@@ -46,40 +49,55 @@ var (
 // 	}
 // }
 
+// RunScheduler handles communications between components
 func RunScheduler() {
 	for {
-		// Do scheduling only when needed
 		select {
-		case why := <-chanTriggerSchedule:
-			logger.Info.Printf("A scheduling triggered: %s", why)
-			// Ask KB what can run now
-			schedulablePluginNames := Ask()
-			logger.Info.Printf("What can run: %v", schedulablePluginNames)
-			// Get the configs of the schedulable plugins
-			schedulablePluginConfigs := getSchedulablePluginConfigs(schedulablePluginNames)
-			// Decide what to run
-			pluginsToRun := policy.NoSchedulingStrategy(schedulablePluginConfigs, currentPlugins)
-			logger.Info.Printf("Things to deploy: %v", pluginsToRun)
-			logger.Info.Printf("What has been running: %v", currentPlugins)
-			// Terminate plugins that are not subject to run
-			terminatePlugins(pluginsToRun)
-			// Launch plugins
-			if launchPlugins(schedulablePluginConfigs, pluginsToRun) {
-				// Track the plugin
-				// TODO: Later get status from k3s to track running plugins
-				currentPlugins = append(currentPlugins, pluginsToRun...)
+		case contextEvent := <-chanContextEventToScheduler:
+			scienceGoal, err := GetScienceGoal(contextEvent.GoalID)
+			if err != nil {
+				logger.Error.Printf("%s", err.Error())
+				continue
 			}
-			logger.Info.Print("======================================")
+			subGoal := scienceGoal.GetMySubGoal(nodeID)
+			err = subGoal.UpdatePluginContext(contextEvent)
+			if err != nil {
+				logger.Error.Printf("%s", err.Error())
+				continue
+			}
+			// When a plugin becomes runnable see if it can be scheduled
+			if contextEvent.Status == datatype.Runnable {
+				chanJobQueue <- scienceGoal
+			}
+		case scheduledGoal := <-chanJobQueue:
+			logger.Info.Printf("%s needs scheduling", scheduledGoal.Name)
+			subGoal := scheduledGoal.GetMySubGoal(nodeID)
+			pluginsSubjectToSchedule := subGoal.GetSchedulablePlugins()
+			logger.Info.Printf("Plugins subject to run: %v", pluginsSubjectToSchedule)
+			// TODO: Resource model is not applied here -- needs improvements
+			orderedPluginsToRun := policy.SimpleSchedulingPolicy(pluginsSubjectToSchedule, datatype.Resource{
+				CPU:       999999,
+				Memory:    999999,
+				GPUMemory: 999999,
+			})
+			logger.Info.Printf("Ordered plugins subject to run: %v", orderedPluginsToRun)
+
+			// // Launch plugins
+			// if launchPlugins(schedulablePluginConfigs, pluginsToRun) {
+			// 	// Track the plugin
+			// 	// TODO: Later get status from k3s to track running plugins
+			// 	currentPlugins = append(currentPlugins, pluginsToRun...)
+			// }
+			// logger.Info.Print("======================================")
 			// scheduleTriggered = false
 		}
-		time.Sleep(3 * time.Second)
 	}
 }
 
 // RunNodeScheduler initializes itself and runs the main routine
 func RunNodeScheduler() {
-	InitializeKB()
-	// InitializeK3s()
+	knowledgebase.InitializeKB(chanContextEventToScheduler)
+	InitializeK3s(chanPluginToK3SClient)
 	InitializeGoalManager()
 
 	// if !*dryRun {
@@ -87,10 +105,9 @@ func RunNodeScheduler() {
 	// 	go RunMeasureCollector(chanFromMeasure)
 	// }
 
-	go RunScheduler()
+	RunScheduler()
 	// go RunKnowledgebase(chanFromMeasure, chanTriggerScheduler)
-	go RunGoalManager()
-	createRouter()
+	// createRouter()
 }
 
 func findIndex(array []string, target string) int {
