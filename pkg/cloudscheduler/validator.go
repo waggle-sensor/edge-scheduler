@@ -75,16 +75,16 @@ func ValidateJobAndCreateScienceGoal(job *datatype.Job) (scienceGoal *datatype.S
 					}
 				}
 			}
-			subGoal.Plugins = append(subGoal.Plugins, plugin)
+			subGoal.Plugins = append(subGoal.Plugins, &plugin)
 		}
 		// Check 4: conditions of job are valid
 
 		// Check 5: valiables are valid
 		if len(subGoal.Plugins) > 0 {
-			subGoal.Node = node
+			subGoal.Node = &node
 			subGoal.Rules = job.Rules
 			subGoal.Statements = job.Statements
-			scienceGoal.SubGoals = append(scienceGoal.SubGoals, subGoal)
+			scienceGoal.SubGoals = append(scienceGoal.SubGoals, &subGoal)
 		}
 	}
 	//

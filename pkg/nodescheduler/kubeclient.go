@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/sagecontinuum/ses/pkg/datatype"
+	"github.com/sagecontinuum/ses/pkg/logger"
 
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
@@ -16,17 +17,128 @@ import (
 )
 
 var (
-	namespace string
-	clientSet *kubernetes.Clientset
+	namespace    = "sage-development"
+	ecr_registry *url.Url
+	clientSet    *kubernetes.Clientset
+	emulatingK3S = false
 )
 
-func InitializeK3s(chanPluginToRun chan<- *datatype.Plugin) {
-	var err error
-	clientSet, err = getClient("/root/.kube/config")
-	if err != nil {
-		panic(err.Error())
+// InitializeK3S loads k3s configuration to talk to k3s cluster
+func InitializeK3S(chanPluginToUpdate chan<- *datatype.Plugin, registry_address string, emulating bool) {
+	if !emulating {
+		configPath := "/root/.kube/config"
+		cs, err := getClient(configPath)
+		if err != nil {
+			logger.Error.Printf("Could not read kubeconfig at %s", configPath)
+			logger.Info.Printf("k3sclient runs on emulation mode")
+			emulating = true
+		}
+		clientSet = cs
 	}
-	namespace = "sage-development"
+	ecr_registry = url.Parse(registry_address)
+	emulatingK3S = emulating
+	go runK3SClient(chanPluginToRun)
+}
+
+func runK3SClient(chanPluginToUpdate chan<- *datatype.Plugin) {
+	for {
+		plugin := <-chanPluginToUpdate
+		k3sDeployment, err := CreateK3SDeployment(plugin)
+		if err != nil {
+			logger.Error.Printf("Could not create k3s deployment for plugin $s", plugin.Name)
+		}
+		if plugin.SchedulingStatus == datatype.Running {
+			err = LaunchPlugin(k3sDeployment)
+		}
+	}
+}
+
+func CreateK3SDeployment(plugin *datatype.Plugin) (pod *appsv1.Deployment, err error) {
+		var volumes []apiv1.Volume
+		var container apiv1.Container
+		container.Name = strings.ToLower(plugin.Name)
+		container.Image = path.Join(
+			ecr_registry.Path,
+			strings.Join([]string{plugin.Name, plugin.Version}, ":")
+		)
+		//TODO: Think about how to apply arguments and environments into k3s deployment
+		//      This is related to performance related and unrelated knobs
+		// if len(plugin.Args) > 0 {
+		// 	container.Args = plugin.Args
+		// }
+		// if len(plugin.Env) > 0 {
+		// 	var envs []apiv1.EnvVar
+		// 	for k, v := range plugin.Env {
+		// 		var env apiv1.EnvVar
+		// 		env.Name = k
+		// 		env.Value = v
+		// 		envs = append(envs, env)
+		// 	}
+		// 	container.Env = envs
+		// }
+
+
+		// Build containers
+		var containers []apiv1.Container
+
+			// Configure data-shim
+			if value, ok := plugin.Configs["dataConfig"]; ok {
+				var configMapName = strings.ToLower(pluginConfig.Name + "-" + plugin.Name)
+				err := createDataConfigMap(configMapName, value)
+				if err != nil {
+					panic(err.Error())
+				}
+				// Create a volume for Spec
+				var volume apiv1.Volume
+				var configMap apiv1.ConfigMapVolumeSource
+				configMap.Name = configMapName
+				volume.Name = "data-shim"
+				volume.ConfigMap = &configMap
+				// volume.ConfigMap = &apiv1.ConfigMapVolumeSource{
+				// 	Name: configMapName,
+				// }
+				volumes = append(volumes, volume)
+
+				// Create a volume mount for container
+				container.VolumeMounts = []apiv1.VolumeMount{
+					{
+						Name:      "data-shim",
+						MountPath: "/run/waggle",
+					},
+				}
+			}
+			containers = append(containers, container)
+		}
+
+		// Set plugin name and namespace
+		pod.ObjectMeta = metav1.ObjectMeta{
+			Name:      strings.ToLower(pluginConfig.Name),
+			Namespace: namespace,
+		}
+
+		pod.Spec = appsv1.DeploymentSpec{
+			Replicas: int32Ptr(1),
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app": strings.ToLower(pluginConfig.Name),
+				},
+			},
+			Template: apiv1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"app": strings.ToLower(pluginConfig.Name),
+					},
+				},
+				Spec: apiv1.PodSpec{
+					Containers: containers,
+					Volumes:    volumes,
+				},
+			},
+		}
+		d, _ := yaml.Marshal(&pod)
+		fmt.Printf("--- t dump:\n%s\n\n", string(d))
+		fmt.Printf("%v", pod)
+		return &pod
 }
 
 func LaunchPlugin(deployment *appsv1.Deployment) bool {
@@ -34,24 +146,15 @@ func LaunchPlugin(deployment *appsv1.Deployment) bool {
 
 	result, err := deploymentsClient.Create(context.TODO(), deployment, metav1.CreateOptions{})
 	if err != nil {
-		panic(err)
+		logger.Info.Printf("Failed to create deployment %s.\n", err)
 	}
-	fmt.Printf("Created deployment %q.\n", result.GetObjectMeta().GetName())
+	logger.Info.Printf("Created deployment %q.\n", result.GetObjectMeta().GetName())
 	return true
 }
 
 func TerminatePlugin(plugin string) bool {
 	plugin = strings.ToLower(plugin)
-	var kubeconfig string
-	kubeconfig = "/root/.kube/config"
-	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
-	if err != nil {
-		panic(err.Error())
-	}
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		panic(err.Error())
-	}
+
 	deploymentsClient := clientset.AppsV1().Deployments(namespace)
 	list, err := deploymentsClient.List(context.TODO(), metav1.ListOptions{})
 	if err != nil {

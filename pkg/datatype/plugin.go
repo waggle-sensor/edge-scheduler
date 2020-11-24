@@ -6,14 +6,22 @@ import (
 
 // Plugin structs plugin metadata from ECR
 type Plugin struct {
-	Name             string           `yaml:"name,omitempty"`
-	Version          string           `yaml:"version,omitempty"`
-	ContextStatus    ContextStatus    `yaml:"contextstatus,omitempty"`
-	SchedulingStatus SchedulingStatus `yaml:"schedulingstatus,omitempty"`
-	Tags             []string         `yaml:"tags,omitempty"`
-	Hardware         []string         `yaml:"hardware,omitempty"`
-	Architecture     []string         `yaml:"architecture,omitempty"`
-	Profile          []Profile        `yaml:"profile,omitempty"`
+	Name         string       `yaml:"name,omitempty"`
+	Version      string       `yaml:"version,omitempty"`
+	Status       PluginStatus `yaml:"status,omitempty"`
+	Tags         []string     `yaml:"tags,omitempty"`
+	Hardware     []string     `yaml:"hardware,omitempty"`
+	Architecture []string     `yaml:"architecture,omitempty"`
+	DataShim     *DataShim    `yaml:"datashim"`
+	Profile      []Profile    `yaml:"profile,omitempty"`
+}
+
+// PluginStatus structs status about a plugin that includes
+// contexual, scheduling, and knob status
+type PluginStatus struct {
+	ContextStatus    ContextStatus    `yaml:"context,omitempty"`
+	SchedulingStatus SchedulingStatus `yaml:"scheduling,omitempty"`
+	KnobStatus       *Profile         `yaml:"knob,omitempty"`
 }
 
 // ContextStatus represents contextual status of a plugin
@@ -55,6 +63,12 @@ type EventPluginContext struct {
 // 	Env     map[string]string `yaml:"env"`
 // 	Configs map[string]string `yaml:"configs"`
 // }
+
+// UpdatePluginContext updates contextual status of the plugin
+func (p *Plugin) UpdatePluginContext(status ContextStatus) error {
+	p.Status.ContextStatus = status
+	return nil
+}
 
 // RemoveProfile removes an existing Profile by name
 func (p *Plugin) RemoveProfile(profileToBeDeleted Profile) error {

@@ -33,8 +33,7 @@ type SubGoal struct {
 func (sg *SubGoal) UpdatePluginContext(contextEvent EventPluginContext) error {
 	for _, plugin := range sg.Plugins {
 		if plugin.Name == contextEvent.PluginName {
-			plugin.ContextStatus = contextEvent.Status
-			return nil
+			return plugin.UpdatePluginContext(contextEvent.Status)
 		}
 	}
 	return fmt.Errorf("Failed to update context (%s) of plugin %s", contextEvent.Status, contextEvent.PluginName)
@@ -45,12 +44,22 @@ func (sg *SubGoal) UpdatePluginContext(contextEvent EventPluginContext) error {
 // SchedulingStatus is not Running
 func (sg *SubGoal) GetSchedulablePlugins() (schedulable []*Plugin) {
 	for _, plugin := range sg.Plugins {
-		if plugin.ContextStatus == Runnable &&
-			plugin.SchedulingStatus != Running {
+		if plugin.Status.ContextStatus == Runnable &&
+			plugin.Status.SchedulingStatus != Running {
 			schedulable = append(schedulable, plugin)
 		}
 	}
 	return
+}
+
+// GetPlugin returns the plugin that matches with given pluginName
+func (sg *SubGoal) GetPlugin(pluginName string) *Plugin {
+	for _, plugin := range sg.Plugins {
+		if plugin.Name == pluginName {
+			return plugin
+		}
+	}
+	return nil
 }
 
 // type Goal struct {

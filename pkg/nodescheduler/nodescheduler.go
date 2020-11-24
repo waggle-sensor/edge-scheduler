@@ -9,7 +9,8 @@ import (
 
 var (
 	chanContextEventToScheduler = make(chan datatype.EventPluginContext)
-	chanJobQueue                = make(chan *datatype.ScienceGoal)
+	chanRunGoal                 = make(chan *datatype.ScienceGoal)
+	chanStopPlugin              = make(chan *datatype.Plugin)
 	chanPluginToK3SClient       = make(chan *datatype.Plugin)
 )
 
@@ -67,11 +68,13 @@ func RunScheduler() {
 			}
 			// When a plugin becomes runnable see if it can be scheduled
 			if contextEvent.Status == datatype.Runnable {
-				chanJobQueue <- scienceGoal
+				chanRunGoal <- scienceGoal
+			} else if contextEvent.Status == datatype.Stoppable {
+				chanStopPlugin <- subGoal.GetPlugin(contextEvent.PluginName)
 			}
-		case scheduledGoal := <-chanJobQueue:
-			logger.Info.Printf("%s needs scheduling", scheduledGoal.Name)
-			subGoal := scheduledGoal.GetMySubGoal(nodeID)
+		case scheduledScienceGoal := <-chanRunGoal:
+			logger.Info.Printf("Goal %s needs scheduling", scheduledScienceGoal.Name)
+			subGoal := scheduledScienceGoal.GetMySubGoal(nodeID)
 			pluginsSubjectToSchedule := subGoal.GetSchedulablePlugins()
 			logger.Info.Printf("Plugins subject to run: %v", pluginsSubjectToSchedule)
 			// TODO: Resource model is not applied here -- needs improvements
@@ -81,7 +84,12 @@ func RunScheduler() {
 				GPUMemory: 999999,
 			})
 			logger.Info.Printf("Ordered plugins subject to run: %v", orderedPluginsToRun)
-
+			// Launch plugins
+			for _, plugin := range orderedPluginsToRun {
+				plugin.SchedulingStatus = datatype.Running
+				chanPluginToK3SClient <- plugin
+				logger.Info.Printf("Plugin %s has been scheduled to run", plugin.Name)
+			}
 			// // Launch plugins
 			// if launchPlugins(schedulablePluginConfigs, pluginsToRun) {
 			// 	// Track the plugin
@@ -90,6 +98,12 @@ func RunScheduler() {
 			// }
 			// logger.Info.Print("======================================")
 			// scheduleTriggered = false
+		case pluginToStop := <-chanStopPlugin:
+			if pluginToStop.SchedulingStatus == datatype.Running {
+				pluginToStop.SchedulingStatus = datatype.Stopped
+				chanPluginToK3SClient <- pluginToStop
+				logger.Info.Printf("Plugin %s has been triggered to stop", pluginToStop.Name)
+			}
 		}
 	}
 }
@@ -97,7 +111,8 @@ func RunScheduler() {
 // RunNodeScheduler initializes itself and runs the main routine
 func RunNodeScheduler() {
 	knowledgebase.InitializeKB(chanContextEventToScheduler)
-	InitializeK3s(chanPluginToK3SClient)
+	emulating := true
+	InitializeK3S(chanPluginToK3SClient, "sage-registry.nautilus.optiputer.net/sage/", emulating)
 	InitializeGoalManager()
 
 	// if !*dryRun {
