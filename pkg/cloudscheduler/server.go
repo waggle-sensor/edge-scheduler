@@ -70,11 +70,13 @@ func handlerSubmitJobs(w http.ResponseWriter, r *http.Request) {
 		if len(job.PluginTags) > 0 {
 			foundPlugins := getPluginsByTags(job.PluginTags)
 			job.Plugins = foundPlugins
+			logger.Info.Printf("Found plugins %v", foundPlugins)
 		}
 
 		if len(job.NodeTags) > 0 {
 			foundNodes := getNodesByTags(job.NodeTags)
 			job.Nodes = foundNodes
+			logger.Info.Printf("Found nodes %v", foundNodes)
 		}
 
 		chanToValidator <- &job

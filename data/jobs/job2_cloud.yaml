@@ -1,0 +1,13 @@
+---
+name: job run cloudcover
+plugintags:
+  - cloud
+nodetags:
+  - greenhouse
+rules:
+  - Daytime(Now) ==> Run(Cloudcover)
+  - Nighttime(Now) ==> Stop(Cloudcover)
+statements:
+  - 7 <= env.system.time.hour <= 19 ==> Daytime(Now)
+  - 7 > env.system.time.hour ==> Nighttime(Now)
+  - 19 < env.system.time.hour ==> Nighttime(Now)

@@ -2,7 +2,9 @@ package knowledgebase
 
 import (
 	"encoding/json"
+	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/sagecontinuum/ses/pkg/datatype"
@@ -89,8 +91,9 @@ func runEventReceiver(chanToScheduler chan<- datatype.EventPluginContext) {
 	for {
 		chanExit := make(chan error)
 		go func() {
-			logger.Info.Printf("(re)Starting evnet listener...")
+			logger.Info.Printf("(re)Starting event listener...")
 			socket, err := goczmq.NewPair("ipc:///tmp/event.sock")
+			// socket = socket.Connect("ipc:///tmp/event.sock")
 			if err != nil {
 				chanExit <- err
 				return
@@ -108,7 +111,8 @@ func runEventReceiver(chanToScheduler chan<- datatype.EventPluginContext) {
 					logger.Error.Printf("Failed to parse plugin context event %s", byteMessage)
 					continue
 				}
-
+				// scheduler (especially k3s) does not like Cap words...
+				event.PluginName = strings.ToLower(event.PluginName)
 				chanToScheduler <- event
 				logger.Info.Printf("Event received: %v", event)
 			}
@@ -135,6 +139,8 @@ func launchKB() {
 		// }
 		logger.Info.Printf("Launching KB...")
 		cmd := exec.Command("python3", args...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
 		err := cmd.Run()
 		if err != nil {
 			logger.Info.Printf("kb.py failed with %s", err.Error())

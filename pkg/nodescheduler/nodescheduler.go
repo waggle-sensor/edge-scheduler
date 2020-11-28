@@ -7,11 +7,15 @@ import (
 	"github.com/sagecontinuum/ses/pkg/nodescheduler/policy"
 )
 
+const (
+	maxChannelBuffer = 100
+)
+
 var (
-	chanContextEventToScheduler = make(chan datatype.EventPluginContext)
-	chanRunGoal                 = make(chan *datatype.ScienceGoal)
-	chanStopPlugin              = make(chan *datatype.Plugin)
-	chanPluginToK3SClient       = make(chan *datatype.Plugin)
+	chanContextEventToScheduler = make(chan datatype.EventPluginContext, maxChannelBuffer)
+	chanRunGoal                 = make(chan *datatype.ScienceGoal, maxChannelBuffer)
+	chanStopPlugin              = make(chan *datatype.Plugin, maxChannelBuffer)
+	chanPluginToK3SClient       = make(chan *datatype.Plugin, maxChannelBuffer)
 )
 
 // type K3sTemplate struct {
@@ -86,7 +90,7 @@ func RunScheduler() {
 			logger.Info.Printf("Ordered plugins subject to run: %v", orderedPluginsToRun)
 			// Launch plugins
 			for _, plugin := range orderedPluginsToRun {
-				plugin.SchedulingStatus = datatype.Running
+				plugin.Status.SchedulingStatus = datatype.Running
 				chanPluginToK3SClient <- plugin
 				logger.Info.Printf("Plugin %s has been scheduled to run", plugin.Name)
 			}
@@ -99,8 +103,8 @@ func RunScheduler() {
 			// logger.Info.Print("======================================")
 			// scheduleTriggered = false
 		case pluginToStop := <-chanStopPlugin:
-			if pluginToStop.SchedulingStatus == datatype.Running {
-				pluginToStop.SchedulingStatus = datatype.Stopped
+			if pluginToStop.Status.SchedulingStatus == datatype.Running {
+				pluginToStop.Status.SchedulingStatus = datatype.Stopped
 				chanPluginToK3SClient <- pluginToStop
 				logger.Info.Printf("Plugin %s has been triggered to stop", pluginToStop.Name)
 			}

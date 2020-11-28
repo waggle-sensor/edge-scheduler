@@ -43,6 +43,14 @@ def add_measure(name, value):
     measures[name.replace(".", "_")] = value
 
 
+def uniq(array):
+    out = []
+    for e in array:
+        if e not in out:
+            out.append(e)
+    return out
+
+
 def gomas_subst(s, x):
     if isinstance(x, list):
         return [gomas_subst(s, xi) for xi in x]
@@ -371,10 +379,10 @@ def main():
             if message['command'] == 'measure':
                 name, timestamp, value = message['args'][:3]
                 goals_to_check = list(check_triggers(name, value))
+                goals_to_check = uniq(goals_to_check)
                 if len(goals_to_check) > 0:
                     events = check_status_change(goals_to_check)
                     for goal_id, status, plugin_name in events:
-
                         socket.send_json({
                             'goal_id': goal_id,
                             'status': status,

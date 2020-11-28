@@ -12,7 +12,7 @@ type Plugin struct {
 	Tags         []string     `yaml:"tags,omitempty"`
 	Hardware     []string     `yaml:"hardware,omitempty"`
 	Architecture []string     `yaml:"architecture,omitempty"`
-	DataShim     *DataShim    `yaml:"datashim"`
+	DataShims    []*DataShim  `yaml:"datashims,omitempty"`
 	Profile      []Profile    `yaml:"profile,omitempty"`
 }
 

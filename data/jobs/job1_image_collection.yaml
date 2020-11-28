@@ -5,6 +5,6 @@ plugintags:
 nodetags:
   - greenhouse
 rules:
-  - Daytime(Now) -> Run(Sampler)
+  - Daytime(Now) => Run(Image-sampler)
 statements:
-  - sunriseTime <= sysTime <= sunsetTime -> Daytime(Now)
+  - sunriseTime <= sysTime <= sunsetTime ==> Daytime(Now)

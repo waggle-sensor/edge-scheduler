@@ -1,5 +1,5 @@
 ---
-name: image-sampler
+name: sampler
 version: 0.1.0
 tags:
   - sample

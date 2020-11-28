@@ -1,5 +1,5 @@
 ---
-name: plugin-cloudcover
+name: cloudcover
 version: 0.1.0
 tags:
   - cloud
@@ -11,6 +11,17 @@ hardware:
 architecture:
   - amd64
   - arm64
+datashims:
+  - name: "sky camera image"
+    match:
+      id: "sky_image"
+      type: "camera/image"
+      orientation: "top"
+      resolution: "800x600"
+    handler:
+      type: "image"
+      args:
+        url: "http://playback:8090/top/image.jpg"
 profile:
   - name: unet
     knobs:

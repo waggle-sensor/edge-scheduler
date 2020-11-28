@@ -33,9 +33,11 @@ func ValidateJobAndCreateScienceGoal(job *datatype.Job) (scienceGoal *datatype.S
 	scienceGoal.ID = job.ID
 	scienceGoal.Name = job.Name
 
-	for _, node := range job.Nodes {
+	for _, n := range job.Nodes {
+		node := n
 		var subGoal datatype.SubGoal
-		for _, plugin := range job.Plugins {
+		for _, p := range job.Plugins {
+			plugin := p
 			// Check 1: plugin exists in ECR
 			exists := pluginExists(plugin)
 			if !exists {
