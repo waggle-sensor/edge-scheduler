@@ -29,7 +29,7 @@ var (
 // InitializeK3S loads k3s configuration to talk to k3s cluster
 func InitializeK3S(chanPluginToUpdate <-chan *datatype.Plugin, registryAddress string, emulating bool) {
 	if !emulating {
-		configPath := "/root/.kube/config"
+		configPath := "/etc/rancher/k3s/k3s.yaml"
 		cs, err := getClient(configPath)
 		if err != nil {
 			logger.Error.Printf("Could not read kubeconfig at %s", configPath)
@@ -273,7 +273,7 @@ func int32Ptr(i int32) *int32 { return &i }
 func getClient(pathToConfig string) (*kubernetes.Clientset, error) {
 	config, err := clientcmd.BuildConfigFromFlags("", pathToConfig)
 	if err != nil {
-		panic(err.Error())
+		return nil, err
 	}
 	return kubernetes.NewForConfig(config)
 }

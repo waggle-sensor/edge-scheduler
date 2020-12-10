@@ -115,7 +115,7 @@ func RunScheduler() {
 // RunNodeScheduler initializes itself and runs the main routine
 func RunNodeScheduler() {
 	knowledgebase.InitializeKB(chanContextEventToScheduler)
-	emulating := true
+	emulating := false
 	InitializeK3S(chanPluginToK3SClient, "sage-registry.nautilus.optiputer.net/sage/", emulating)
 	InitializeGoalManager()
 

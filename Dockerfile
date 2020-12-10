@@ -8,6 +8,7 @@ RUN apk --no-cache update \
   py3-pip \
   zeromq-dev \
   czmq-dev
+# libczmq-dev
 
 COPY requirements.txt /app/
 RUN pip3 install -r /app/requirements.txt
