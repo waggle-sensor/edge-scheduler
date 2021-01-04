@@ -152,5 +152,7 @@ func RunPlugin(clientset *kubernetes.Clientset, image string, args ...string) er
 		return err
 	}
 
+	// TODO need to configure user accounts via rabbitmq management server
+
 	return nil
 }
