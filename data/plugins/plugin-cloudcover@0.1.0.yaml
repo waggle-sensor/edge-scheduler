@@ -21,7 +21,7 @@ datashims:
     handler:
       type: "image"
       args:
-        url: "http://playback:8090/top/image.jpg"
+        url: "http://playback-server:8090/top/image.jpg"
 profile:
   - name: unet
     knobs:

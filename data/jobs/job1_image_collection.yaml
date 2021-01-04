@@ -5,6 +5,11 @@ plugintags:
 nodetags:
   - greenhouse
 rules:
-  - Daytime(Now) => Run(Image-sampler)
+  - Daytime(Now) => Run(Imagesampler)
+  - Nighttime(Now) => Stop(Imagesampler)
 statements:
-  - sunriseTime <= sysTime <= sunsetTime ==> Daytime(Now)
+  - 7 <= env.system.time.hour <= 19 ==> Daytime(Now)
+  - 7 > env.system.time.hour ==> Nighttime(Now)
+  - 19 < env.system.time.hour ==> Nighttime(Now)
+successcriteria:
+  - image.street.sample.accumulated >= 100

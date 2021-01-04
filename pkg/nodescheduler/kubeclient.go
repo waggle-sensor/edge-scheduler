@@ -20,7 +20,7 @@ import (
 )
 
 var (
-	namespace    = "sage-development"
+	namespace    = "default"
 	ECRRegistry  *url.URL
 	clientSet    *kubernetes.Clientset
 	emulatingK3S = false
@@ -46,14 +46,20 @@ func InitializeK3S(chanPluginToUpdate <-chan *datatype.Plugin, registryAddress s
 func runK3SClient(chanPluginToUpdate <-chan *datatype.Plugin) {
 	for {
 		plugin := <-chanPluginToUpdate
-		_, err := CreateK3SDeployment(plugin)
+		deployablePlugin, err := CreateK3SDeployment(plugin)
 		if err != nil {
-			logger.Error.Printf("Could not create k3s deployment for plugin %s", plugin.Name)
+			logger.Error.Printf("Could not create k3s deployment for plugin %s: %s", plugin.Name, err.Error())
 			continue
 		}
-		// if plugin.Status.SchedulingStatus == datatype.Running {
-		// 	err = LaunchPlugin(k3sDeployment)
-		// }
+
+		if plugin.Status.SchedulingStatus == datatype.Running {
+			err = LaunchPlugin(deployablePlugin)
+		} else if plugin.Status.SchedulingStatus == datatype.Stopped {
+			err = TerminatePlugin(plugin.Name)
+		}
+		if err != nil {
+			logger.Error.Printf("Failed to launch/stop %s: %s", plugin.Name, err.Error())
+		}
 	}
 }
 

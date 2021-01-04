@@ -11,3 +11,5 @@ statements:
   - 7 <= env.system.time.hour <= 19 ==> Daytime(Now)
   - 7 > env.system.time.hour ==> Nighttime(Now)
   - 19 < env.system.time.hour ==> Nighttime(Now)
+successcriteria:
+  - env.system.time.year > 2020
