@@ -12,45 +12,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-//         env:
-//         - name: WAGGLE_PLUGIN_NAME
-//           value: "{{.Name}}:{{.Version}}"
-//         - name: WAGGLE_PLUGIN_VERSION
-//           value: "{{.Version}}"
-//         - name: WAGGLE_PLUGIN_USERNAME
-//           value: "{{.Username}}"
-//         - name: WAGGLE_PLUGIN_PASSWORD
-//           value: "{{.Password}}"
-//         - name: WAGGLE_PLUGIN_HOST
-//           value: "rabbitmq-server"
-//         - name: WAGGLE_PLUGIN_PORT
-//           value: "5672"
-//         envFrom:
-//           - configMapRef:
-//               name: waggle-config
-//         resources:
-//           limits:
-//             cpu: 200m
-//             memory: 20Mi
-//           requests:
-//             cpu: 100m
-//             memory: 10Mi
-//         volumeMounts:
-//           - name: uploads
-//             mountPath: /run/waggle/uploads
-//           - name: waggle-data-config
-//             mountPath: /run/waggle/data-config.json
-//             subPath: data-config.json
-//       volumes:
-//       - name: uploads
-//         hostPath:
-//           path: /media/plugin-data/uploads/{{.Name}}/{{.Version}}
-//           type: DirectoryOrCreate
-//       - name: waggle-data-config
-//         configMap:
-//           name: waggle-data-config
-// `))
-
 type pluginConfig struct {
 	Image    string
 	Name     string
@@ -159,6 +120,21 @@ func RunPlugin(image string, args ...string) error {
 											Name: "waggle-config",
 										},
 									},
+								},
+							},
+							Resources: apiv1.ResourceRequirements{
+								Limits:   apiv1.ResourceList{},
+								Requests: apiv1.ResourceList{},
+							},
+							VolumeMounts: []apiv1.VolumeMount{
+								{
+									Name:      "uploads",
+									MountPath: "/run/waggle/uploads",
+								},
+								{
+									Name:      "waggle-data-config",
+									MountPath: "/run/waggle/data-config.json",
+									SubPath:   "data-config.json",
 								},
 							},
 						},
