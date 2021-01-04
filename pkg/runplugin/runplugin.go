@@ -23,48 +23,8 @@ type pluginConfig struct {
 
 var hostPathDirectoryOrCreate = apiv1.HostPathDirectoryOrCreate
 
-// RunPlugin prepares to run a plugin image
-func RunPlugin(image string, args ...string) error {
-	base := path.Base(image)
-
-	// split name:version from image string
-	parts := strings.Split(base, ":")
-	if len(parts) != 2 {
-		return fmt.Errorf("invalid plugin name %q", image)
-	}
-
-	config := &pluginConfig{
-		Image:    image,
-		Name:     parts[0],
-		Version:  parts[1],
-		Username: strings.ReplaceAll(base, ":", "-"),
-		Password: "averysecurepassword",
-		Args:     args,
-	}
-
-	// cmd := `
-	// 	while ! rabbitmqctl -q authenticate_user ${plugin_username} ${plugin_password}; do
-	// 	  echo "adding user ${plugin_username} to rabbitmq"
-	// 	  rabbitmqctl -q add_user ${plugin_username} ${plugin_password} || \
-	// 	  rabbitmqctl -q change_password ${plugin_username} ${plugin_password}
-	// 	done
-
-	// 	rabbitmqctl set_permissions ${plugin_username} ".*" ".*" ".*"
-	// `
-
-	/*
-		kubectl exec --stdin service/rabbitmq-server -- sh -s <<EOF
-		while ! rabbitmqctl -q authenticate_user ${plugin_username} ${plugin_password}; do
-		  echo "adding user ${plugin_username} to rabbitmq"
-		  rabbitmqctl -q add_user ${plugin_username} ${plugin_password} || \
-		  rabbitmqctl -q change_password ${plugin_username} ${plugin_password}
-		done
-
-		rabbitmqctl set_permissions ${plugin_username} ".*" ".*" ".*"
-		EOF
-	*/
-
-	res := &appsv1.Deployment{
+func createDeploymentForConfig(config *pluginConfig) *appsv1.Deployment {
+	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "app",
 		},
@@ -164,8 +124,30 @@ func RunPlugin(image string, args ...string) error {
 			},
 		},
 	}
+}
 
-	json.NewEncoder(os.Stdout).Encode(res)
+// RunPlugin prepares to run a plugin image
+func RunPlugin(image string, args ...string) error {
+	base := path.Base(image)
+
+	// split name:version from image string
+	parts := strings.Split(base, ":")
+	if len(parts) != 2 {
+		return fmt.Errorf("invalid plugin name %q", image)
+	}
+
+	config := &pluginConfig{
+		Image:    image,
+		Name:     parts[0],
+		Version:  parts[1],
+		Username: strings.ReplaceAll(base, ":", "-"),
+		Password: "averysecurepassword",
+		Args:     args,
+	}
+
+	deployment := createDeploymentForConfig(config)
+
+	json.NewEncoder(os.Stdout).Encode(deployment)
 
 	return nil
 }
