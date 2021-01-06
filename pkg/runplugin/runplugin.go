@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"log"
 	"path"
 	"strings"
 
@@ -139,6 +138,36 @@ func generatePassword() string {
 	return hex.EncodeToString(b)
 }
 
+func createKubernetesDeployment(clientset *kubernetes.Clientset, config *pluginConfig) error {
+	deployment := createDeploymentForConfig(config)
+	// ensure existing deployments are deleted
+	clientset.AppsV1().Deployments("default").Delete(context.TODO(), deployment.ObjectMeta.Name, metav1.DeleteOptions{})
+	// create new deployment
+	if _, err := clientset.AppsV1().Deployments("default").Create(context.TODO(), deployment, metav1.CreateOptions{}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func createRabbitmqUser(rmqclient *rabbithole.Client, config *pluginConfig) error {
+	if _, err := rmqclient.PutUser(config.Username, rabbithole.UserSettings{
+		Password: config.Password,
+	}); err != nil {
+		return err
+	}
+
+	if _, err := rmqclient.UpdatePermissionsIn("/", config.Username, rabbithole.Permissions{
+		Configure: "^$",
+		Read:      ".*",
+		Write:     ".*",
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // RunPlugin prepares to run a plugin image
 // TODO wrap k8s and rmq clients into single config struct
 func RunPlugin(clientset *kubernetes.Clientset, rmqclient *rabbithole.Client, image string, args ...string) error {
@@ -159,27 +188,12 @@ func RunPlugin(clientset *kubernetes.Clientset, rmqclient *rabbithole.Client, im
 		Args:     args,
 	}
 
-	deployment := createDeploymentForConfig(config)
-
-	// ensure existing deployments are deleted
-	clientset.AppsV1().Deployments("default").Delete(context.TODO(), deployment.ObjectMeta.Name, metav1.DeleteOptions{})
-
-	if _, err := clientset.AppsV1().Deployments("default").Create(context.TODO(), deployment, metav1.CreateOptions{}); err != nil {
+	if err := createKubernetesDeployment(clientset, config); err != nil {
 		return err
 	}
 
-	if _, err := rmqclient.PutUser(config.Username, rabbithole.UserSettings{
-		Password: config.Password,
-	}); err != nil {
-		log.Fatal(err)
-	}
-
-	if _, err := rmqclient.UpdatePermissionsIn("/", config.Username, rabbithole.Permissions{
-		Configure: "^$",
-		Read:      ".*",
-		Write:     ".*",
-	}); err != nil {
-		log.Fatal(err)
+	if err := createRabbitmqUser(rmqclient, config); err != nil {
+		return err
 	}
 
 	return nil
