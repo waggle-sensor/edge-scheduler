@@ -21,9 +21,16 @@ var (
 )
 
 func init() {
-	flag.StringVar(&rabbitmqManagementURI, "rabbitmq-management-uri", "http://localhost:15672", "rabbitmq management uri")
-	flag.StringVar(&rabbitmqManagementUsername, "rabbitmq-management-username", "guest", "rabbitmq management username")
-	flag.StringVar(&rabbitmqManagementPassword, "rabbitmq-management-password", "guest", "rabbitmq management password")
+	flag.StringVar(&rabbitmqManagementURI, "rabbitmq-management-uri", getenv("RABBITMQ_MANAGEMENT_URI", "http://localhost:15672"), "rabbitmq management uri")
+	flag.StringVar(&rabbitmqManagementUsername, "rabbitmq-management-username", getenv("RABBITMQ_MANAGEMENT_USERNAME", "guest"), "rabbitmq management username")
+	flag.StringVar(&rabbitmqManagementPassword, "rabbitmq-management-password", getenv("RABBITMQ_MANAGEMENT_PASSWORD", "guest"), "rabbitmq management password")
+}
+
+func getenv(key string, def string) string {
+	if val, ok := os.LookupEnv(key); ok {
+		return val
+	}
+	return def
 }
 
 func main() {
