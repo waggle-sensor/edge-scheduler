@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"path"
 	"strings"
 
@@ -158,7 +159,7 @@ func createRabbitmqUser(rmqclient *rabbithole.Client, config *pluginConfig) erro
 	}
 
 	if _, err := rmqclient.UpdatePermissionsIn("/", config.Username, rabbithole.Permissions{
-		Configure: "^$",
+		Configure: "^amq.gen",
 		Read:      ".*",
 		Write:     ".*",
 	}); err != nil {
@@ -188,13 +189,19 @@ func RunPlugin(clientset *kubernetes.Clientset, rmqclient *rabbithole.Client, im
 		Args:     args,
 	}
 
+	log.Printf("setting up plugin %q", image)
+
+	log.Printf("creating rabbitmq plugin user %q for %q", config.Username, image)
+	if err := createRabbitmqUser(rmqclient, config); err != nil {
+		return err
+	}
+
+	log.Printf("creating kubernetes deployment for %q", image)
 	if err := createKubernetesDeployment(clientset, config); err != nil {
 		return err
 	}
 
-	if err := createRabbitmqUser(rmqclient, config); err != nil {
-		return err
-	}
+	log.Printf("plugin ready %q", image)
 
 	return nil
 }

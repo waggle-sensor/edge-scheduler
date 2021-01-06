@@ -64,7 +64,8 @@ func main() {
 		log.Fatal(err)
 	}
 
-	if err := runplugin.RunPlugin(clientset, rmqclient, os.Args[1], os.Args[2:]...); err != nil {
+	args := flag.Args()
+	if err := runplugin.RunPlugin(clientset, rmqclient, args[0], args[1:]...); err != nil {
 		log.Fatal(err)
 	}
 }
