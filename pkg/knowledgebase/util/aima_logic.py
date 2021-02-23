@@ -175,6 +175,11 @@ def is_definite_clause(s):
         return True
     elif s.op == '==>':
         antecedent, consequent = s.args
+        print("here")
+        print(s)
+        print(is_symbol(consequent.op))
+        print(list(is_symbol(arg.op) for arg in conjuncts(antecedent)))
+
         return (is_symbol(consequent.op) and
                 all(is_symbol(arg.op) for arg in conjuncts(antecedent)))
     else:

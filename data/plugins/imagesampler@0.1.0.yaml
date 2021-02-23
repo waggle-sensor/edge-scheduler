@@ -1,9 +1,10 @@
 ---
-name: sampler
+name: imagesampler
 version: 0.1.0
 tags:
-  - sample
-  - sampling
+  - imagesample
+  - imagesampler
+  - imagesampling
 hardware:
   - camera
 architecture:

@@ -65,7 +65,6 @@ func handlerSubmitJobs(w http.ResponseWriter, r *http.Request) {
 		var job datatype.Job
 		_ = yaml.Unmarshal(yamlFile, &job)
 		job.ID = guuid.New().String()
-		log.Printf("%v", job)
 
 		if len(job.PluginTags) > 0 {
 			foundPlugins := getPluginsByTags(job.PluginTags)
@@ -78,7 +77,7 @@ func handlerSubmitJobs(w http.ResponseWriter, r *http.Request) {
 			job.Nodes = foundNodes
 			logger.Info.Printf("Found nodes %v", foundNodes)
 		}
-
+		log.Printf("%v", job)
 		chanToValidator <- &job
 		respondJSON(w, http.StatusOK, "")
 	}

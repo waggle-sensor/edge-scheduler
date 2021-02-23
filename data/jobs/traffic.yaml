@@ -1,0 +1,23 @@
+---
+name: job traffic analysis
+plugintags:
+  - traffic
+  - imagesampler
+  - systemtime
+nodetags:
+  - virtualwaggle
+sciencerules:
+- 7 <= sys.time.hour <= 19 ==> Daytime(Now)
+- 7 > sys.time.hour or sys.time.hour > 19 ==> Nighttime(Now)
+- Daytime(Now) ==> Run(CarCounter)
+- Nighttime(Now) ==> Stop(CarCounter)
+- env.count.car > 5 ==> Traffic(Dense)
+- env.count.car <= 5 ==> Traffic(Light)
+- Traffic(Dense) ==> Run(TrafficFlow)
+- Traffic(Light) ==> Stop(TrafficFlow)
+- env.speed.car.avg <= 30 ==> Traffic(Slow)
+- env.speed.car.avg > 30 ==> Traffic(Normal)
+- Traffic(Slow) ==> Run(ImageSampler)
+- Traffic(Light) & Traffic(Normal) ==> Stop(ImageSampler)
+successcriteria:
+  - env.system.time.year > 2021

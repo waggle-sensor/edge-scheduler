@@ -84,8 +84,7 @@ func ValidateJobAndCreateScienceGoal(job *datatype.Job) (scienceGoal *datatype.S
 		// Check 5: valiables are valid
 		if len(subGoal.Plugins) > 0 {
 			subGoal.Node = &node
-			subGoal.Rules = job.Rules
-			subGoal.Statements = job.Statements
+			subGoal.Sciencerules = job.ScienceRules
 			scienceGoal.SubGoals = append(scienceGoal.SubGoals, &subGoal)
 		}
 	}

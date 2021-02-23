@@ -22,10 +22,9 @@ func (g *ScienceGoal) GetMySubGoal(nodeName string) *SubGoal {
 
 // SubGoal structs node-specific goal along with conditions and rules
 type SubGoal struct {
-	Node       *Node     `yaml:"node,omitempty"`
-	Plugins    []*Plugin `yaml:"plugins,omitempty"`
-	Rules      []string  `yaml:"rules,omitempty"`
-	Statements []string  `yaml:"statements,omitempty"`
+	Node         *Node     `yaml:"node,omitempty"`
+	Plugins      []*Plugin `yaml:"plugins,omitempty"`
+	Sciencerules []string  `yaml:"sciencerules,omitempty"`
 }
 
 // UpdatePluginContext updates plugin's context event within the subgoal

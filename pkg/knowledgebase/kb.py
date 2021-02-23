@@ -173,9 +173,17 @@ def check_status_change(goal_ids):
 
 """
     extract_variables returns alphabetical words that begin with lowercase
+    it also drops all reserved operations, i.e. or, and
 """
 def extract_variables(expr):
-    return re.findall(r"\b[a-z]\w+", expr)
+    variables = re.findall(r"\b[a-z]\w+", expr)
+    for reserved in ['or', 'and']:
+        while True:
+            try:
+                variables.remove(reserved)
+            except ValueError:
+                break
+    return variables
 
 
 """
@@ -196,34 +204,46 @@ def handle_rule(msg):
         if goal_id not in goal_rules.keys():
             goal_rules[goal_id] = []
         for rule in rules:
-            goal_rules[goal_id].append(expr(rule))
-        return True, ''
-    except Exception as ex:
-        return False, str(ex)
-
-
-"""
-    handle_state extracts variables from an expression and splits
-    the expression by ==> that distinguishes variables from the corresponding
-    fact. Later, if the expression holds true, then the fact holds true as well.
-"""
-def handle_state(msg):
-    try:
-        goal_id = msg['args'][0]
-        exprs = msg['args'][1:]
-        for expr in exprs:
-            # env.detection.smoke to env_detection_smoke
-            expr = expr.replace(".", "_")
-            variables = extract_variables(expr)
+            # check if type of the rule either arithmetic or logical
+            rule = rule.replace(".", "_")
+            variables = extract_variables(rule)
             if variables == []:
-                raise Exception("No variable found in {}".format(expr))
-            evaluation, fact = expr.strip().split("==>")
-            if tuple(variables) not in goal_expressions:
-                goal_expressions[tuple(variables)] = []
-            goal_expressions[tuple(variables)].append((fact.strip(), evaluation.strip(), goal_id))
+                # logical rules
+                goal_rules[goal_id].append(expr(rule))
+            else:
+                # arithmetic rules
+                evaluation, fact = rule.strip().split("==>")
+                if tuple(variables) not in goal_expressions:
+                    goal_expressions[tuple(variables)] = []
+                goal_expressions[tuple(variables)].append((fact.strip(), evaluation.strip(), goal_id))
         return True, ''
     except Exception as ex:
         return False, str(ex)
+
+
+# @deprecated and merged into the handle_rule function
+# """
+#     handle_state extracts variables from an expression and splits
+#     the expression by ==> that distinguishes variables from the corresponding
+#     fact. Later, if the expression holds true, then the fact holds true as well.
+# """
+# def handle_state(msg):
+#     try:
+#         goal_id = msg['args'][0]
+#         exprs = msg['args'][1:]
+#         for expr in exprs:
+#             # env.detection.smoke to env_detection_smoke
+#             expr = expr.replace(".", "_")
+#             variables = extract_variables(expr)
+#             if variables == []:
+#                 raise Exception("No variable found in {}".format(expr))
+#             evaluation, fact = expr.strip().split("==>")
+#             if tuple(variables) not in goal_expressions:
+#                 goal_expressions[tuple(variables)] = []
+#             goal_expressions[tuple(variables)].append((fact.strip(), evaluation.strip(), goal_id))
+#         return True, ''
+#     except Exception as ex:
+#         return False, str(ex)
 
 
 def handle_dump(msg):
@@ -293,7 +313,7 @@ def handle_measure(msg):
 
 handlers = {
     'rule': handle_rule,
-    'state': handle_state,
+    # 'state': handle_state,
     'dump': handle_dump,
     'ask': handle_ask,
     'measure': handle_measure,
@@ -343,6 +363,7 @@ def rmq_run(message_queue):
     plugin.init()
     # This makes sure it gets ONLY human readable values
     plugin.subscribe("env.#")
+    plugin.subscribe("sys.#")
     while True:
         measure = plugin.get()
         message_queue.put({
@@ -389,7 +410,7 @@ def main():
                             'plugin_name': plugin_name
                         })
     except Exception as ex:
-        print(str(ex))
+        logging.error("what is this" + str(ex))
     finally:
         api_listener.terminate()
         rmq_listener.terminate()

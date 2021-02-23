@@ -1,0 +1,16 @@
+---
+name: carcounter
+version: 1.0.0
+tags:
+  - traffic
+hardware:
+  - camera
+architecture:
+  - amd64
+profile:
+  - name: yolov3
+    knobs:
+      interval: 1
+    require:
+      cpu: 2000
+      memory: 800

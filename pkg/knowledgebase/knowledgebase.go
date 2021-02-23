@@ -12,9 +12,8 @@ import (
 	"github.com/zeromq/goczmq"
 )
 
-var (
-	pathToPythonKB = "kb.py"
-	chanToKB       = make(chan RequestToKB)
+const (
+	maxChannelBuffer = 100
 )
 
 // RequestToKB structs a message for KB
@@ -25,69 +24,26 @@ type RequestToKB struct {
 	Result     interface{} `json:"result"`
 }
 
-// InitializeKB launches the KB engine and keeps it alive.
-// It also receives events from the engine
-func InitializeKB(chanContextEvent chan<- datatype.EventPluginContext) {
-	go launchKB()
-	go runIPCToKB()
-	go runEventReceiver(chanContextEvent)
+// Knowledgebase structs an instance of knowledgebase
+type Knowledgebase struct {
+	pathToPythonKB string
+	chanToKB       chan RequestToKB
 }
 
-// RegisterRules registers rules of a goal to the KB engine
-func RegisterRules(scienceGoal *datatype.ScienceGoal, nodeName string) {
-	mySubGoal := scienceGoal.GetMySubGoal(nodeName)
-
-	logger.Info.Printf("Loading rules to KB...")
-	rules := []string{scienceGoal.ID}
-	rules = append(rules, mySubGoal.Rules...)
-	chanToKB <- RequestToKB{
-		Command: "rule",
-		Args:    rules,
+// NewKnowledgebase creates and returns an instance of Knowledgebase
+func NewKnowledgebase() (kb *Knowledgebase, err error) {
+	kb = &Knowledgebase{
+		pathToPythonKB: "kb.py",
+		chanToKB:       make(chan RequestToKB, maxChannelBuffer),
 	}
-
-	logger.Info.Printf("Loading statements to KB...")
-	statements := []string{scienceGoal.ID}
-	statements = append(statements, mySubGoal.Statements...)
-	chanToKB <- RequestToKB{
-		Command: "state",
-		Args:    statements,
-	}
+	return
 }
 
-func runIPCToKB() {
-	for {
-		chanExit := make(chan error)
-		go func() {
-			socket, err := goczmq.NewReq("ipc:///tmp/kb.sock")
-			if err != nil {
-				chanExit <- err
-				return
-			}
-			defer socket.Destroy()
-			for {
-				request := <-chanToKB
-				byteJSON, _ := json.Marshal(request)
-				err = socket.SendFrame(byteJSON, goczmq.FlagNone)
-				if err != nil {
-					chanExit <- err
-					return
-				}
-				_, _, err = socket.RecvFrame()
-				if err != nil {
-					chanExit <- err
-					return
-				}
-			}
-		}()
-		err := <-chanExit
-		logger.Error.Printf("IPC to KB failed: %s", err)
-		time.Sleep(3 * time.Second)
-	}
-}
+// Run runs the logic of Knowledgebase
+func (kb *Knowledgebase) Run(chanContextEventToScheduler chan<- datatype.EventPluginContext) {
+	go kb.launchKB()
+	go kb.runIPCToKB()
 
-// runEvenReceiver receives Run, Stop events of plugins
-// from knowledgebase
-func runEventReceiver(chanToScheduler chan<- datatype.EventPluginContext) {
 	for {
 		chanExit := make(chan error)
 		go func() {
@@ -113,7 +69,7 @@ func runEventReceiver(chanToScheduler chan<- datatype.EventPluginContext) {
 				}
 				// scheduler (especially k3s) does not like Cap words...
 				event.PluginName = strings.ToLower(event.PluginName)
-				chanToScheduler <- event
+				chanContextEventToScheduler <- event
 				logger.Info.Printf("Event received: %v", event)
 			}
 		}()
@@ -121,24 +77,66 @@ func runEventReceiver(chanToScheduler chan<- datatype.EventPluginContext) {
 		logger.Error.Printf("Event receiver failed: %s", err)
 		time.Sleep(3 * time.Second)
 	}
-	// socket, err := goczmq.NewPair("ipc:///tmp/kb.sock")
-
-	// chanEventToManager <-
 }
 
-func launchKB() {
-	args := []string{pathToPythonKB}
+// RegisterRules registers rules of a goal to the KB engine
+func (kb *Knowledgebase) RegisterRules(scienceGoal *datatype.ScienceGoal, nodeName string) {
+	mySubGoal := scienceGoal.GetMySubGoal(nodeName)
+
+	logger.Info.Printf("Loading science rules to KB...")
+	rules := []string{scienceGoal.ID}
+	rules = append(rules, mySubGoal.Sciencerules...)
+	kb.chanToKB <- RequestToKB{
+		Command: "rule",
+		Args:    rules,
+	}
+}
+
+// runIPCToKB communicates with the Python KB to exchange rules and events
+func (kb *Knowledgebase) runIPCToKB() {
 	for {
-		// if _, err := os.Stat(pathToIPCSocket); os.IsExist(err) {
-		// 	err = os.Remove(pathToIPCSocket)
-		// 	if err != nil {
-		// 		fmt.Printf("file failed to remove: %s\n", err.Error())
-		// 	} else {
-		// 		fmt.Printf("file removed\n")
-		// 	}
-		// }
+		chanExit := make(chan error)
+		go func() {
+			socket, err := goczmq.NewReq("ipc:///tmp/kb.sock")
+			if err != nil {
+				chanExit <- err
+				return
+			}
+			defer socket.Destroy()
+			for {
+				request := <-kb.chanToKB
+				byteJSON, _ := json.Marshal(request)
+				err = socket.SendFrame(byteJSON, goczmq.FlagNone)
+				if err != nil {
+					chanExit <- err
+					return
+				}
+				_, _, err = socket.RecvFrame()
+				if err != nil {
+					chanExit <- err
+					return
+				} else {
+					logger.Info.Printf("%v is sent to KB", request)
+				}
+			}
+		}()
+		err := <-chanExit
+		logger.Error.Printf("IPC to KB failed: %s", err)
+		time.Sleep(3 * time.Second)
+	}
+}
+
+// launchKB launches and manages the Python KB
+func (kb *Knowledgebase) launchKB() {
+	args := []string{kb.pathToPythonKB}
+	for {
 		logger.Info.Printf("Launching KB...")
 		cmd := exec.Command("python3", args...)
+		// TODO: Making sure cmd does not hang after terminating the parent process
+		//       This may help https://bigkevmcd.github.io/go/pgrp/context/2019/02/19/terminating-processes-in-go.html
+		cmd.Env = append(os.Environ(),
+			"WAGGLE_PLUGIN_HOST=10.31.81.10",
+		)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		err := cmd.Run()

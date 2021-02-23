@@ -51,6 +51,11 @@ type EventPluginContext struct {
 	Status     ContextStatus `json:"status"`
 }
 
+type PluginCredential struct {
+	Username string `yaml:"username,omitempty"`
+	Password string `yaml:"password,omitempty"`
+}
+
 // type Plugin struct {
 // 	Name      string   `yaml:"name"`
 // 	Image     string   `yaml:"image"`
