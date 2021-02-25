@@ -47,7 +47,7 @@ func (gm *GoalManager) Run(chanToScheduler chan *datatype.ScienceGoal) {
 	for {
 		select {
 		case scienceGoal := <-gm.chanNewGoalToGoalManager:
-			logger.Info.Printf("Received a goal from SES:%s (%s)", scienceGoal.Name, scienceGoal.ID)
+			logger.Info.Printf("Received a goal from SES:%s id:(%s)", scienceGoal.Name, scienceGoal.ID)
 			gm.scienceGoals[scienceGoal.ID] = scienceGoal
 			chanToScheduler <- scienceGoal
 		}

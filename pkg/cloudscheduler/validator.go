@@ -19,16 +19,14 @@ var (
 // InitializeValidator initializes the validator
 func InitializeValidator() {
 	nodes, _ = getNodesFromDirectory()
-	// logger.Info.Printf("%v", nodes)
 	plugins, _ = getPluginsFromDirectory()
-	// logger.Info.Printf("%v", plugins)
 	chanToValidator = make(chan *datatype.Job)
 }
 
 // ValidateJobAndCreateScienceGoal validates user job and returns a science goals
 // created from the job. It also returns a list of errors in validation if any
 func ValidateJobAndCreateScienceGoal(job *datatype.Job) (scienceGoal *datatype.ScienceGoal, errorList []error) {
-	logger.Info.Printf("Validating %s...", job.Name)
+	logger.Info.Printf("Validating %s", job.Name)
 	scienceGoal = new(datatype.ScienceGoal)
 	scienceGoal.ID = job.ID
 	scienceGoal.Name = job.Name
@@ -162,7 +160,7 @@ func RunValidator() {
 				logger.Error.Printf("%s", err)
 			}
 		}
-		logger.Info.Printf("%+v\n", scienceGoal)
+		logger.Info.Printf("A science goal %s is created :%+v\n", scienceGoal.Name, scienceGoal)
 		chanToJobManager <- scienceGoal
 	}
 }
@@ -174,6 +172,7 @@ func getNodesFromDirectory() (nodes []datatype.Node, err error) {
 		var node datatype.Node
 		_ = yaml.Unmarshal(dat, &node)
 		nodes = append(nodes, node)
+		logger.Debug.Printf("Node %s is loaded from %s", node.Name, filePath)
 	}
 	return
 }
@@ -185,6 +184,7 @@ func getPluginsFromDirectory() (plugins []datatype.Plugin, err error) {
 		var plugin datatype.Plugin
 		_ = yaml.Unmarshal(dat, &plugin)
 		plugins = append(plugins, plugin)
+		logger.Debug.Printf("Plugin %s is loaded from %s", plugin.Name, filePath)
 	}
 	return
 }

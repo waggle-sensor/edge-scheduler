@@ -17,8 +17,8 @@ from util.aima_logic import (
 import waggle.plugin as plugin
 
 logging.basicConfig(
-    format='%(asctime)s %(levelname)-8s %(message)s',
-    level=logging.INFO,
+    format='%(levelname)-8s: %(asctime)s [KB]%(message)s',
+    level=logging.DEBUG,
     datefmt='%Y-%m-%d %H:%M:%S')
 
 server_path='/tmp/kb.sock'
@@ -321,8 +321,8 @@ handlers = {
 
 
 def handle_message(msg):
-    logging.info(f"Received {msg['command']}")
     if msg['command'] not in handlers.keys():
+        logger.error(f'Unknown command {msg["command"]}')
         return None
     handler = handlers[msg['command']]
     return handler(msg)
@@ -362,8 +362,10 @@ def api_run(message_queue):
 def rmq_run(message_queue):
     plugin.init()
     # This makes sure it gets ONLY human readable values
-    plugin.subscribe("env.#")
-    plugin.subscribe("sys.#")
+    topics = ['env.#', 'sys.#']
+    for topic in topics:
+        plugin.subscribe(topic)
+    logging.info(f'KB starts subscribing topics: {topics}')
     while True:
         measure = plugin.get()
         message_queue.put({
@@ -372,6 +374,7 @@ def rmq_run(message_queue):
 
 
 def main():
+    logging.info('KB starts...')
     try:
         message_queue = Queue()
         api_listener = Process(target=api_run, args=(message_queue,))
@@ -387,13 +390,14 @@ def main():
 
         while True:
             message = message_queue.get()
-            logging.info(f"New message arrived {message}")
+            logging.debug(f'New message arrived {message}')
             # remote kill command
             if message['command'] == 'terminate':
+                logging.info('KB received a termination signal from message queue')
                 break
             r, err = handle_message(message)
             if r is False:
-                logging.error(f"Error: {err}")
+                logging.error(f'Error in handling message {message}: {err}')
                 continue
 
             # Examine if the measure triggers any rules
@@ -402,6 +406,7 @@ def main():
                 goals_to_check = list(check_triggers(name, value))
                 goals_to_check = uniq(goals_to_check)
                 if len(goals_to_check) > 0:
+                    logging.debug(f'Goals subject to be checked {goals_to_check}')
                     events = check_status_change(goals_to_check)
                     for goal_id, status, plugin_name in events:
                         socket.send_json({
@@ -409,8 +414,9 @@ def main():
                             'status': status,
                             'plugin_name': plugin_name
                         })
+                        logging.debug(f'An event for {goal_id} [ {plugin_name} ] being {status} is sent')
     except Exception as ex:
-        logging.error("what is this" + str(ex))
+        logging.error(f'Unexpected error on main: {str(ex)}')
     finally:
         api_listener.terminate()
         rmq_listener.terminate()

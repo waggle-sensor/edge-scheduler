@@ -74,7 +74,7 @@ func (ns *NodeScheduler) Run() {
 				Memory:    999999,
 				GPUMemory: 999999,
 			})
-			logger.Info.Printf("Ordered plugins subject to run: %v", orderedPluginsToRun)
+			logger.Debug.Printf("Ordered plugins subject to run: %v", orderedPluginsToRun)
 			// Launch plugins
 			for _, plugin := range orderedPluginsToRun {
 				plugin.Status.SchedulingStatus = datatype.Running

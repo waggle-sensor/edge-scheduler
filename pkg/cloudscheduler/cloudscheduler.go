@@ -6,7 +6,7 @@ import (
 
 // RunCloudScheduler initializes itself and runs the main routine
 func RunCloudScheduler() {
-	logger.Info.Printf("initializing...")
+	logger.Info.Printf("Initializing Cloud scheduler...")
 	InitializeValidator()
 	InitializeJobManager()
 

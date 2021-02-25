@@ -1,0 +1,17 @@
+apiVersion: apps/v1 # this apiVersion is relevant as of Kubernetes 1.9
+kind: Deployment
+metadata:
+  name: nodescheduler
+  namespace: default
+spec:
+  replicas: 1
+  template:
+    metadata:
+      name: nodescheduler
+    spec:
+      serviceAccountName: node-scheduler
+      containers:
+      - name: nodescheduler
+        image: gemblerz/scheduler:1.0.0
+        cmd: /app/nodescheduler
+        args: 

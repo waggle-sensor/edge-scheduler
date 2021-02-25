@@ -28,13 +28,15 @@ type RequestToKB struct {
 type Knowledgebase struct {
 	pathToPythonKB string
 	chanToKB       chan RequestToKB
+	RMQHost        string
 }
 
 // NewKnowledgebase creates and returns an instance of Knowledgebase
-func NewKnowledgebase() (kb *Knowledgebase, err error) {
+func NewKnowledgebase(rmqHost string) (kb *Knowledgebase, err error) {
 	kb = &Knowledgebase{
 		pathToPythonKB: "kb.py",
 		chanToKB:       make(chan RequestToKB, maxChannelBuffer),
+		RMQHost:        rmqHost,
 	}
 	return
 }
@@ -47,7 +49,7 @@ func (kb *Knowledgebase) Run(chanContextEventToScheduler chan<- datatype.EventPl
 	for {
 		chanExit := make(chan error)
 		go func() {
-			logger.Info.Printf("(re)Starting event listener...")
+			logger.Info.Printf("Starting event listener...")
 			socket, err := goczmq.NewPair("ipc:///tmp/event.sock")
 			// socket = socket.Connect("ipc:///tmp/event.sock")
 			if err != nil {
@@ -70,7 +72,7 @@ func (kb *Knowledgebase) Run(chanContextEventToScheduler chan<- datatype.EventPl
 				// scheduler (especially k3s) does not like Cap words...
 				event.PluginName = strings.ToLower(event.PluginName)
 				chanContextEventToScheduler <- event
-				logger.Info.Printf("Event received: %v", event)
+				logger.Info.Printf("Event received from KB: %v", event)
 			}
 		}()
 		err := <-chanExit
@@ -83,7 +85,7 @@ func (kb *Knowledgebase) Run(chanContextEventToScheduler chan<- datatype.EventPl
 func (kb *Knowledgebase) RegisterRules(scienceGoal *datatype.ScienceGoal, nodeName string) {
 	mySubGoal := scienceGoal.GetMySubGoal(nodeName)
 
-	logger.Info.Printf("Loading science rules to KB...")
+	logger.Info.Printf("Registring science rules of science goal %s to KB", scienceGoal.Name)
 	rules := []string{scienceGoal.ID}
 	rules = append(rules, mySubGoal.Sciencerules...)
 	kb.chanToKB <- RequestToKB{
@@ -116,7 +118,7 @@ func (kb *Knowledgebase) runIPCToKB() {
 					chanExit <- err
 					return
 				} else {
-					logger.Info.Printf("%v is sent to KB", request)
+					logger.Debug.Printf("Sending %v to KB is successful", request)
 				}
 			}
 		}()
@@ -130,12 +132,12 @@ func (kb *Knowledgebase) runIPCToKB() {
 func (kb *Knowledgebase) launchKB() {
 	args := []string{kb.pathToPythonKB}
 	for {
-		logger.Info.Printf("Launching KB...")
+		logger.Info.Printf("Launching KB with RMQ host %s", kb.RMQHost)
 		cmd := exec.Command("python3", args...)
 		// TODO: Making sure cmd does not hang after terminating the parent process
 		//       This may help https://bigkevmcd.github.io/go/pgrp/context/2019/02/19/terminating-processes-in-go.html
 		cmd.Env = append(os.Environ(),
-			"WAGGLE_PLUGIN_HOST=10.31.81.10",
+			"WAGGLE_PLUGIN_HOST="+kb.RMQHost,
 		)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr

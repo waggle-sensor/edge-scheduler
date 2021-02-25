@@ -5,42 +5,41 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"net/url"
 	"path"
 	"strings"
 
+	rabbithole "github.com/michaelklishin/rabbit-hole"
 	"github.com/sagecontinuum/ses/pkg/datatype"
 	"github.com/sagecontinuum/ses/pkg/logger"
 
-	rabbithole "github.com/michaelklishin/rabbit-hole"
-	yaml "gopkg.in/yaml.v2"
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
 // ResourceManager structs a resource manager talking to a local computing cluster to schedule plugins
 type ResourceManager struct {
-	Namespace   string
-	ECRRegistry *url.URL
-	ClientSet   *kubernetes.Clientset
-	RMQClient   *rabbithole.Client
+	Namespace     string
+	ECRRegistry   *url.URL
+	ClientSet     *kubernetes.Clientset
+	RMQManagement *RMQManagement
 }
 
 // NewResourceManager returns an instance of ResourceManager
-func NewK3SResourceManager(namespace string, registry string, clientset *kubernetes.Clientset, rmqclient *rabbithole.Client) (rm *ResourceManager, err error) {
+func NewK3SResourceManager(namespace string, registry string, clientset *kubernetes.Clientset, rmqManagement *RMQManagement) (rm *ResourceManager, err error) {
 	registryAddress, err := url.Parse(registry)
 	if err != nil {
 		return
 	}
 	rm = &ResourceManager{
-		Namespace:   namespace,
-		ECRRegistry: registryAddress,
-		ClientSet:   clientset,
-		RMQClient:   rmqclient,
+		Namespace:     namespace,
+		ECRRegistry:   registryAddress,
+		ClientSet:     clientset,
+		RMQManagement: rmqManagement,
 	}
 	return
 }
@@ -198,8 +197,8 @@ func (rm *ResourceManager) CreateK3SDeployment(plugin *datatype.Plugin, credenti
 		},
 	}
 
-	d, _ := yaml.Marshal(&deployment)
-	fmt.Printf("--- t dump:\n%s\n\n", string(d))
+	// d, _ := yaml.Marshal(&deployment)
+	// fmt.Printf("--- t dump:\n%s\n\n", string(d))
 	// fmt.Printf("%v", pod)
 
 	return deployment, nil
@@ -241,7 +240,7 @@ func (rm *ResourceManager) LaunchPlugin(deployment *appsv1.Deployment) error {
 	if err != nil {
 		logger.Info.Printf("Failed to create deployment %s.\n", err)
 	}
-	logger.Info.Printf("Created deployment %q.\n", result.GetObjectMeta().GetName())
+	logger.Info.Printf("Created deployment for plugin %q\n", result.GetObjectMeta().GetName())
 	return err
 }
 
@@ -273,42 +272,100 @@ func (rm *ResourceManager) TerminatePlugin(pluginName string) error {
 	}); err != nil {
 		return err
 	}
-	logger.Info.Printf("Deleted deployment %s.\n", pluginNameInLowcase)
+	logger.Info.Printf("Deleted deployment of plugin %s", pluginNameInLowcase)
 	return err
 }
 
 func (rm *ResourceManager) Run(chanPluginToUpdate <-chan *datatype.Plugin) {
 	for {
 		plugin := <-chanPluginToUpdate
-		credential, err := rm.CreatePluginCredential(plugin)
-		if err != nil {
-			logger.Error.Printf("Could not create a plugin credential for %s on RabbitMQ at %s: %s", plugin.Name, rm.RMQClient.Endpoint, err.Error())
-			continue
-		}
-		deployablePlugin, err := rm.CreateK3SDeployment(plugin, credential)
-		if err != nil {
-			logger.Error.Printf("Could not create a k3s deployment for plugin %s: %s", plugin.Name, err.Error())
-			continue
-		}
-
+		logger.Debug.Printf("Plugin %s:%s needs to be in %s state", plugin.Name, plugin.Version, plugin.Status.SchedulingStatus)
 		if plugin.Status.SchedulingStatus == datatype.Running {
+			credential, err := rm.CreatePluginCredential(plugin)
+			if err != nil {
+				logger.Error.Printf("Could not create a plugin credential for %s on RabbitMQ at %s: %s", plugin.Name, rm.RMQManagement.client.Endpoint, err.Error())
+				continue
+			}
+			err = rm.RMQManagement.RegisterPluginCredential(credential)
+			if err != nil {
+				logger.Error.Printf("Could not register the credential %s to RabbitMQ at %s: %s", credential.Username, rm.RMQManagement.client.Endpoint, err.Error())
+				continue
+			}
+			deployablePlugin, err := rm.CreateK3SDeployment(plugin, credential)
+			if err != nil {
+				logger.Error.Printf("Could not create a k3s deployment for plugin %s: %s", plugin.Name, err.Error())
+				continue
+			}
 			err = rm.LaunchPlugin(deployablePlugin)
+			if err != nil {
+				logger.Error.Printf("Failed to launch plugin %s: %s", plugin.Name, err.Error())
+			}
 		} else if plugin.Status.SchedulingStatus == datatype.Stopped {
-			err = rm.TerminatePlugin(plugin.Name)
-		}
-		if err != nil {
-			logger.Error.Printf("Failed to launch/stop %s: %s", plugin.Name, err.Error())
+			err := rm.TerminatePlugin(plugin.Name)
+			if err != nil {
+				logger.Error.Printf("Failed to stop plugin %s: %s", plugin.Name, err.Error())
+			}
 		}
 	}
 }
 
-func int32Ptr(i int32) *int32 { return &i }
+// RMQManagement structs a connection to RMQManagement
+type RMQManagement struct {
+	rabbitmqManagementURI      string
+	rabbitmqManagementUsername string
+	rabbitmqManagementPassword string
+	client                     *rabbithole.Client
+}
 
-// GetK3SClient returns an instance of client set talking to a K3S cluster
-func GetK3SClient(pathToConfig string) (*kubernetes.Clientset, error) {
-	config, err := clientcmd.BuildConfigFromFlags("", pathToConfig)
+// NewRMQManagement creates and returns an instance of connection to RMQManagement
+func NewRMQManagement(rmqManagementURI string, rmqManagementUsername string, rmqManagementPassword string) (*RMQManagement, error) {
+	c, err := rabbithole.NewClient(rmqManagementURI, rmqManagementUsername, rmqManagementPassword)
 	if err != nil {
 		return nil, err
 	}
-	return kubernetes.NewForConfig(config)
+	return &RMQManagement{
+		rabbitmqManagementURI:      rmqManagementURI,
+		rabbitmqManagementUsername: rmqManagementUsername,
+		rabbitmqManagementPassword: rmqManagementPassword,
+		client:                     c,
+	}, nil
+}
+
+// RegisterPluginCredential registers given plugin credential to designated RMQ server
+func (rmq *RMQManagement) RegisterPluginCredential(credential datatype.PluginCredential) error {
+	// The functions below come from Sean's RunPlugin
+	if _, err := rmq.client.PutUser(credential.Username, rabbithole.UserSettings{
+		Password: credential.Password,
+	}); err != nil {
+		return err
+	}
+
+	if _, err := rmq.client.UpdatePermissionsIn("/", credential.Username, rabbithole.Permissions{
+		Configure: "^amq.gen",
+		Read:      ".*",
+		Write:     ".*",
+	}); err != nil {
+		return err
+	}
+	logger.Debug.Printf("Plugin credential %s:%s is registered in RabbitMQ at %s", credential.Username, credential.Password, rmq.rabbitmqManagementURI)
+	return nil
+}
+
+func int32Ptr(i int32) *int32 { return &i }
+
+// GetK3SClient returns an instance of clientset talking to a K3S cluster
+func GetK3SClient(incluster bool, pathToConfig string) (*kubernetes.Clientset, error) {
+	if incluster {
+		config, err := rest.InClusterConfig()
+		if err != nil {
+			return nil, err
+		}
+		return kubernetes.NewForConfig(config)
+	} else {
+		config, err := clientcmd.BuildConfigFromFlags("", pathToConfig)
+		if err != nil {
+			return nil, err
+		}
+		return kubernetes.NewForConfig(config)
+	}
 }
