@@ -49,17 +49,12 @@ class TestKB(unittest.TestCase):
                 'goal01',
                 'Daytime(Now) ==> Run(Sampler)',
                 'Nighttime(Now) ==> Stop(Sampler)',
-            ]},
-            {'command': 'state',
-             'args': [
-                'goal01',
-                '6 <= env.system.time.hour <= 18 ==> Daytime(Now)',
-                '6 > env.system.time.hour ==> Nighttime(Now)',
-                'env.system.time.hour > 18 ==> Nighttime(Now)',
+                '6 <= sys.time.hour <= 18 ==> Daytime(Now)',
+                '6 > sys.time.hour or sys.time.hour > 18 ==> Nighttime(Now)',
             ]},
             {'command': 'measure',
              'args': [
-                'env.system.time.hour',
+                'sys.time.hour',
                 time.time_ns(),
                 11,
             ]},
@@ -74,6 +69,28 @@ class TestKB(unittest.TestCase):
             {
                 'goal_id': "goal01",
                 'status': 'Runnable',
+                'plugin_name': "Sampler"
+            }
+        )
+
+        command_list = [
+            {'command': 'measure',
+             'args': [
+                'sys.time.hour',
+                time.time_ns(),
+                22,
+            ]},
+        ]
+        for command in command_list:
+            self.socket_request.send_json(command)
+            self.socket_request.recv_json()
+
+        result = self.socket_event.recv_json()
+        self.assertDictEqual(
+            result,
+            {
+                'goal_id': "goal01",
+                'status': 'Stoppable',
                 'plugin_name': "Sampler"
             }
         )

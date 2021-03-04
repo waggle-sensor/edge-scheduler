@@ -7,17 +7,16 @@ plugintags:
 nodetags:
   - virtualwaggle
 sciencerules:
-- 7 <= sys.time.hour <= 19 ==> Daytime(Now)
-- 7 > sys.time.hour or sys.time.hour > 19 ==> Nighttime(Now)
+- sys.time.sunrise.hour <= sys.time.hour <= sys.time.sunset.hour ==> Daytime(Now)
+- sys.time.sunrise.hour > sys.time.hour or sys.time.hour > sys.time.sunset.hour ==> Nighttime(Now)
 - Daytime(Now) ==> Run(CarCounter)
 - Nighttime(Now) ==> Stop(CarCounter)
 - env.count.car > 5 ==> Traffic(Dense)
 - env.count.car <= 5 ==> Traffic(Light)
-- Traffic(Dense) ==> Run(TrafficFlow)
-- Traffic(Light) ==> Stop(TrafficFlow)
+- Traffic(Dense) ==> Run(TrafficFlowEstimator)
+- Traffic(Light) ==> Stop(TrafficFlowEstimator)
 - env.speed.car.avg <= 30 ==> Traffic(Slow)
-- env.speed.car.avg > 30 ==> Traffic(Normal)
-- Traffic(Slow) ==> Run(ImageSampler)
-- Traffic(Light) & Traffic(Normal) ==> Stop(ImageSampler)
+- Traffic(Slow) & Run(TrafficFlowEstimator) ==> Run(ImageSampler)
+- Stop(TrafficFlowEstimator) ==> Stop(ImageSampler)
 successcriteria:
   - env.system.time.year > 2021
