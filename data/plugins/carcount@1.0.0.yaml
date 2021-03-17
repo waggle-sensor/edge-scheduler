@@ -3,6 +3,7 @@ name: carcounter
 version: 1.0.0
 tags:
   - traffic
+  - carcounter
 hardware:
   - camera
 architecture:

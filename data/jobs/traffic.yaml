@@ -16,7 +16,9 @@ sciencerules:
 - Traffic(Dense) ==> Run(TrafficFlowEstimator)
 - Traffic(Light) ==> Stop(TrafficFlowEstimator)
 - env.speed.car.avg <= 30 ==> Traffic(Slow)
+- env.speed.car.avg > 30 ==> Traffic(Normal)
 - Traffic(Slow) & Run(TrafficFlowEstimator) ==> Run(ImageSampler)
+- Traffic(Normal) ==> Stop(ImageSampler)
 - Stop(TrafficFlowEstimator) ==> Stop(ImageSampler)
 successcriteria:
   - env.system.time.year > 2021

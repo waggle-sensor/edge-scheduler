@@ -11,5 +11,5 @@ roleRef:
   # https://kubernetes.io/docs/reference/access-authn-authz/rbac/#user-facing-roles
 subjects:
 - kind: ServiceAccount
-  name: node-scheduler
+  name: nodescheduler
   namespace: default

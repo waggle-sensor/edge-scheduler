@@ -19,6 +19,44 @@ class TestKB(unittest.TestCase):
         self.socket_event = context.socket(zmq.PAIR)
         self.socket_event.connect(f'ipc://{event_path}')
 
+    def test_or_in_rule(self):
+        command_list = [
+            {'command': 'rule',
+             'args': [
+                'goal01',
+                'env.count.car <= 5 ==> Stop(TrafficFlowEstimator)',
+                'env.speed.car.avg > 30 ==> Traffic(Normal)',
+                'Traffic(Normal) ==> Stop(ImageSampler)',
+                'Stop(TrafficFlowEstimator) ==> Stop(ImageSampler)',
+            ]},
+            {'command': 'measure',
+             'args': [
+                'env.count.car',
+                time.time_ns(),
+                9,
+            ]},
+            {'command': 'measure',
+             'args': [
+                'env.speed.car.avg',
+                time.time_ns(),
+                35,
+            ]},
+        ]
+
+        for command in command_list:
+            self.socket_request.send_json(command)
+            self.socket_request.recv_json()
+
+        result = self.socket_event.recv_json()
+        self.assertDictEqual(
+            result,
+            {
+                'goal_id': "goal01",
+                'status': 'Stoppable',
+                'plugin_name': "TrafficFlowEstimator"
+            }
+        )
+
     # def test_handle_dump(self):
     #     handle_expr(
     #             {"args": [
