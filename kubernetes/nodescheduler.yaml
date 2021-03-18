@@ -9,9 +9,9 @@ spec:
     metadata:
       name: nodescheduler
     spec:
-      serviceAccountName: node-scheduler
+      serviceAccountName: nodescheduler
       containers:
       - name: nodescheduler
         image: gemblerz/scheduler:1.0.0
-        cmd: /app/nodescheduler
-        args: 
+        cmd: ["/app/nodescheduler"]
+        args: ["-nodeid", "$(cat /etc/hostname)", "-in-cluster", "-registry", "gemblerz", ""]
