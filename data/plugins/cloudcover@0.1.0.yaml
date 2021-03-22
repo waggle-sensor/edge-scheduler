@@ -1,0 +1,53 @@
+---
+name: cloudcover
+version: 0.1.0
+tags:
+  - cloud
+  - cloudcover
+  - cloudy
+  - trained with waggle cloud dataset
+hardware:
+  - camera
+architecture:
+  - amd64
+  - arm64
+datashims:
+  - name: "sky camera image"
+    match:
+      id: "sky_image"
+      type: "camera/image"
+      orientation: "top"
+      resolution: "800x600"
+    handler:
+      type: "image"
+      args:
+        url: "http://playback-server:8090/top/image.jpg"
+profile:
+  - name: unet
+    knobs:
+      cuda: false
+      model: unet_module
+    require:
+      cpu: 6000
+      memory: 2000
+  - name: unet_cuda
+    knobs:
+      cuda: true
+      model: unet_module
+    require:
+      cpu: 6000
+      gpumemory: 2000
+  - name: deeplab
+    knobs:
+      cuda: false
+      model: deeplab_module
+    require:
+      cpu: 6000
+      memory: 4000
+  - name: deeplab_cuda
+    knobs:
+      cuda: true
+      model: deeplab_module
+    require:
+      cpu: 6000
+      gpumemory: 4000

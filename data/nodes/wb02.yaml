@@ -1,0 +1,20 @@
+---
+name: wb02
+tags:
+  - wb02
+  - dell blade
+  - greenhouse
+devices:
+  - name: dell
+    architecture: arm64
+    resource:
+      cpu: 16000
+      memory: 32000
+hardware:
+  - camera
+ontology:
+  timezone: ct
+  latitude: 41.718179
+  longitude: -87.982377
+  cameraview:
+    - sky

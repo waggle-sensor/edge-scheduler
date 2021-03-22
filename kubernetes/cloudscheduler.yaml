@@ -1,0 +1,23 @@
+apiVersion: apps/v1 # this apiVersion is relevant as of Kubernetes 1.9
+kind: Deployment
+metadata:
+  name: cloudscheduler
+  labels:
+    app: cloudscheduler
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cloudcheduler
+  template:
+    metadata:
+      labels:
+        app: cloudcheduler
+    spec:
+      containers:
+      - name: cloudscheduler
+        imagePullPolicy: Always
+        image: gemblerz/scheduler:1.0.0
+        command: ["/app/cloudscheduler"]
+        args: ["-nodeid", "$(cat /etc/hostname)", "-in-cluster", "-registry", "gemblerz", "-cloudscheduler-uri", "http://10.31.81.1:9770", "-rabbitmq-management-username", "admin", "-rabbitmq-management-password", "admin"]

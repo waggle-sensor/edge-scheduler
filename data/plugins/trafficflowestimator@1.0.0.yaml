@@ -1,0 +1,16 @@
+---
+name: trafficflowestimator
+version: 1.0.0
+tags:
+  - traffic
+hardware:
+  - camera
+architecture:
+  - amd64
+profile:
+  - name: kalmanv1
+    knobs:
+      interval: 1
+    require:
+      cpu: 3000
+      memory: 800
