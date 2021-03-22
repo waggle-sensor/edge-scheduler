@@ -1,5 +1,5 @@
 ---
-name: vagrant
+name: waggle-node
 tags:
   - vagrant
   - virtualwaggle

@@ -10,6 +10,10 @@ RUN apk --no-cache update \
   czmq-dev
 # libczmq-dev
 
+COPY requirements.txt /app/
+RUN pip3 install -r /app/requirements.txt
+
+
 FROM base as builder
 WORKDIR $GOPATH/src/github.com/sagecontinuum/ses
 COPY . .
@@ -22,5 +26,3 @@ FROM base
 COPY --from=builder /app/ /app/
 
 WORKDIR /app
-COPY requirements.txt /app/
-RUN pip3 install -r /app/requirements.txt

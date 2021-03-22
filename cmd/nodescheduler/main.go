@@ -71,8 +71,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	gm, err := nodescheduler.NewGoalManager(cloudschedulerURI, "vagrant")
+	logger.Info.Printf("My Node ID is %s", nodeID)
+	gm, err := nodescheduler.NewGoalManager(cloudschedulerURI, nodeID)
 	if err != nil {
 		log.Fatal(err)
 	}

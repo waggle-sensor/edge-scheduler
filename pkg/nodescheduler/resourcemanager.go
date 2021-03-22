@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"path"
 	"strings"
@@ -56,11 +57,9 @@ func generatePassword() string {
 // CreatePluginCredential creates a credential inside RabbitMQ server for the plugin
 func (rm *ResourceManager) CreatePluginCredential(plugin *datatype.Plugin) (datatype.PluginCredential, error) {
 	// TODO: We will need to add instance of plugin as a aprt of Username
+	// username should follow "plugin.NAME:VERSION" format to publish messages via WES
 	credential := datatype.PluginCredential{
-		Username: strings.Join([]string{
-			strings.ToLower(plugin.Name),
-			plugin.Version,
-		}, "-"),
+		Username: fmt.Sprint("plugin.", strings.ToLower(plugin.Name), ":", plugin.Version),
 		Password: generatePassword(),
 	}
 	return credential, nil
