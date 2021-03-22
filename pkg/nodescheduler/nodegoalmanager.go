@@ -13,8 +13,8 @@ import (
 	yaml "gopkg.in/yaml.v2"
 )
 
-// GoalManager structs the goal manager
-type GoalManager struct {
+// GoalManager structs a goal manager for nodescheduler
+type NodeGoalManager struct {
 	scienceGoals             map[string]*datatype.ScienceGoal
 	cloudSchedulerBaseURL    string
 	NodeID                   string
@@ -22,8 +22,8 @@ type GoalManager struct {
 }
 
 // NewGoalManager creates and returns an instance of goal manager
-func NewGoalManager(cloudSchedulerURL string, nodeID string) (*GoalManager, error) {
-	return &GoalManager{
+func NewNodeGoalManager(cloudSchedulerURL string, nodeID string) (*NodeGoalManager, error) {
+	return &NodeGoalManager{
 		scienceGoals:             make(map[string]*datatype.ScienceGoal),
 		cloudSchedulerBaseURL:    cloudSchedulerURL,
 		NodeID:                   nodeID,
@@ -32,8 +32,8 @@ func NewGoalManager(cloudSchedulerURL string, nodeID string) (*GoalManager, erro
 }
 
 // GetScienceGoal returns the goal of given goal_id
-func (gm *GoalManager) GetScienceGoal(goalID string) (*datatype.ScienceGoal, error) {
-	if goal, exist := gm.scienceGoals[goalID]; exist {
+func (ngm *NodeGoalManager) GetScienceGoal(goalID string) (*datatype.ScienceGoal, error) {
+	if goal, exist := ngm.scienceGoals[goalID]; exist {
 		return goal, nil
 	}
 	return nil, fmt.Errorf("The goal %s does not exist", goalID)
@@ -41,21 +41,21 @@ func (gm *GoalManager) GetScienceGoal(goalID string) (*datatype.ScienceGoal, err
 
 // RunGoalManager handles goal related events from both cloud and local
 // and keeps goals managed up-to-date with the help from the events
-func (gm *GoalManager) Run(chanToScheduler chan *datatype.ScienceGoal) {
-	go gm.pullingGoalsFromCloudScheduler()
+func (ngm *NodeGoalManager) Run(chanToScheduler chan *datatype.ScienceGoal) {
+	go ngm.pullingGoalsFromCloudScheduler()
 
 	for {
 		select {
-		case scienceGoal := <-gm.chanNewGoalToGoalManager:
+		case scienceGoal := <-ngm.chanNewGoalToGoalManager:
 			logger.Info.Printf("Received a goal from SES:%s id:(%s)", scienceGoal.Name, scienceGoal.ID)
-			gm.scienceGoals[scienceGoal.ID] = scienceGoal
+			ngm.scienceGoals[scienceGoal.ID] = scienceGoal
 			chanToScheduler <- scienceGoal
 		}
 	}
 }
 
 // pullingGoalsFromCloudScheduler periodically pulls goals from the cloud scheduler
-func (gm *GoalManager) pullingGoalsFromCloudScheduler() {
+func (gm *NodeGoalManager) pullingGoalsFromCloudScheduler() {
 	queryURL, _ := url.Parse(gm.cloudSchedulerBaseURL)
 	queryURL.Path = path.Join(queryURL.Path, "api/v1/goals/", gm.NodeID)
 	logger.Info.Printf("SES endpoint: %s", queryURL.String())

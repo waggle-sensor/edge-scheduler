@@ -35,7 +35,7 @@ func (sg *SubGoal) UpdatePluginContext(contextEvent EventPluginContext) error {
 			return plugin.UpdatePluginContext(contextEvent.Status)
 		}
 	}
-	return fmt.Errorf("Failed to update context (%s) of plugin %s", contextEvent.Status, contextEvent.PluginName)
+	return fmt.Errorf("failed to update context (%s) of plugin %s", contextEvent.Status, contextEvent.PluginName)
 }
 
 // GetSchedulablePlugins returns a list of plugins that are schedulable.

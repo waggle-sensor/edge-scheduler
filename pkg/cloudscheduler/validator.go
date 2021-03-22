@@ -2,30 +2,21 @@ package cloudscheduler
 
 import (
 	"fmt"
-	"io/ioutil"
-	"path/filepath"
 
 	"github.com/sagecontinuum/ses/pkg/datatype"
 	"github.com/sagecontinuum/ses/pkg/logger"
-	"gopkg.in/yaml.v2"
 )
 
-var (
-	chanToValidator chan *datatype.Job
-	nodes           []datatype.Node
-	plugins         []datatype.Plugin
-)
+type JobValidator struct {
+}
 
-// InitializeValidator initializes the validator
-func InitializeValidator() {
-	nodes, _ = getNodesFromDirectory()
-	plugins, _ = getPluginsFromDirectory()
-	chanToValidator = make(chan *datatype.Job)
+func NewJobValidator() (*JobValidator, error) {
+	return &JobValidator{}, nil
 }
 
 // ValidateJobAndCreateScienceGoal validates user job and returns a science goals
 // created from the job. It also returns a list of errors in validation if any
-func ValidateJobAndCreateScienceGoal(job *datatype.Job) (scienceGoal *datatype.ScienceGoal, errorList []error) {
+func (jv *JobValidator) ValidateJobAndCreateScienceGoal(job *datatype.Job, meta *MetaHandler) (scienceGoal *datatype.ScienceGoal, errorList []error) {
 	logger.Info.Printf("Validating %s", job.Name)
 	scienceGoal = new(datatype.ScienceGoal)
 	scienceGoal.ID = job.ID
@@ -37,12 +28,12 @@ func ValidateJobAndCreateScienceGoal(job *datatype.Job) (scienceGoal *datatype.S
 		for _, p := range job.Plugins {
 			plugin := p
 			// Check 1: plugin exists in ECR
-			exists := pluginExists(plugin)
-			if !exists {
-				errorList = append(errorList, fmt.Errorf("%s:%s not exist in ECR", plugin.Name, plugin.Version))
-				continue
-			}
-			logger.Info.Printf("%s:%s exists in ECR", plugin.Name, plugin.Version)
+			// exists := pluginExists(plugin)
+			// if !exists {
+			// 	errorList = append(errorList, fmt.Errorf("%s:%s not exist in ECR", plugin.Name, plugin.Version))
+			// 	continue
+			// }
+			// logger.Info.Printf("%s:%s exists in ECR", plugin.Name, plugin.Version)
 
 			// Check 2: node supports hardware requirements of the plugin
 			supported, unsupportedHardwareList := node.GetPluginHardwareUnsupportedList(plugin)
@@ -147,159 +138,3 @@ func ValidateJobAndCreateScienceGoal(job *datatype.Job) (scienceGoal *datatype.S
 	// }
 	return
 }
-
-// RunValidator is a goroutine that validates job requests and builds science goals
-func RunValidator() {
-	for {
-		job := <-chanToValidator
-
-		// TODO: Add error hanlding here
-		scienceGoal, errorList := ValidateJobAndCreateScienceGoal(job)
-		if errorList != nil {
-			for _, err := range errorList {
-				logger.Error.Printf("%s", err)
-			}
-		}
-		logger.Info.Printf("A science goal %s is created :%+v\n", scienceGoal.Name, scienceGoal)
-		chanToJobManager <- scienceGoal
-	}
-}
-
-func getNodesFromDirectory() (nodes []datatype.Node, err error) {
-	nodeFiles, _ := filepath.Glob("./data/nodes/*.yaml")
-	for _, filePath := range nodeFiles {
-		dat, _ := ioutil.ReadFile(filePath)
-		var node datatype.Node
-		_ = yaml.Unmarshal(dat, &node)
-		nodes = append(nodes, node)
-		logger.Debug.Printf("Node %s is loaded from %s", node.Name, filePath)
-	}
-	return
-}
-
-func getPluginsFromDirectory() (plugins []datatype.Plugin, err error) {
-	nodeFiles, _ := filepath.Glob("./data/plugins/*.yaml")
-	for _, filePath := range nodeFiles {
-		dat, _ := ioutil.ReadFile(filePath)
-		var plugin datatype.Plugin
-		_ = yaml.Unmarshal(dat, &plugin)
-		plugins = append(plugins, plugin)
-		logger.Debug.Printf("Plugin %s is loaded from %s", plugin.Name, filePath)
-	}
-	return
-}
-
-func pluginExists(plugin datatype.Plugin) bool {
-	return pluginExistInArray(plugin, plugins)
-}
-
-func pluginExistInArray(plugin datatype.Plugin, plugins []datatype.Plugin) bool {
-	for _, pluginInArray := range plugins {
-		if pluginInArray.Name == plugin.Name &&
-			pluginInArray.Version == plugin.Version {
-			return true
-		}
-	}
-	return false
-}
-
-func nodeExistInArray(node datatype.Node, nodes []datatype.Node) bool {
-	for _, nodeInarray := range nodes {
-		if nodeInarray.Name == node.Name {
-			return true
-		}
-	}
-	return false
-}
-
-func getPlugin(name string, version string) (datatype.Plugin, error) {
-	for _, plugin := range plugins {
-		if name == plugin.Name && version == plugin.Version {
-			return plugin, nil
-		}
-	}
-	return datatype.Plugin{}, fmt.Errorf("Plugin %s:%s not exist in ECR", name, version)
-}
-
-func getPluginsByTags(tags []string) (pluginsFound []datatype.Plugin) {
-	for _, plugin := range plugins {
-		for _, tag := range tags {
-			for _, pluginTag := range plugin.Tags {
-				if tag == pluginTag {
-					exists := pluginExistInArray(plugin, pluginsFound)
-					if !exists {
-						pluginsFound = append(pluginsFound, plugin)
-					}
-					break
-				}
-			}
-		}
-	}
-	return
-}
-
-func getNodesByTags(tags []string) (nodesFound []datatype.Node) {
-	for _, node := range nodes {
-		for _, tag := range tags {
-			for _, nodeTag := range node.Tags {
-				if tag == nodeTag {
-					exists := nodeExistInArray(node, nodesFound)
-					if !exists {
-						nodesFound = append(nodesFound, node)
-					}
-					break
-				}
-			}
-		}
-	}
-	return
-}
-
-func getNode(name string) (datatype.Node, error) {
-	for _, node := range nodes {
-		if name == node.Name {
-			return node, nil
-		}
-	}
-	return datatype.Node{}, fmt.Errorf("Node %s not exist in the system", name)
-}
-
-// func main() {
-// 	InitializeValidator()
-//
-// 	dat, _ := ioutil.ReadFile("./data/jobs/job1_image_collection.yaml")
-// 	var job Job
-// 	_ = yaml.Unmarshal(dat, &job)
-//
-// 	foundPlugins := getPluginsByTags(job.PluginTags)
-// 	job.Plugins = foundPlugins
-//
-// 	foundNodes := getNodesByTags(job.NodeTags)
-// 	job.Nodes = foundNodes
-//
-// 	logger.Info.Printf("%v", job)
-//
-// 	// jobName := "Example Job"
-// 	//
-// 	// // Use plugin and node tags to specify nodes and plugins
-// 	// job := createExampleJob(jobName)
-// 	// Or specify them explicitly
-// 	// var job *Job
-// 	// job = new(Job)
-// 	// cloudCoverPlugin, _ := getPlugin("plugin-cloudcover", "0.1.0")
-// 	// wb01Node, _ := getNode("wb01")
-// 	// job.Plugins = append(job.Plugins, cloudCoverPlugin)
-// 	// job.Nodes = append(job.Nodes, wb01Node)
-//
-// 	scienceGoal, errorList := ValidateJobAndCreateScienceGoal(&job)
-// 	if errorList != nil {
-// 		for _, err := range errorList {
-// 			ErrorLogger.Printf("%s", err)
-// 		}
-// 	} else {
-// 		logger.Info.Printf("%+v\n", scienceGoal)
-// 		dat, _ := yaml.Marshal(scienceGoal)
-// 		ioutil.WriteFile("sciencegoal.yaml", dat, 0644)
-//
-// 	}
-// }

@@ -14,7 +14,7 @@ const (
 type NodeScheduler struct {
 	ResourceManager             *ResourceManager
 	Knowledgebase               *knowledgebase.Knowledgebase
-	GoalManager                 *GoalManager
+	GoalManager                 *NodeGoalManager
 	chanContextEventToScheduler chan datatype.EventPluginContext
 	chanFromGoalManager         chan *datatype.ScienceGoal
 	chanRunGoal                 chan *datatype.ScienceGoal
@@ -22,7 +22,7 @@ type NodeScheduler struct {
 	chanPluginToK3SClient       chan *datatype.Plugin
 }
 
-func NewNodeScheduler(rm *ResourceManager, kb *knowledgebase.Knowledgebase, gm *GoalManager) (*NodeScheduler, error) {
+func NewNodeScheduler(rm *ResourceManager, kb *knowledgebase.Knowledgebase, gm *NodeGoalManager) (*NodeScheduler, error) {
 	return &NodeScheduler{
 		ResourceManager:             rm,
 		Knowledgebase:               kb,
