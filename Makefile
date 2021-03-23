@@ -1,3 +1,5 @@
+version?=0.0.0
+
 build:
 	echo "Building cloudscheduler..."
 	go build -o bin/cloudscheduler cmd/cloudscheduler/main.go
@@ -7,4 +9,4 @@ build:
 	cp -r pkg/knowledgebase/util bin/util
 
 docker:
-	docker build -t gemblerz/scheduler:1.0.0 .
+	docker build -t waggle/scheduler:${version} .
