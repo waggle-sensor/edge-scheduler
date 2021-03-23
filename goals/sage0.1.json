@@ -1,0 +1,28 @@
+{
+    "user_id": "gemblerz",
+    "goal_name": "sage 0.1",
+    "priority": 90,
+    "target_nodes": ["001e06107e48"],
+    "rules": [],
+    "sensors": [
+        {"name": "rabbitmq",
+        "image": "waggle/rabbitmq:nc"},
+        {"name": "cam_bottom_live",
+        "image": "waggle/media-streamer:0.1.0",
+        "arguments": [
+            "-device", "/dev/waggle_cam_bottom"
+            ]}
+    ],
+    "apps": {
+        "default": {
+            "conditions": [
+                "True"
+            ],
+            "configuration": [
+                {"name": "smoke-detector",
+                "image": "sagecontinuum/smoke-detector:0.4.0",
+                "arguments": []}
+            ]
+        }
+    }
+}

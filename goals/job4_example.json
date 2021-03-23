@@ -1,0 +1,59 @@
+{
+    "user_id": "gemblerz",
+    "goal_name": "water analysis",
+    "priority": 90,
+    "target_nodes": ["001e06107e48"],
+    "rules": [
+        "rain_gauge >= 2: raining",
+        "ambient_light >= 3000: daytime",
+        "ambient_light < 30: nighttime"
+    ],
+    "sensors": [
+        {"name": "metsense",
+        "image": "waggle/plugin-metsense:4.1.1",
+        "arguments": ["-rate", "30", "-out", "rain_gauge", "-out", "ambient_light"]}
+    ],
+    "apps": {
+        "dayrain" : {
+            "conditions": [
+                "raining",
+                "daytime"
+            ],
+            "configuration": [
+                {"name": "cam_bottom_live",
+                "image": "waggle/plugin-media-streaming:0.1.0",
+                "arguments": ["-device", "/dev/waggle_cam_bottom"]},
+                {"name": "water-analyzer",
+                "image": "waggle/water-analyzer:0.1.0",
+                "arguments": ["-param1", "100"]}
+            ]
+        },
+        "nightrain": {
+            "conditions": [
+                "raining",
+                "nighttime"
+            ],
+            "configuration": [
+                {"name": "cam_bottom_live",
+                "image": "waggle/plugin-media-streaming:0.1.0",
+                "arguments": ["-device", "/dev/waggle_cam_bottom"]},
+                {"name": "water-analyzer",
+                "image": "waggle/water-analyzer:0.1.0",
+                "arguments": ["-param1", "200"]}
+            ]
+        },
+        "default": {
+            "conditions": [
+                "True"
+            ],
+            "configuration": [
+                {"name": "cam_bottom_live",
+                "image": "waggle/plugin-media-streaming:0.1.0",
+                "arguments": ["-device", "/dev/waggle_cam_bottom"]},
+                {"name": "water-analyzer",
+                "image": "waggle/water-analyzer:0.1.0",
+                "arguments": ["-param1", "50"]}
+            ]
+        }
+    }
+}

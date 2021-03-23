@@ -1,0 +1,29 @@
+---
+name: wb01
+tags:
+  - wb01
+  - dell blade
+  - greenhouse
+devices:
+  - name: dell
+    architecture: amd64
+    resource:
+      cpu: 16000
+      memory: 32000
+      gpumemory: 16000
+  - name: nx
+    architecture: arm64
+    resource:
+      cpu: 6000
+      memory: 8000
+      gpumemory: 8000
+hardware:
+  - gpu
+  - camera
+ontology:
+  timezone: ct
+  latitude: 41.718179
+  longitude: -87.982377
+  cameraview:
+    - sky
+    - street

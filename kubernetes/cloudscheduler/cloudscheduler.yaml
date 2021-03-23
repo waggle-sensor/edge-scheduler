@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloudscheduler
+spec:
+  selector:
+    app: cloudscheduler
+  ports:
+  - name: api
+    protocol: TCP
+    port: 9770
+---
+apiVersion: apps/v1 # this apiVersion is relevant as of Kubernetes 1.9
+kind: Deployment
+metadata:
+  name: cloudscheduler
+  labels:
+    app: cloudscheduler
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cloudscheduler
+  template:
+    metadata:
+      labels:
+        app: cloudscheduler
+    spec:
+      containers:
+      - name: cloudscheduler
+        imagePullPolicy: Always
+        image: gemblerz/scheduler:1.0.0
+        volumeMounts:
+        - mountPath: /app/data/
+          name: data
+        ports:
+        - containerPort: 9770
+        workingDir: /app/
+        command: ["/app/cloudscheduler"]
+        args: ["-port", "9770"]
+      volumes:
+      - name: data
+        hostPath:
+          path: /tmp/data
+          type: Directory
