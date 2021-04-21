@@ -16,6 +16,48 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+type Scheduler struct {
+	KubernetesClientset *kubernetes.Clientset
+	RabbitMQClient      *rabbithole.Client
+}
+
+// RunPlugin prepares to run a plugin image
+// TODO wrap k8s and rmq clients into single config struct
+func (sch *Scheduler) RunPlugin(image string, args ...string) error {
+	base := path.Base(image)
+
+	// split name:version from image string
+	parts := strings.Split(base, ":")
+	if len(parts) != 2 {
+		return fmt.Errorf("invalid plugin name %q", image)
+	}
+
+	config := &pluginConfig{
+		Image:    image,
+		Name:     parts[0],
+		Version:  parts[1],
+		Username: strings.ReplaceAll(base, ":", "-"),
+		Password: generatePassword(),
+		Args:     args,
+	}
+
+	log.Printf("setting up plugin %q", image)
+
+	log.Printf("creating rabbitmq plugin user %q for %q", config.Username, image)
+	if err := createRabbitmqUser(sch.RabbitMQClient, config); err != nil {
+		return err
+	}
+
+	log.Printf("creating kubernetes deployment for %q", image)
+	if err := createKubernetesDeployment(sch.KubernetesClientset, config); err != nil {
+		return err
+	}
+
+	log.Printf("plugin ready %q", image)
+
+	return nil
+}
+
 type pluginConfig struct {
 	Image    string
 	Name     string
@@ -165,43 +207,6 @@ func createRabbitmqUser(rmqclient *rabbithole.Client, config *pluginConfig) erro
 	}); err != nil {
 		return err
 	}
-
-	return nil
-}
-
-// RunPlugin prepares to run a plugin image
-// TODO wrap k8s and rmq clients into single config struct
-func RunPlugin(clientset *kubernetes.Clientset, rmqclient *rabbithole.Client, image string, args ...string) error {
-	base := path.Base(image)
-
-	// split name:version from image string
-	parts := strings.Split(base, ":")
-	if len(parts) != 2 {
-		return fmt.Errorf("invalid plugin name %q", image)
-	}
-
-	config := &pluginConfig{
-		Image:    image,
-		Name:     parts[0],
-		Version:  parts[1],
-		Username: strings.ReplaceAll(base, ":", "-"),
-		Password: generatePassword(),
-		Args:     args,
-	}
-
-	log.Printf("setting up plugin %q", image)
-
-	log.Printf("creating rabbitmq plugin user %q for %q", config.Username, image)
-	if err := createRabbitmqUser(rmqclient, config); err != nil {
-		return err
-	}
-
-	log.Printf("creating kubernetes deployment for %q", image)
-	if err := createKubernetesDeployment(clientset, config); err != nil {
-		return err
-	}
-
-	log.Printf("plugin ready %q", image)
 
 	return nil
 }

@@ -64,8 +64,13 @@ func main() {
 		log.Fatal(err)
 	}
 
+	sch := &runplugin.Scheduler{
+		KubernetesClientset: clientset,
+		RabbitMQClient:      rmqclient,
+	}
+
 	args := flag.Args()
-	if err := runplugin.RunPlugin(clientset, rmqclient, args[0], args[1:]...); err != nil {
+	if err := sch.RunPlugin(args[0], args[1:]...); err != nil {
 		log.Fatal(err)
 	}
 }
