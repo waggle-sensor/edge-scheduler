@@ -33,9 +33,10 @@ func (sch *Scheduler) RunPlugin(image string, args ...string) error {
 	}
 
 	config := &pluginConfig{
-		Image:    image,
-		Name:     parts[0],
-		Version:  parts[1],
+		Image:   image,
+		Name:    parts[0],
+		Version: parts[1],
+		// NOTE(sean) username will be validated by wes-data-sharing-service. see: https://github.com/waggle-sensor/wes-data-sharing-service/blob/0e5a44b1ce6e6109a660b2922f56523099054750/main.py#L34
 		Username: "plugin." + base,
 		Password: generatePassword(),
 		Args:     args,
