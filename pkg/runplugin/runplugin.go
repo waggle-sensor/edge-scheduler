@@ -36,7 +36,7 @@ func (sch *Scheduler) RunPlugin(image string, args ...string) error {
 		Image:    image,
 		Name:     parts[0],
 		Version:  parts[1],
-		Username: "plugin." + strings.ReplaceAll(base, ":", "-"),
+		Username: "plugin." + base,
 		Password: generatePassword(),
 		Args:     args,
 	}
