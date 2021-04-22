@@ -14,18 +14,6 @@ import (
 	"k8s.io/client-go/util/homedir"
 )
 
-var (
-	rabbitmqManagementURI      string
-	rabbitmqManagementUsername string
-	rabbitmqManagementPassword string
-)
-
-func init() {
-	flag.StringVar(&rabbitmqManagementURI, "rabbitmq-management-uri", getenv("RABBITMQ_MANAGEMENT_URI", "http://localhost:15672"), "rabbitmq management uri")
-	flag.StringVar(&rabbitmqManagementUsername, "rabbitmq-management-username", getenv("RABBITMQ_MANAGEMENT_USERNAME", "guest"), "rabbitmq management username")
-	flag.StringVar(&rabbitmqManagementPassword, "rabbitmq-management-password", getenv("RABBITMQ_MANAGEMENT_PASSWORD", "guest"), "rabbitmq management password")
-}
-
 func getenv(key string, def string) string {
 	if val, ok := os.LookupEnv(key); ok {
 		return val
@@ -34,13 +22,23 @@ func getenv(key string, def string) string {
 }
 
 func main() {
-	var kubeconfig string
+	var (
+		kubeconfig                 string
+		rabbitmqManagementURI      string
+		rabbitmqManagementUsername string
+		rabbitmqManagementPassword string
+	)
 
-	if home := homedir.HomeDir(); home != "" {
+	if val, ok := os.LookupEnv("KUBECONFIG"); ok {
+		flag.StringVar(&kubeconfig, "kubeconfig", val, "absolute path to the kubeconfig file")
+	} else if home := homedir.HomeDir(); home != "" {
 		flag.StringVar(&kubeconfig, "kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
 	} else {
 		flag.StringVar(&kubeconfig, "kubeconfig", "", "absolute path to the kubeconfig file")
 	}
+	flag.StringVar(&rabbitmqManagementURI, "rabbitmq-management-uri", getenv("RABBITMQ_MANAGEMENT_URI", "http://localhost:15672"), "rabbitmq management uri")
+	flag.StringVar(&rabbitmqManagementUsername, "rabbitmq-management-username", getenv("RABBITMQ_MANAGEMENT_USERNAME", "guest"), "rabbitmq management username")
+	flag.StringVar(&rabbitmqManagementPassword, "rabbitmq-management-password", getenv("RABBITMQ_MANAGEMENT_PASSWORD", "guest"), "rabbitmq management password")
 	flag.Parse()
 
 	if flag.NArg() == 0 {
