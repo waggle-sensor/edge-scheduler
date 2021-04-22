@@ -112,7 +112,7 @@ func createDeploymentForConfig(config *pluginConfig) *appsv1.Deployment {
 								},
 								{
 									Name:  "WAGGLE_PLUGIN_HOST",
-									Value: "rabbitmq-server",
+									Value: "wes-rabbitmq",
 								},
 								{
 									Name:  "WAGGLE_PLUGIN_PORT",

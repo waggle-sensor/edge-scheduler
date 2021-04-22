@@ -166,7 +166,7 @@ func (rm *ResourceManager) CreateK3SDeployment(plugin *datatype.Plugin, credenti
 								},
 								{
 									Name:  "WAGGLE_PLUGIN_HOST",
-									Value: "rabbitmq-server",
+									Value: "wes-rabbitmq",
 								},
 								{
 									Name:  "WAGGLE_PLUGIN_PORT",
