@@ -8,5 +8,8 @@ build:
 	cp pkg/knowledgebase/*.py bin/
 	cp -r pkg/knowledgebase/util bin/util
 
+cli:
+	go build -o bin/sesctl cmd/cli/main.go
+
 docker:
 	docker build -t waggle/scheduler:${version} .

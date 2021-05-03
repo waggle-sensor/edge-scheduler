@@ -7,11 +7,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var version = "1.0.0"
+
 var rootCmd = &cobra.Command{
-	Use:   "ses",
-	Short: "Hugo is a very fast static site generator",
+	Use: "sesctl",
 	Run: func(cmd *cobra.Command, args []string) {
-		// Do Stuff Here
+		fmt.Printf("SAGE edge scheduler client version: %s\n", version)
+		fmt.Printf("sesctl --help for more information\n")
 	},
 }
 

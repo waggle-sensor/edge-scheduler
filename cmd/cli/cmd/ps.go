@@ -8,10 +8,10 @@ import (
 )
 
 func init() {
-	rootCmd.AddCommand(cmdPrint)
+	rootCmd.AddCommand(cmdPs)
 }
 
-var cmdPrint = &cobra.Command{
+var cmdPs = &cobra.Command{
 	Use:   "print [string to print]",
 	Short: "Print anything to the screen",
 	Long: `print is for printing anything back to the screen.
