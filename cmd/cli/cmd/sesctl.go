@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var version = "1.0.0"
+var version = "0.0.0"
 
 var rootCmd = &cobra.Command{
 	Use: "sesctl",
