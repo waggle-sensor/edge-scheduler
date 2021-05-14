@@ -35,7 +35,7 @@ func detectDefaultKubeconfig() string {
 }
 
 func detectDefaultRabbitmqURI() string {
-	if b, err := exec.Command("kubectl", "get", "svc", "wes-rabbitmq", "-o", "jsonpath={.spec.clusterIP}:15672").CombinedOutput(); err == nil {
+	if b, err := exec.Command("kubectl", "get", "svc", "wes-rabbitmq", "-o", "jsonpath=http://{.spec.clusterIP}:15672").CombinedOutput(); err == nil {
 		return string(b)
 	}
 	return "http://localhost:15672"
