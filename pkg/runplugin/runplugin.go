@@ -21,56 +21,75 @@ type Scheduler struct {
 	RabbitMQClient      *rabbithole.Client
 }
 
+type Spec struct {
+	Image      string
+	Args       []string
+	Privileged bool
+	Node       string
+}
+
 // RunPlugin prepares to run a plugin image
 // TODO wrap k8s and rmq clients into single config struct
-func (sch *Scheduler) RunPlugin(image string, args ...string) error {
-	base := path.Base(image)
+func (sch *Scheduler) RunPlugin(spec *Spec) error {
+	base := path.Base(spec.Image)
 
 	// split name:version from image string
 	parts := strings.Split(base, ":")
 	if len(parts) != 2 {
-		return fmt.Errorf("invalid plugin name %q", image)
+		return fmt.Errorf("invalid plugin name %q", spec.Image)
 	}
 
 	config := &pluginConfig{
-		Image:   image,
+		Spec:    spec,
 		Name:    parts[0],
 		Version: parts[1],
 		// NOTE(sean) username will be validated by wes-data-sharing-service. see: https://github.com/waggle-sensor/wes-data-sharing-service/blob/0e5a44b1ce6e6109a660b2922f56523099054750/main.py#L34
 		Username: "plugin." + base,
 		Password: generatePassword(),
-		Args:     args,
 	}
 
-	log.Printf("setting up plugin %q", image)
+	log.Printf("setting up plugin %q", spec.Image)
 
-	log.Printf("creating rabbitmq plugin user %q for %q", config.Username, image)
+	log.Printf("creating rabbitmq plugin user %q for %q", config.Username, spec.Image)
 	if err := createRabbitmqUser(sch.RabbitMQClient, config); err != nil {
 		return err
 	}
 
-	log.Printf("creating kubernetes deployment for %q", image)
+	log.Printf("creating kubernetes deployment for %q", spec.Image)
 	if err := createKubernetesDeployment(sch.KubernetesClientset, config); err != nil {
 		return err
 	}
 
-	log.Printf("plugin ready %q", image)
+	log.Printf("plugin ready %q", spec.Image)
 
 	return nil
 }
 
 type pluginConfig struct {
-	Image    string
+	*Spec
 	Name     string
 	Version  string
 	Username string
 	Password string
-	Args     []string
 }
 
 var hostPathDirectoryOrCreate = apiv1.HostPathDirectoryOrCreate
 
 func createDeploymentForConfig(config *pluginConfig) *appsv1.Deployment {
+	nodeSelector := map[string]string{}
+
+	if config.Node != "" {
+		nodeSelector["k3s.io/hostname"] = config.Node
+	}
+
+	var securityContext *apiv1.SecurityContext
+
+	if config.Privileged {
+		securityContext = &apiv1.SecurityContext{
+			Privileged: &config.Privileged,
+		}
+	}
+
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: config.Name,
@@ -89,11 +108,13 @@ func createDeploymentForConfig(config *pluginConfig) *appsv1.Deployment {
 					},
 				},
 				Spec: apiv1.PodSpec{
+					NodeSelector: nodeSelector,
 					Containers: []apiv1.Container{
 						{
-							Name:  config.Name,
-							Image: config.Image,
-							Args:  config.Args,
+							SecurityContext: securityContext,
+							Name:            config.Name,
+							Image:           config.Image,
+							Args:            config.Args,
 							Env: []apiv1.EnvVar{
 								{
 									Name:  "WAGGLE_PLUGIN_NAME",
