@@ -3,10 +3,12 @@ package runplugin
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"log"
 	"path"
+	"regexp"
 	"strings"
 
 	rabbithole "github.com/michaelklishin/rabbit-hole"
@@ -26,6 +28,7 @@ type Spec struct {
 	Args       []string
 	Privileged bool
 	Node       string
+	Name       string
 }
 
 // RunPlugin prepares to run a plugin image
@@ -39,9 +42,34 @@ func (sch *Scheduler) RunPlugin(spec *Spec) error {
 		return fmt.Errorf("invalid plugin name %q", spec.Image)
 	}
 
+	// if no given name for the plugin, use PLUGIN-VERSION-INSTANCE format for name
+	// INSTANCE is calculated as Sha256("DOMAIN/PLUGIN:VERSION&ARGUMENTS") and
+	// take the first 8 hex letters.
+	// NOTE: if multiple plugins with the same version and arguments are given for
+	//       the same domain, only one deployment will be applied to the cluster
+	// NOTE2: To comply with RFC 1123 for Kubernetes object name, only lower alphanumeric
+	//        characters with '-' is allowed
+	var pluginName string
+	if spec.Name != "" {
+		var validNamePattern = regexp.MustCompile("^[a-z0-9-]+$")
+		if !validNamePattern.MatchString(spec.Name) {
+			return fmt.Errorf("plugin name must consist of alphanumeric characters with '-' RFC1123")
+		}
+		pluginName = spec.Name
+	} else {
+		log.Printf("no plugin name is given. creating a name...")
+		recipe := spec.Image + "&" + strings.Join(spec.Args, "&")
+		sum := sha256.Sum256([]byte(recipe))
+		instance := hex.EncodeToString(sum[:])[:8]
+		pluginName = strings.Join(
+			[]string{parts[0], strings.ReplaceAll(parts[1], ".", "-"), instance},
+			"-")
+		log.Printf("plugin name is %s", pluginName)
+	}
+
 	config := &pluginConfig{
 		Spec:    spec,
-		Name:    parts[0],
+		Name:    pluginName,
 		Version: parts[1],
 		// NOTE(sean) username will be validated by wes-data-sharing-service. see: https://github.com/waggle-sensor/wes-data-sharing-service/blob/0e5a44b1ce6e6109a660b2922f56523099054750/main.py#L34
 		Username: "plugin." + base,

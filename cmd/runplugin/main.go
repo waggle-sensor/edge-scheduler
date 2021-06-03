@@ -44,6 +44,7 @@ func detectDefaultRabbitmqURI() string {
 func main() {
 	var (
 		privileged                 bool
+		name                       string
 		node                       string
 		kubeconfig                 string
 		rabbitmqManagementURI      string
@@ -52,6 +53,7 @@ func main() {
 	)
 
 	flag.BoolVar(&privileged, "privileged", false, "run as privileged plugin")
+	flag.StringVar(&name, "name", "", "specify plugin name")
 	flag.StringVar(&node, "node", "", "run plugin on node")
 	flag.StringVar(&kubeconfig, "kubeconfig", getenv("KUBECONFIG", detectDefaultKubeconfig()), "path to the kubeconfig file")
 	flag.StringVar(&rabbitmqManagementURI, "rabbitmq-management-uri", getenv("RABBITMQ_MANAGEMENT_URI", detectDefaultRabbitmqURI()), "rabbitmq management uri")
@@ -92,6 +94,7 @@ func main() {
 		Node:       node,
 		Image:      args[0],
 		Args:       args[1:],
+		Name:       name,
 	}
 
 	if err := sch.RunPlugin(spec); err != nil {
