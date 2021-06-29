@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	rabbithole "github.com/michaelklishin/rabbit-hole"
@@ -21,24 +22,43 @@ func getenv(key string, def string) string {
 	return def
 }
 
+const rancherKubeconfigPath = "/etc/rancher/k3s/k3s.yaml"
+
+func detectDefaultKubeconfig() string {
+	if _, err := os.ReadFile(rancherKubeconfigPath); err == nil {
+		return rancherKubeconfigPath
+	}
+	if home := homedir.HomeDir(); home != "" {
+		return filepath.Join(home, ".kube", "config")
+	}
+	return ""
+}
+
+func detectDefaultRabbitmqURI() string {
+	if b, err := exec.Command("kubectl", "get", "svc", "wes-rabbitmq", "-o", "jsonpath=http://{.spec.clusterIP}:15672").CombinedOutput(); err == nil {
+		return string(b)
+	}
+	return "http://localhost:15672"
+}
+
 func main() {
 	var (
+		privileged                 bool
+		name                       string
+		node                       string
 		kubeconfig                 string
 		rabbitmqManagementURI      string
 		rabbitmqManagementUsername string
 		rabbitmqManagementPassword string
 	)
 
-	if val, ok := os.LookupEnv("KUBECONFIG"); ok {
-		flag.StringVar(&kubeconfig, "kubeconfig", val, "absolute path to the kubeconfig file")
-	} else if home := homedir.HomeDir(); home != "" {
-		flag.StringVar(&kubeconfig, "kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
-	} else {
-		flag.StringVar(&kubeconfig, "kubeconfig", "", "absolute path to the kubeconfig file")
-	}
-	flag.StringVar(&rabbitmqManagementURI, "rabbitmq-management-uri", getenv("RABBITMQ_MANAGEMENT_URI", "http://localhost:15672"), "rabbitmq management uri")
-	flag.StringVar(&rabbitmqManagementUsername, "rabbitmq-management-username", getenv("RABBITMQ_MANAGEMENT_USERNAME", "guest"), "rabbitmq management username")
-	flag.StringVar(&rabbitmqManagementPassword, "rabbitmq-management-password", getenv("RABBITMQ_MANAGEMENT_PASSWORD", "guest"), "rabbitmq management password")
+	flag.BoolVar(&privileged, "privileged", false, "run as privileged plugin")
+	flag.StringVar(&name, "name", "", "specify plugin name")
+	flag.StringVar(&node, "node", "", "run plugin on node")
+	flag.StringVar(&kubeconfig, "kubeconfig", getenv("KUBECONFIG", detectDefaultKubeconfig()), "path to the kubeconfig file")
+	flag.StringVar(&rabbitmqManagementURI, "rabbitmq-management-uri", getenv("RABBITMQ_MANAGEMENT_URI", detectDefaultRabbitmqURI()), "rabbitmq management uri")
+	flag.StringVar(&rabbitmqManagementUsername, "rabbitmq-management-username", getenv("RABBITMQ_MANAGEMENT_USERNAME", "admin"), "rabbitmq management username")
+	flag.StringVar(&rabbitmqManagementPassword, "rabbitmq-management-password", getenv("RABBITMQ_MANAGEMENT_PASSWORD", "admin"), "rabbitmq management password")
 	flag.Parse()
 
 	if flag.NArg() == 0 {
@@ -68,7 +88,16 @@ func main() {
 	}
 
 	args := flag.Args()
-	if err := sch.RunPlugin(args[0], args[1:]...); err != nil {
+
+	spec := &runplugin.Spec{
+		Privileged: privileged,
+		Node:       node,
+		Image:      args[0],
+		Args:       args[1:],
+		Name:       name,
+	}
+
+	if err := sch.RunPlugin(spec); err != nil {
 		log.Fatal(err)
 	}
 }
