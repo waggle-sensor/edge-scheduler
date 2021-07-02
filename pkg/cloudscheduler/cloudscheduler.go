@@ -90,8 +90,44 @@ func respondYAML(w http.ResponseWriter, statusCode int, data interface{}) {
 func (cs *CloudScheduler) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) {
 	if r.Method == POST {
 		log.Printf("hit POST")
+		yamlFile, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			fmt.Println(err)
+		}
+		var job datatype.Job
+		_ = yaml.Unmarshal(yamlFile, &job)
+		job.ID = guuid.New().String()
 
-		respondJSON(w, http.StatusNotFound, "Not supported yet")
+		if len(job.PluginTags) > 0 {
+			foundPlugins := cs.Meta.GetPluginsByTags(job.PluginTags)
+			for _, p := range foundPlugins {
+				logger.Debug.Printf("Plugin %s:%s is added to job %s", p.Name, p.Version, job.Name)
+				job.AddPlugin(p)
+			}
+			logger.Info.Printf("Found %d plugins by the tags", len(foundPlugins))
+		}
+
+		if len(job.NodeTags) > 0 {
+			foundNodes := cs.Meta.GetNodesByTags(job.NodeTags)
+			for _, n := range foundNodes {
+				logger.Debug.Printf("Node %s is added to job %s", n.Name, job.Name)
+				job.AddNode(n)
+			}
+			logger.Info.Printf("Found %d nodes by the tags", len(foundNodes))
+		}
+
+		// TODO: Add error hanlding here
+		scienceGoal, errorList := cs.Validator.ValidateJobAndCreateScienceGoal(&job, cs.Meta)
+		if len(errorList) > 0 {
+			for _, err := range errorList {
+				logger.Error.Printf("%s", err)
+			}
+		} else {
+			cs.GoalManager.UpdateScienceGoal(scienceGoal)
+		}
+		respondYAML(w, http.StatusOK, scienceGoal)
+
+		// respondJSON(w, http.StatusNotFound, "Not supported yet")
 	} else if r.Method == PUT {
 		log.Printf("hit PUT")
 		// mReader, err := r.MultipartReader()
