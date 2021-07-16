@@ -28,7 +28,7 @@ var (
 )
 
 var cmdSub = &cobra.Command{
-	Use:   "submit [string to print]",
+	Use:   "submit a job",
 	Short: "Submit a job to SES",
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("Print: " + strings.Join(args, " "))

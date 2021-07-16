@@ -17,10 +17,8 @@ func init() {
 
 var cmdPs = &cobra.Command{
 	Use:   "ps job_id",
-	Short: "Print anything to the screen",
-	Long: `print is for printing anything back to the screen.
-For many years people have printed back to the screen.`,
-	Args: cobra.MinimumNArgs(1),
+	Short: "Query job status",
+	Args:  cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("Print: " + strings.Join(args, " "))
 		url := fmt.Sprintf("http://localhost:9770/api/v1/jobs/%s/status", args[0])
