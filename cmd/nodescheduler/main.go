@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/sagecontinuum/ses/pkg/interfacing"
 	"github.com/sagecontinuum/ses/pkg/knowledgebase"
 	"github.com/sagecontinuum/ses/pkg/logger"
 	"github.com/sagecontinuum/ses/pkg/nodescheduler"
@@ -14,6 +15,10 @@ import (
 )
 
 var (
+	noRabbitMQ                 bool
+	rabbitmqURI                string
+	rabbitmqUsername           string
+	rabbitmqPassword           string
 	rabbitmqManagementURI      string
 	rabbitmqManagementUsername string
 	rabbitmqManagementPassword string
@@ -38,8 +43,13 @@ func main() {
 	} else {
 		flag.StringVar(&kubeconfig, "kubeconfig", "", "absolute path to the kubeconfig file")
 	}
-	flag.BoolVar(&incluster, "in-cluster", false, "a flag indicating a k3s service account is used")
+	flag.BoolVar(&incluster, "in-cluster", false, "A flag indicating a k3s service account is used")
 	flag.StringVar(&registry, "registry", "waggle/", "Path to ECR registry")
+	flag.BoolVar(&noRabbitMQ, "no-rabbitmq", false, "No RabbitMQ to talk to the cloud scheduler")
+	flag.StringVar(&rabbitmqURI, "rabbitmq-uri", getenv("RABBITMQ_URI", "rabbitmq:5672"), "RabbitMQ management uri")
+	flag.StringVar(&rabbitmqUsername, "rabbitmq-username", getenv("RABBITMQ_USERNAME", "guest"), "RabbitMQ management username")
+	flag.StringVar(&rabbitmqPassword, "rabbitmq-password", getenv("RABBITMQ_PASSWORD", "guest"), "RabbitMQ management password")
+
 	flag.StringVar(&cloudschedulerURI, "cloudscheduler-uri", "http://localhost:9770", "cloudscheduler URI")
 	flag.StringVar(&rabbitmqManagementURI, "rabbitmq-management-uri", getenv("RABBITMQ_MANAGEMENT_URI", "http://rabbitmq:15672"), "rabbitmq management uri")
 	flag.StringVar(&rabbitmqManagementUsername, "rabbitmq-management-username", getenv("RABBITMQ_MANAGEMENT_USERNAME", "guest"), "rabbitmq management username")
@@ -49,9 +59,9 @@ func main() {
 	logger.Info.Print("Nodescheduler starts...")
 
 	k3sClient, err := nodescheduler.GetK3SClient(incluster, kubeconfig)
-	if err != nil {
-		log.Fatal(err)
-	}
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
 
 	rmqManagement, err := nodescheduler.NewRMQManagement(rabbitmqManagementURI, rabbitmqManagementUsername, rabbitmqManagementPassword)
 	if err != nil {
@@ -80,6 +90,12 @@ func main() {
 	ns, err := nodescheduler.NewNodeScheduler(rm, kb, gm)
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	if !noRabbitMQ {
+		logger.Info.Printf("Using RabbitMQ at %s with user %s", rabbitmqURI, rabbitmqUsername)
+		rmqHandler := interfacing.NewRabbitMQHandler(rabbitmqURI, rabbitmqUsername, rabbitmqPassword)
+		ns.GoalManager.SetRMQHandler(rmqHandler)
 	}
 
 	ns.Run()
