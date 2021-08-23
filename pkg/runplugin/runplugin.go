@@ -145,6 +145,10 @@ func createDeploymentForConfig(config *pluginConfig) *appsv1.Deployment {
 							Args:            config.Args,
 							Env: []apiv1.EnvVar{
 								{
+									Name:  "PULSE_SERVER",
+									Value: "tcp:wes-audio-server:4713",
+								},
+								{
 									Name:  "WAGGLE_PLUGIN_NAME",
 									Value: config.Name + ":" + config.Version,
 								},
