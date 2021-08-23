@@ -59,9 +59,9 @@ func main() {
 	logger.Info.Print("Nodescheduler starts...")
 
 	k3sClient, err := nodescheduler.GetK3SClient(incluster, kubeconfig)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	rmqManagement, err := nodescheduler.NewRMQManagement(rabbitmqManagementURI, rabbitmqManagementUsername, rabbitmqManagementPassword)
 	if err != nil {
