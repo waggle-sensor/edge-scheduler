@@ -11,19 +11,13 @@ One cloud scheduler manages multiple node schedulers. Each node scheduler must c
 $ version=0.0.0 make docker
 ```
 
-## Setting Cloud Scheduler
+## Configure Cloud and Node Scheduler
 
-The cloud scheduler exposes APIs via its http server to accept jobs. [Kubernetes ingress](cloudscheduler/cloudscheduler-ingress.yaml) configures an ingress for the cloud scheduler port to be exposed outside the cluster.
-
-[Cloudscheduler deployment](cloudscheduler/cloudscheduler.yaml) deploys cloud scheduler in Kubernetes cluster.
-
-The cloud scheduler pushes jobs (i.e., science goals) to managed node schedulers running on each node via RabbitMQ. [configure.sh](cloudscheduler/configure.sh) creates an account for the cloud scheduler to do so.
-
-## Setting Node Scheduler
+[configure_cloudscheduler.sh](configure_cloudscheduler.sh) creates a RabbitMQ account for the cloud scheduler to push science goals to node schedulers and generates k3s objects to run the cloud scheduler in a Kubernetes cluster.
 
 Waggle edge stack should already have [configured](https://github.com/waggle-sensor/waggle-edge-stack/blob/main/kubernetes/wes-plugin-scheduler.yaml) the cluster for the node scheduler
 
-_Note: The files under [nodescheduler](./nodescheduler) are only for local testing and may not be up-to-date_
+[configure_nodescheduler.sh](configure_nodecheduler.sh) creates a RabbitMQ account for the node scheduler to receive science goals from the cloud scheduler and generates k3s objects to run the node scheduler in a Kubernetes cluster.
 
 ## How To Run Cloud/Node Schedulers
 
