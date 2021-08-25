@@ -31,17 +31,9 @@ type Spec struct {
 	Name       string
 }
 
-// RunPlugin prepares to run a plugin image
-// TODO wrap k8s and rmq clients into single config struct
-func (sch *Scheduler) RunPlugin(spec *Spec) error {
-	base := path.Base(spec.Image)
+var validNamePattern = regexp.MustCompile("^[a-z0-9-]+$")
 
-	// split name:version from image string
-	parts := strings.Split(base, ":")
-	if len(parts) != 2 {
-		return fmt.Errorf("invalid plugin name %q", spec.Image)
-	}
-
+func pluginNameForSpec(spec *Spec) (string, error) {
 	// if no given name for the plugin, use PLUGIN-VERSION-INSTANCE format for name
 	// INSTANCE is calculated as Sha256("DOMAIN/PLUGIN:VERSION&ARGUMENTS") and
 	// take the first 8 hex letters.
@@ -49,30 +41,47 @@ func (sch *Scheduler) RunPlugin(spec *Spec) error {
 	//       the same domain, only one deployment will be applied to the cluster
 	// NOTE2: To comply with RFC 1123 for Kubernetes object name, only lower alphanumeric
 	//        characters with '-' is allowed
-	var pluginName string
 	if spec.Name != "" {
-		var validNamePattern = regexp.MustCompile("^[a-z0-9-]+$")
 		if !validNamePattern.MatchString(spec.Name) {
-			return fmt.Errorf("plugin name must consist of alphanumeric characters with '-' RFC1123")
+			return "", fmt.Errorf("plugin name must consist of alphanumeric characters with '-' RFC1123")
 		}
-		pluginName = spec.Name
-	} else {
-		log.Printf("no plugin name is given. creating a name...")
-		recipe := spec.Image + "&" + strings.Join(spec.Args, "&")
-		sum := sha256.Sum256([]byte(recipe))
-		instance := hex.EncodeToString(sum[:])[:8]
-		pluginName = strings.Join(
-			[]string{parts[0], strings.ReplaceAll(parts[1], ".", "-"), instance},
-			"-")
-		log.Printf("plugin name is %s", pluginName)
+		return spec.Name, nil
 	}
+	return generatePluginNameForSpec(spec)
+}
+
+func generatePluginNameForSpec(spec *Spec) (string, error) {
+	recipe := spec.Image + "&" + strings.Join(spec.Args, "&")
+	sum := sha256.Sum256([]byte(recipe))
+	instance := hex.EncodeToString(sum[:])[:8]
+	parts := strings.Split(path.Base(spec.Image), ":")
+	if len(parts) != 2 {
+		return "", fmt.Errorf("invalid plugin name %q", spec.Image)
+	}
+	return strings.Join([]string{parts[0], strings.ReplaceAll(parts[1], ".", "-"), instance}, "-"), nil
+}
+
+// RunPlugin prepares to run a plugin image
+// TODO wrap k8s and rmq clients into single config struct
+func (sch *Scheduler) RunPlugin(spec *Spec) error {
+	// split name:version from image string
+	parts := strings.Split(path.Base(spec.Image), ":")
+	if len(parts) != 2 {
+		return fmt.Errorf("invalid plugin name %q", spec.Image)
+	}
+
+	pluginName, err := pluginNameForSpec(spec)
+	if err != nil {
+		return err
+	}
+	log.Printf("plugin name is %s", pluginName)
 
 	config := &pluginConfig{
 		Spec:    spec,
 		Name:    pluginName,
 		Version: parts[1],
 		// NOTE(sean) username will be validated by wes-data-sharing-service. see: https://github.com/waggle-sensor/wes-data-sharing-service/blob/0e5a44b1ce6e6109a660b2922f56523099054750/main.py#L34
-		Username: "plugin." + base,
+		Username: "plugin." + pluginName,
 		Password: generatePassword(),
 	}
 
