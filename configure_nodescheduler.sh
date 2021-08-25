@@ -1,7 +1,6 @@
 #! /bin/bash
 
 RMQ_NAME="wes-rabbitmq"
-RMQ_NAME="beehive-rabbitmq"
 nodeID=$1
 
 if [ -z ${nodeID} ]; then
@@ -11,8 +10,8 @@ if [ -z ${nodeID} ]; then
 fi
 
 rmqctl() {
-	docker exec ${RMQ_NAME} rabbitmqctl "$@"
-	# kubectl exec svc/${RMQ_NAME} -- rabbitmqctl "$@"
+	# docker exec ${RMQ_NAME} rabbitmqctl "$@"
+	kubectl exec svc/${RMQ_NAME} -- rabbitmqctl "$@"
 }
 
 username="wes-plugin-scheduler"

@@ -1,4 +1,4 @@
-version?=0.0.0
+version?=0.4.0
 
 build:
 	echo "Building cloudscheduler..."
@@ -12,4 +12,4 @@ cli:
 	go build -o bin/sesctl cmd/cli/main.go
 
 docker:
-	docker build -t waggle/scheduler:${version} .
+	docker buildx build -t waggle/scheduler:${version} --platform linux/amd64,linux/arm64 --push .
