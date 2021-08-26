@@ -24,10 +24,10 @@ func TestValidPluginNames(t *testing.T) {
 		},
 		"named": {
 			spec: &Spec{
-				Name:  "plugin-named-hello-world",
+				Name:  "named-hello-world",
 				Image: "plugin-metsense:1.2.3",
 			},
-			want: regexp.MustCompile("^plugin-named-hello-world$"),
+			want: regexp.MustCompile("^named-hello-world$"),
 		},
 	}
 
