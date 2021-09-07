@@ -181,6 +181,15 @@ func createDeploymentForConfig(config *pluginConfig) *appsv1.Deployment {
 									Name:  "WAGGLE_PLUGIN_PORT",
 									Value: "5672",
 								},
+								// NOTE WAGGLE_APP_ID is used to bind plugin <-> Pod identities.
+								{
+									Name: "WAGGLE_APP_ID",
+									ValueFrom: &apiv1.EnvVarSource{
+										FieldRef: &apiv1.ObjectFieldSelector{
+											FieldPath: "metadata.uid",
+										},
+									},
+								},
 							},
 							EnvFrom: []apiv1.EnvFromSource{
 								{
