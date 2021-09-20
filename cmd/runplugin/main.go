@@ -44,6 +44,7 @@ func detectDefaultRabbitmqURI() string {
 func main() {
 	var (
 		privileged                 bool
+		job                        string
 		name                       string
 		node                       string
 		kubeconfig                 string
@@ -53,6 +54,7 @@ func main() {
 	)
 
 	flag.BoolVar(&privileged, "privileged", false, "run as privileged plugin")
+	flag.StringVar(&job, "job", "sage", "specify plugin job")
 	flag.StringVar(&name, "name", "", "specify plugin name")
 	flag.StringVar(&node, "node", "", "run plugin on node")
 	flag.StringVar(&kubeconfig, "kubeconfig", getenv("KUBECONFIG", detectDefaultKubeconfig()), "path to the kubeconfig file")
@@ -94,6 +96,7 @@ func main() {
 		Node:       node,
 		Image:      args[0],
 		Args:       args[1:],
+		Job:        job,
 		Name:       name,
 	}
 
