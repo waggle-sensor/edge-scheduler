@@ -28,6 +28,7 @@ type Spec struct {
 	Args       []string
 	Privileged bool
 	Node       string
+	Job        string
 	Name       string
 }
 
@@ -87,13 +88,13 @@ func (sch *Scheduler) RunPlugin(spec *Spec) error {
 
 	log.Printf("setting up plugin %q", spec.Image)
 
-	log.Printf("creating rabbitmq plugin user %q for %q", config.Username, spec.Image)
-	if err := createRabbitmqUser(sch.RabbitMQClient, config); err != nil {
+	log.Printf("updating rabbitmq plugin user %q for %q", config.Username, spec.Image)
+	if err := updateRabbitmqUser(sch.RabbitMQClient, config); err != nil {
 		return err
 	}
 
-	log.Printf("creating kubernetes deployment for %q", spec.Image)
-	if err := createKubernetesDeployment(sch.KubernetesClientset, config); err != nil {
+	log.Printf("updating kubernetes deployment for %q", spec.Image)
+	if err := updateKubernetesDeployment(sch.KubernetesClientset, config); err != nil {
 		return err
 	}
 
@@ -112,21 +113,32 @@ type pluginConfig struct {
 
 var hostPathDirectoryOrCreate = apiv1.HostPathDirectoryOrCreate
 
-func createDeploymentForConfig(config *pluginConfig) *appsv1.Deployment {
-	nodeSelector := map[string]string{}
+func labelsForConfig(config *pluginConfig) map[string]string {
+	return map[string]string{
+		"app":                           config.Name,
+		"role":                          "plugin", // TODO drop in place of sagecontinuum.org/role
+		"sagecontinuum.org/role":        "plugin",
+		"sagecontinuum.org/plugin-job":  config.Job,
+		"sagecontinuum.org/plugin-task": config.Name,
+	}
+}
 
+func nodeSelectorForConfig(config *pluginConfig) map[string]string {
+	vals := map[string]string{}
 	if config.Node != "" {
-		nodeSelector["k3s.io/hostname"] = config.Node
+		vals["k3s.io/hostname"] = config.Node
 	}
+	return vals
+}
 
-	var securityContext *apiv1.SecurityContext
-
+func securityContextForConfig(config *pluginConfig) *apiv1.SecurityContext {
 	if config.Privileged {
-		securityContext = &apiv1.SecurityContext{
-			Privileged: &config.Privileged,
-		}
+		return &apiv1.SecurityContext{Privileged: &config.Privileged}
 	}
+	return nil
+}
 
+func createDeploymentForConfig(config *pluginConfig) *appsv1.Deployment {
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: config.Name,
@@ -139,16 +151,13 @@ func createDeploymentForConfig(config *pluginConfig) *appsv1.Deployment {
 			},
 			Template: apiv1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						"app":  config.Name,
-						"role": "plugin",
-					},
+					Labels: labelsForConfig(config),
 				},
 				Spec: apiv1.PodSpec{
-					NodeSelector: nodeSelector,
+					NodeSelector: nodeSelectorForConfig(config),
 					Containers: []apiv1.Container{
 						{
-							SecurityContext: securityContext,
+							SecurityContext: securityContextForConfig(config),
 							Name:            config.Name,
 							Image:           config.Image,
 							Args:            config.Args,
@@ -158,12 +167,12 @@ func createDeploymentForConfig(config *pluginConfig) *appsv1.Deployment {
 									Value: "tcp:wes-audio-server:4713",
 								},
 								{
-									Name:  "WAGGLE_PLUGIN_NAME",
-									Value: config.Name + ":" + config.Version,
+									Name:  "WAGGLE_PLUGIN_HOST",
+									Value: "wes-rabbitmq",
 								},
 								{
-									Name:  "WAGGLE_PLUGIN_VERSION",
-									Value: config.Version,
+									Name:  "WAGGLE_PLUGIN_PORT",
+									Value: "5672",
 								},
 								{
 									Name:  "WAGGLE_PLUGIN_USERNAME",
@@ -172,14 +181,6 @@ func createDeploymentForConfig(config *pluginConfig) *appsv1.Deployment {
 								{
 									Name:  "WAGGLE_PLUGIN_PASSWORD",
 									Value: config.Password,
-								},
-								{
-									Name:  "WAGGLE_PLUGIN_HOST",
-									Value: "wes-rabbitmq",
-								},
-								{
-									Name:  "WAGGLE_PLUGIN_PORT",
-									Value: "5672",
 								},
 								// NOTE WAGGLE_APP_ID is used to bind plugin <-> Pod identities.
 								{
@@ -253,19 +254,15 @@ func generatePassword() string {
 	return hex.EncodeToString(b)
 }
 
-func createKubernetesDeployment(clientset *kubernetes.Clientset, config *pluginConfig) error {
+func updateKubernetesDeployment(clientset *kubernetes.Clientset, config *pluginConfig) error {
 	deployment := createDeploymentForConfig(config)
-	// ensure existing deployments are deleted
-	clientset.AppsV1().Deployments("default").Delete(context.TODO(), deployment.ObjectMeta.Name, metav1.DeleteOptions{})
-	// create new deployment
-	if _, err := clientset.AppsV1().Deployments("default").Create(context.TODO(), deployment, metav1.CreateOptions{}); err != nil {
+	if _, err := clientset.AppsV1().Deployments("default").Update(context.TODO(), deployment, metav1.UpdateOptions{}); err != nil {
 		return err
 	}
-
 	return nil
 }
 
-func createRabbitmqUser(rmqclient *rabbithole.Client, config *pluginConfig) error {
+func updateRabbitmqUser(rmqclient *rabbithole.Client, config *pluginConfig) error {
 	if _, err := rmqclient.PutUser(config.Username, rabbithole.UserSettings{
 		Password: config.Password,
 	}); err != nil {
