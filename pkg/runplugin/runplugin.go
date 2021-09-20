@@ -256,7 +256,10 @@ func generatePassword() string {
 
 func updateKubernetesDeployment(clientset *kubernetes.Clientset, config *pluginConfig) error {
 	deployment := createDeploymentForConfig(config)
-	if _, err := clientset.AppsV1().Deployments("default").Update(context.TODO(), deployment, metav1.UpdateOptions{}); err != nil {
+	// ensure existing deployments are deleted
+	clientset.AppsV1().Deployments("default").Delete(context.TODO(), deployment.ObjectMeta.Name, metav1.DeleteOptions{})
+	// create new deployment
+	if _, err := clientset.AppsV1().Deployments("default").Create(context.TODO(), deployment, metav1.CreateOptions{}); err != nil {
 		return err
 	}
 	return nil
