@@ -2,7 +2,7 @@ name: CI/CD
 on: push
 jobs:
   test_and_release:
-    name: Test and Release
+    name: CI/CD
     runs-on: ubuntu-latest
     steps:
       - name: Setup Go
