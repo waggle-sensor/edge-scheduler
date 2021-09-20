@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log"
 	"path"
@@ -24,12 +25,12 @@ type Scheduler struct {
 }
 
 type Spec struct {
-	Image      string
-	Args       []string
-	Privileged bool
-	Node       string
-	Job        string
-	Name       string
+	Image      string   `json:"image"`
+	Args       []string `json:"args"`
+	Privileged bool     `json:"privileged"`
+	Node       string   `json:"node"`
+	Job        string   `json:"job"`
+	Name       string   `json:"name"`
 }
 
 var validNamePattern = regexp.MustCompile("^[a-z0-9-]+$")
@@ -51,9 +52,21 @@ func pluginNameForSpec(spec *Spec) (string, error) {
 	return generatePluginNameForSpec(spec)
 }
 
+// generatePluginNameForSpec generates a consistent name for a Spec.
+//
+// Very important note from: https://pkg.go.dev/encoding/json#Marshal
+//
+// Map values encode as JSON objects. The map's key type must either be a string, an integer type,
+// or implement encoding.TextMarshaler. The map keys are sorted and used as JSON object keys by applying
+// the following rules, subject to the UTF-8 coercion described for string values above:
+//
+// The "map keys are sorted" bit is important for us as it allows us to ensure the hash is consistent.
 func generatePluginNameForSpec(spec *Spec) (string, error) {
-	recipe := spec.Image + "&" + strings.Join(spec.Args, "&")
-	sum := sha256.Sum256([]byte(recipe))
+	specjson, err := json.Marshal(spec)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(specjson)
 	instance := hex.EncodeToString(sum[:])[:8]
 	parts := strings.Split(path.Base(spec.Image), ":")
 	if len(parts) != 2 {

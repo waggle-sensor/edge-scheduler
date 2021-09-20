@@ -1,9 +1,68 @@
 package runplugin
 
 import (
+	"fmt"
 	"regexp"
 	"testing"
 )
+
+func TestGeneratedName(t *testing.T) {
+	tests := []struct {
+		spec *Spec
+		want string
+	}{
+		{
+			spec: &Spec{
+				Name:       "testing",
+				Args:       []string{"1", "2", "3"},
+				Privileged: true,
+				Image:      "waggle/cool-plugin:1.2.3",
+			},
+			want: "cool-plugin-1-2-3-b6b14d4c",
+		},
+		{
+			spec: &Spec{
+				Name:       "testing",
+				Args:       []string{"1", "2", "3"},
+				Privileged: false,
+				Image:      "waggle/cool-plugin:1.2.3",
+			},
+			want: "cool-plugin-1-2-3-e11b3468",
+		},
+		{
+			spec: &Spec{
+				Name:       "testing",
+				Args:       []string{"1", "2", "3"},
+				Privileged: false,
+				Image:      "waggle/cool-plugin:1.2.3",
+				Node:       "rpi-1",
+			},
+			want: "cool-plugin-1-2-3-f67182a5",
+		},
+		{
+			spec: &Spec{
+				Name:       "testing",
+				Args:       []string{"1", "2", "3"},
+				Privileged: false,
+				Image:      "waggle/cool-plugin:1.2.3",
+				Node:       "nx-1",
+			},
+			want: "cool-plugin-1-2-3-2369ef48",
+		},
+	}
+
+	for i, tc := range tests {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			s, err := generatePluginNameForSpec(tc.spec)
+			if err != nil {
+				t.Fatalf("error: %s", err.Error())
+			}
+			if s != tc.want {
+				t.Fatalf("expected: %v, got: %v", tc.want, s)
+			}
+		})
+	}
+}
 
 func TestValidPluginNames(t *testing.T) {
 	tests := map[string]struct {
