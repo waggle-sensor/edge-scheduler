@@ -13,47 +13,53 @@ func TestGeneratedName(t *testing.T) {
 	}{
 		{
 			spec: &Spec{
-				Name:       "testing",
+				Args:  []string{"1", "2", "3"},
+				Image: "waggle/cool-plugin:1.2.3",
+			},
+			want: "cool-plugin-1-2-3-1e463618",
+		},
+		{
+			spec: &Spec{
 				Args:       []string{"1", "2", "3"},
 				Privileged: true,
 				Image:      "waggle/cool-plugin:1.2.3",
 			},
-			want: "cool-plugin-1-2-3-b6b14d4c",
+			want: "cool-plugin-1-2-3-77274c42",
 		},
 		{
 			spec: &Spec{
-				Name:       "testing",
-				Args:       []string{"1", "2", "3"},
-				Privileged: false,
-				Image:      "waggle/cool-plugin:1.2.3",
-			},
-			want: "cool-plugin-1-2-3-e11b3468",
-		},
-		{
-			spec: &Spec{
-				Name:       "testing",
-				Args:       []string{"1", "2", "3"},
-				Privileged: false,
-				Image:      "waggle/cool-plugin:1.2.3",
+				Privileged: true,
+				Image:      "waggle/sensor-plugin:0.4.1",
 				Node:       "rpi-1",
+				Job:        "weather",
 			},
-			want: "cool-plugin-1-2-3-f67182a5",
+			want: "sensor-plugin-0-4-1-cb0c0269",
 		},
 		{
 			spec: &Spec{
-				Name:       "testing",
+				Args:       []string{"--debug"},
+				Privileged: true,
+				Image:      "waggle/sensor-plugin:0.4.1",
+				Node:       "nx-1",
+				Job:        "weather",
+			},
+			want: "sensor-plugin-0-4-1-05d08623",
+		},
+		{
+			spec: &Spec{
+				Name:       "custom-plugin-name",
 				Args:       []string{"1", "2", "3"},
 				Privileged: false,
 				Image:      "waggle/cool-plugin:1.2.3",
 				Node:       "nx-1",
 			},
-			want: "cool-plugin-1-2-3-2369ef48",
+			want: "custom-plugin-name",
 		},
 	}
 
 	for i, tc := range tests {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			s, err := generatePluginNameForSpec(tc.spec)
+			s, err := pluginNameForSpec(tc.spec)
 			if err != nil {
 				t.Fatalf("error: %s", err.Error())
 			}
