@@ -228,6 +228,11 @@ func createDeploymentForConfig(config *pluginConfig) *appsv1.Deployment {
 									MountPath: "/run/waggle/data-config.json",
 									SubPath:   "data-config.json",
 								},
+								{
+									Name:      "wes-audio-server-plugin-conf",
+									MountPath: "/etc/asound.conf",
+									SubPath:   "asound.conf",
+								},
 							},
 						},
 					},
@@ -247,6 +252,16 @@ func createDeploymentForConfig(config *pluginConfig) *appsv1.Deployment {
 								ConfigMap: &apiv1.ConfigMapVolumeSource{
 									LocalObjectReference: apiv1.LocalObjectReference{
 										Name: "waggle-data-config",
+									},
+								},
+							},
+						},
+						{
+							Name: "wes-audio-server-plugin-conf",
+							VolumeSource: apiv1.VolumeSource{
+								ConfigMap: &apiv1.ConfigMapVolumeSource{
+									LocalObjectReference: apiv1.LocalObjectReference{
+										Name: "wes-audio-server-plugin-conf",
 									},
 								},
 							},
