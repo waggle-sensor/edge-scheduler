@@ -26,7 +26,7 @@ import (
 type ResourceManager struct {
 	Namespace     string
 	ECRRegistry   *url.URL
-	ClientSet     *kubernetes.Clientset
+	Clientset     *kubernetes.Clientset
 	RMQManagement *RMQManagement
 }
 
@@ -39,7 +39,7 @@ func NewK3SResourceManager(namespace string, registry string, clientset *kuberne
 	rm = &ResourceManager{
 		Namespace:     namespace,
 		ECRRegistry:   registryAddress,
-		ClientSet:     clientset,
+		Clientset:     clientset,
 		RMQManagement: rmqManagement,
 	}
 	return
@@ -63,6 +63,75 @@ func (rm *ResourceManager) CreatePluginCredential(plugin *datatype.Plugin) (data
 		Password: generatePassword(),
 	}
 	return credential, nil
+}
+
+// CreateNamespace creates a Kubernetes namespace
+//
+// If the namespace exists, it does nothing
+func (rm *ResourceManager) CreateNamespace(namespace string) error {
+	existingNamespace, err := rm.Clientset.CoreV1().Namespaces().Get(context.TODO(), namespace, metav1.GetOptions{})
+	if err != nil {
+		logger.Debug.Printf("Failed to get %s from cluster: %s", namespace, err.Error())
+		return err
+	}
+	if existingNamespace != nil {
+		logger.Debug.Printf("The namespace %s already exists.", namespace)
+		return nil
+	}
+	objNamespace := &apiv1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: namespace,
+		},
+	}
+	_, err = rm.Clientset.CoreV1().Namespaces().Create(
+		context.TODO(),
+		objNamespace,
+		metav1.CreateOptions{},
+	)
+	return err
+}
+
+// ForwardService forwards a service from one namespace to other namespace for given ports
+//
+// This is useful when pods in the other namespace need to access to the service
+func (rm *ResourceManager) ForwardService(serviceName string, fromNamespace string, toNamespace string, ports []int32) error {
+	logger.Debug.Printf("Forwarding service %s from %s namespace to %s namespace", serviceName, fromNamespace, toNamespace)
+	existingService, err := rm.Clientset.CoreV1().Services(fromNamespace).Get(context.TODO(), serviceName, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	if existingService != nil {
+		logger.Debug.Printf("The service %s does not exist in %s namespace ", serviceName, fromNamespace)
+		return fmt.Errorf("Cannot forward service %s because it does not exist in %s namespace", serviceName, fromNamespace)
+	}
+	existingService, err = rm.Clientset.CoreV1().Services(toNamespace).Get(context.TODO(), serviceName, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	if existingService != nil {
+		logger.Debug.Printf("The service %s already exists in %s.", toNamespace, serviceName)
+		return nil
+	}
+	objPorts := []apiv1.ServicePort{}
+	for _, p := range ports {
+		objPort := apiv1.ServicePort{
+			Port: p,
+		}
+		objPorts = append(objPorts, objPort)
+	}
+	objService := &apiv1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      serviceName,
+			Namespace: toNamespace,
+		},
+		Spec: apiv1.ServiceSpec{
+			Type:         apiv1.ServiceTypeExternalName,
+			ExternalName: fmt.Sprintf("%s.%s.svc.cluster.local", serviceName, fromNamespace),
+			Ports:        objPorts,
+		},
+	}
+	_, err = rm.Clientset.CoreV1().Services(toNamespace).Create(context.TODO(), objService, metav1.CreateOptions{})
+	return err
 }
 
 // CreateK3SDeployment creates and returns a K3S deployment object of the plugin
@@ -206,7 +275,7 @@ func (rm *ResourceManager) CreateK3SDeployment(plugin *datatype.Plugin, credenti
 // CreateDataConfigMap creates a K3S configmap object
 func (rm *ResourceManager) CreateDataConfigMap(configName string, datashims []*datatype.DataShim) error {
 	// Check if the configmap already exists
-	configMaps, err := rm.ClientSet.CoreV1().ConfigMaps(rm.Namespace).List(context.TODO(), metav1.ListOptions{})
+	configMaps, err := rm.Clientset.CoreV1().ConfigMaps(rm.Namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -227,13 +296,13 @@ func (rm *ResourceManager) CreateDataConfigMap(configName string, datashims []*d
 	config.Name = configName
 	config.Data = make(map[string]string)
 	config.Data["data-config.json"] = string(data)
-	_, err = rm.ClientSet.CoreV1().ConfigMaps(rm.Namespace).Create(context.TODO(), &config, metav1.CreateOptions{})
+	_, err = rm.Clientset.CoreV1().ConfigMaps(rm.Namespace).Create(context.TODO(), &config, metav1.CreateOptions{})
 	return err
 }
 
 // LaunchPlugin launches a k3s deployment in the cluster
 func (rm *ResourceManager) LaunchPlugin(deployment *appsv1.Deployment) error {
-	deploymentsClient := rm.ClientSet.AppsV1().Deployments(rm.Namespace)
+	deploymentsClient := rm.Clientset.AppsV1().Deployments(rm.Namespace)
 
 	result, err := deploymentsClient.Create(context.TODO(), deployment, metav1.CreateOptions{})
 	if err != nil {
@@ -247,7 +316,7 @@ func (rm *ResourceManager) LaunchPlugin(deployment *appsv1.Deployment) error {
 func (rm *ResourceManager) TerminatePlugin(pluginName string) error {
 	pluginNameInLowcase := strings.ToLower(pluginName)
 
-	deploymentsClient := rm.ClientSet.AppsV1().Deployments(rm.Namespace)
+	deploymentsClient := rm.Clientset.AppsV1().Deployments(rm.Namespace)
 	list, err := deploymentsClient.List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
