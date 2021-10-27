@@ -2,7 +2,6 @@ package runplugin
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -11,6 +10,7 @@ import (
 	"path"
 	"regexp"
 	"strings"
+	"time"
 
 	rabbithole "github.com/michaelklishin/rabbit-hole"
 	appsv1 "k8s.io/api/apps/v1"
@@ -95,15 +95,8 @@ func (sch *Scheduler) RunPlugin(spec *Spec) error {
 		Name:    pluginName,
 		Version: parts[1],
 		// NOTE(sean) username will be validated by wes-data-sharing-service. see: https://github.com/waggle-sensor/wes-data-sharing-service/blob/0e5a44b1ce6e6109a660b2922f56523099054750/main.py#L34
-		Username: "plugin." + pluginName,
-		Password: generatePassword(),
-	}
-
-	log.Printf("setting up plugin %q", spec.Image)
-
-	log.Printf("updating rabbitmq plugin user %q for %q", config.Username, spec.Image)
-	if err := updateRabbitmqUser(sch.RabbitMQClient, config); err != nil {
-		return err
+		Username: "plugin",
+		Password: "plugin",
 	}
 
 	log.Printf("updating kubernetes deployment for %q", spec.Image)
@@ -273,40 +266,20 @@ func createDeploymentForConfig(config *pluginConfig) *appsv1.Deployment {
 	}
 }
 
-func generatePassword() string {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		// this should generally not fail. if it does, then we'll give up until the bigger error is resolved.
-		panic(err)
-	}
-	return hex.EncodeToString(b)
-}
-
 func updateKubernetesDeployment(clientset *kubernetes.Clientset, config *pluginConfig) error {
 	deployment := createDeploymentForConfig(config)
-	// ensure existing deployments are deleted
-	clientset.AppsV1().Deployments("default").Delete(context.TODO(), deployment.ObjectMeta.Name, metav1.DeleteOptions{})
-	// create new deployment
-	if _, err := clientset.AppsV1().Deployments("default").Create(context.TODO(), deployment, metav1.CreateOptions{}); err != nil {
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	deployments := clientset.AppsV1().Deployments("default")
+
+	// if deployment exists, then update it, else create it
+	if _, err := deployments.Get(ctx, deployment.Name, metav1.GetOptions{}); err == nil {
+		_, err := deployments.Update(ctx, deployment, metav1.UpdateOptions{})
+		return err
+	} else {
+		_, err := deployments.Create(ctx, deployment, metav1.CreateOptions{})
 		return err
 	}
-	return nil
-}
-
-func updateRabbitmqUser(rmqclient *rabbithole.Client, config *pluginConfig) error {
-	if _, err := rmqclient.PutUser(config.Username, rabbithole.UserSettings{
-		Password: config.Password,
-	}); err != nil {
-		return err
-	}
-
-	if _, err := rmqclient.UpdatePermissionsIn("/", config.Username, rabbithole.Permissions{
-		Configure: "^amq.gen",
-		Read:      ".*",
-		Write:     ".*",
-	}); err != nil {
-		return err
-	}
-
-	return nil
 }
