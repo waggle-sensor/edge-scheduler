@@ -25,12 +25,13 @@ type Scheduler struct {
 }
 
 type Spec struct {
-	Image      string   `json:"image"`
-	Args       []string `json:"args"`
-	Privileged bool     `json:"privileged"`
-	Node       string   `json:"node"`
-	Job        string   `json:"job"`
-	Name       string   `json:"name"`
+	Image      string            `json:"image"`
+	Args       []string          `json:"args"`
+	Privileged bool              `json:"privileged"`
+	Node       string            `json:"node"`
+	Job        string            `json:"job"`
+	Name       string            `json:"name"`
+	Selector   map[string]string `json:"selector"`
 }
 
 var validNamePattern = regexp.MustCompile("^[a-z0-9-]+$")
@@ -134,6 +135,9 @@ func nodeSelectorForConfig(config *pluginConfig) map[string]string {
 	if config.Node != "" {
 		vals["k3s.io/hostname"] = config.Node
 	}
+	for k, v := range config.Selector {
+		vals[k] = v
+	}
 	return vals
 }
 
@@ -194,15 +198,6 @@ func createDeploymentForConfig(config *pluginConfig) *appsv1.Deployment {
 									ValueFrom: &apiv1.EnvVarSource{
 										FieldRef: &apiv1.ObjectFieldSelector{
 											FieldPath: "metadata.uid",
-										},
-									},
-								},
-							},
-							EnvFrom: []apiv1.EnvFromSource{
-								{
-									ConfigMapRef: &apiv1.ConfigMapEnvSource{
-										LocalObjectReference: apiv1.LocalObjectReference{
-											Name: "waggle-config",
 										},
 									},
 								},
