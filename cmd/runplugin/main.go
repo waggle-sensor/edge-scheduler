@@ -47,6 +47,7 @@ func main() {
 		job                        string
 		name                       string
 		node                       string
+		selectorStr                string
 		kubeconfig                 string
 		rabbitmqManagementURI      string
 		rabbitmqManagementUsername string
@@ -57,6 +58,7 @@ func main() {
 	flag.StringVar(&job, "job", "sage", "specify plugin job")
 	flag.StringVar(&name, "name", "", "specify plugin name")
 	flag.StringVar(&node, "node", "", "run plugin on node")
+	flag.StringVar(&selectorStr, "selector", "", "selector specifying where plugin can run")
 	flag.StringVar(&kubeconfig, "kubeconfig", getenv("KUBECONFIG", detectDefaultKubeconfig()), "path to the kubeconfig file")
 	flag.StringVar(&rabbitmqManagementURI, "rabbitmq-management-uri", getenv("RABBITMQ_MANAGEMENT_URI", detectDefaultRabbitmqURI()), "rabbitmq management uri")
 	flag.StringVar(&rabbitmqManagementUsername, "rabbitmq-management-username", getenv("RABBITMQ_MANAGEMENT_USERNAME", "admin"), "rabbitmq management username")
@@ -91,6 +93,11 @@ func main() {
 
 	args := flag.Args()
 
+	selector, err := parseSelector(selectorStr)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	spec := &runplugin.Spec{
 		Privileged: privileged,
 		Node:       node,
@@ -98,6 +105,7 @@ func main() {
 		Args:       args[1:],
 		Job:        job,
 		Name:       name,
+		Selector:   selector,
 	}
 
 	if err := sch.RunPlugin(spec); err != nil {

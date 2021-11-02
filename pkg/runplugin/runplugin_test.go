@@ -16,7 +16,7 @@ func TestGeneratedName(t *testing.T) {
 				Args:  []string{"1", "2", "3"},
 				Image: "waggle/cool-plugin:1.2.3",
 			},
-			want: "cool-plugin-1-2-3-1e463618",
+			want: "cool-plugin-1-2-3-b278f866",
 		},
 		{
 			spec: &Spec{
@@ -24,7 +24,7 @@ func TestGeneratedName(t *testing.T) {
 				Privileged: true,
 				Image:      "waggle/cool-plugin:1.2.3",
 			},
-			want: "cool-plugin-1-2-3-77274c42",
+			want: "cool-plugin-1-2-3-8cca22b6",
 		},
 		{
 			spec: &Spec{
@@ -33,7 +33,7 @@ func TestGeneratedName(t *testing.T) {
 				Node:       "rpi-1",
 				Job:        "weather",
 			},
-			want: "sensor-plugin-0-4-1-cb0c0269",
+			want: "sensor-plugin-0-4-1-1be34680",
 		},
 		{
 			spec: &Spec{
@@ -43,7 +43,7 @@ func TestGeneratedName(t *testing.T) {
 				Node:       "nx-1",
 				Job:        "weather",
 			},
-			want: "sensor-plugin-0-4-1-05d08623",
+			want: "sensor-plugin-0-4-1-171430bb",
 		},
 		{
 			spec: &Spec{
