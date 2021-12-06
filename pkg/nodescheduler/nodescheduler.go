@@ -15,6 +15,8 @@ type NodeScheduler struct {
 	ResourceManager             *ResourceManager
 	Knowledgebase               *knowledgebase.Knowledgebase
 	GoalManager                 *NodeGoalManager
+	APIServer                   *APIServer
+	Simulate                    bool
 	chanContextEventToScheduler chan datatype.EventPluginContext
 	chanFromGoalManager         chan *datatype.ScienceGoal
 	chanRunGoal                 chan *datatype.ScienceGoal
@@ -22,11 +24,13 @@ type NodeScheduler struct {
 	chanPluginToK3SClient       chan *datatype.Plugin
 }
 
-func NewNodeScheduler(rm *ResourceManager, kb *knowledgebase.Knowledgebase, gm *NodeGoalManager) (*NodeScheduler, error) {
+func NewNodeScheduler(rm *ResourceManager, kb *knowledgebase.Knowledgebase, gm *NodeGoalManager, api *APIServer, simulate bool) (*NodeScheduler, error) {
 	return &NodeScheduler{
 		ResourceManager:             rm,
 		Knowledgebase:               kb,
 		GoalManager:                 gm,
+		APIServer:                   api,
+		Simulate:                    simulate,
 		chanContextEventToScheduler: make(chan datatype.EventPluginContext, maxChannelBuffer),
 		chanFromGoalManager:         make(chan *datatype.ScienceGoal, maxChannelBuffer),
 		chanRunGoal:                 make(chan *datatype.ScienceGoal, maxChannelBuffer),
@@ -35,11 +39,35 @@ func NewNodeScheduler(rm *ResourceManager, kb *knowledgebase.Knowledgebase, gm *
 	}, nil
 }
 
+// Configure sets up the followings in Kubernetes cluster
+//
+// - "ses" namespace
+//
+// - "wes-rabbitmq" and "wes-audio-server" services available in "ses" namespace
+func (ns *NodeScheduler) Configure() (err error) {
+	if ns.Simulate {
+		return
+	}
+	err = ns.ResourceManager.CreateNamespace("ses")
+	if err != nil {
+		return
+	}
+	servicesToBringUp := []string{"wes-rabbitmq", "wes-audio-server"}
+	for _, service := range servicesToBringUp {
+		err = ns.ResourceManager.ForwardService(service, "default", "ses")
+		if err != nil {
+			return
+		}
+	}
+	return
+}
+
 // Run handles communications between components for scheduling
 func (ns *NodeScheduler) Run() {
 	go ns.GoalManager.Run(ns.chanFromGoalManager)
 	go ns.Knowledgebase.Run(ns.chanContextEventToScheduler)
 	go ns.ResourceManager.Run(ns.chanPluginToK3SClient)
+	go ns.APIServer.Run()
 
 	for {
 		select {

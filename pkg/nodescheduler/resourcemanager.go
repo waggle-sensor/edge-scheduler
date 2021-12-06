@@ -16,10 +16,15 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+)
+
+const (
+	namespace = "ses"
 )
 
 // ResourceManager structs a resource manager talking to a local computing cluster to schedule plugins
@@ -28,21 +33,35 @@ type ResourceManager struct {
 	ECRRegistry   *url.URL
 	Clientset     *kubernetes.Clientset
 	RMQManagement *RMQManagement
+	Simulate      bool
 }
 
 // NewResourceManager returns an instance of ResourceManager
-func NewK3SResourceManager(namespace string, registry string, clientset *kubernetes.Clientset, rmqManagement *RMQManagement) (rm *ResourceManager, err error) {
+func NewK3SResourceManager(registry string, incluster bool, kubeconfig string, rmqManagement *RMQManagement, simulate bool) (rm *ResourceManager, err error) {
+	if simulate {
+		return &ResourceManager{
+			Namespace:     namespace,
+			ECRRegistry:   nil,
+			Clientset:     nil,
+			RMQManagement: rmqManagement,
+			Simulate:      simulate,
+		}, nil
+	}
 	registryAddress, err := url.Parse(registry)
 	if err != nil {
 		return
 	}
-	rm = &ResourceManager{
+	k3sClient, err := GetK3SClient(incluster, kubeconfig)
+	if err != nil {
+		return
+	}
+	return &ResourceManager{
 		Namespace:     namespace,
 		ECRRegistry:   registryAddress,
-		Clientset:     clientset,
+		Clientset:     k3sClient,
 		RMQManagement: rmqManagement,
-	}
-	return
+		Simulate:      simulate,
+	}, nil
 }
 
 func generatePassword() string {
@@ -69,12 +88,16 @@ func (rm *ResourceManager) CreatePluginCredential(plugin *datatype.Plugin) (data
 //
 // If the namespace exists, it does nothing
 func (rm *ResourceManager) CreateNamespace(namespace string) error {
-	existingNamespace, err := rm.Clientset.CoreV1().Namespaces().Get(context.TODO(), namespace, metav1.GetOptions{})
+	logger.Debug.Printf("Creating namespace %s", namespace)
+	_, err := rm.Clientset.CoreV1().Namespaces().Get(context.TODO(), namespace, metav1.GetOptions{})
 	if err != nil {
-		logger.Debug.Printf("Failed to get %s from cluster: %s", namespace, err.Error())
-		return err
-	}
-	if existingNamespace != nil {
+		if errors.IsNotFound(err) {
+			logger.Debug.Printf("The namespace %s does not exist. Will create...", namespace)
+		} else {
+			logger.Debug.Printf("Failed to get %s from cluster: %s", namespace, err.Error())
+			return err
+		}
+	} else {
 		logger.Debug.Printf("The namespace %s already exists.", namespace)
 		return nil
 	}
@@ -94,30 +117,16 @@ func (rm *ResourceManager) CreateNamespace(namespace string) error {
 // ForwardService forwards a service from one namespace to other namespace for given ports
 //
 // This is useful when pods in the other namespace need to access to the service
-func (rm *ResourceManager) ForwardService(serviceName string, fromNamespace string, toNamespace string, ports []int32) error {
+func (rm *ResourceManager) ForwardService(serviceName string, fromNamespace string, toNamespace string) error {
 	logger.Debug.Printf("Forwarding service %s from %s namespace to %s namespace", serviceName, fromNamespace, toNamespace)
-	existingService, err := rm.Clientset.CoreV1().Services(fromNamespace).Get(context.TODO(), serviceName, metav1.GetOptions{})
+	existingServiceInFromNamespace, err := rm.Clientset.CoreV1().Services(fromNamespace).Get(context.TODO(), serviceName, metav1.GetOptions{})
 	if err != nil {
-		return err
-	}
-	if existingService != nil {
-		logger.Debug.Printf("The service %s does not exist in %s namespace ", serviceName, fromNamespace)
-		return fmt.Errorf("Cannot forward service %s because it does not exist in %s namespace", serviceName, fromNamespace)
-	}
-	existingService, err = rm.Clientset.CoreV1().Services(toNamespace).Get(context.TODO(), serviceName, metav1.GetOptions{})
-	if err != nil {
-		return err
-	}
-	if existingService != nil {
-		logger.Debug.Printf("The service %s already exists in %s.", toNamespace, serviceName)
-		return nil
-	}
-	objPorts := []apiv1.ServicePort{}
-	for _, p := range ports {
-		objPort := apiv1.ServicePort{
-			Port: p,
+		if errors.IsNotFound(err) {
+			logger.Debug.Printf("The service %s does not exist in %s namespace ", serviceName, fromNamespace)
+			return err
 		}
-		objPorts = append(objPorts, objPort)
+		logger.Debug.Printf("Failed to get %s from namespace %s: %s", serviceName, fromNamespace, err.Error())
+		return err
 	}
 	objService := &apiv1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -127,10 +136,21 @@ func (rm *ResourceManager) ForwardService(serviceName string, fromNamespace stri
 		Spec: apiv1.ServiceSpec{
 			Type:         apiv1.ServiceTypeExternalName,
 			ExternalName: fmt.Sprintf("%s.%s.svc.cluster.local", serviceName, fromNamespace),
-			Ports:        objPorts,
+			Ports:        existingServiceInFromNamespace.Spec.Ports,
 		},
 	}
-	_, err = rm.Clientset.CoreV1().Services(toNamespace).Create(context.TODO(), objService, metav1.CreateOptions{})
+	existingServiceInToNamespace, err := rm.Clientset.CoreV1().Services(toNamespace).Get(context.TODO(), serviceName, metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			logger.Debug.Printf("The service %s does not exist in the namespace %s. Will create...", serviceName, toNamespace)
+			_, err = rm.Clientset.CoreV1().Services(toNamespace).Create(context.TODO(), objService, metav1.CreateOptions{})
+			return err
+		}
+		logger.Debug.Printf("Failed to get %s from namespace %s: %s", serviceName, toNamespace, err.Error())
+		return err
+	}
+	objService.ObjectMeta.ResourceVersion = existingServiceInToNamespace.ObjectMeta.ResourceVersion
+	_, err = rm.Clientset.CoreV1().Services(toNamespace).Update(context.TODO(), objService, metav1.UpdateOptions{})
 	return err
 }
 
@@ -351,12 +371,12 @@ func (rm *ResourceManager) Run(chanPluginToUpdate <-chan *datatype.Plugin) {
 		if plugin.Status.SchedulingStatus == datatype.Running {
 			credential, err := rm.CreatePluginCredential(plugin)
 			if err != nil {
-				logger.Error.Printf("Could not create a plugin credential for %s on RabbitMQ at %s: %s", plugin.Name, rm.RMQManagement.client.Endpoint, err.Error())
+				logger.Error.Printf("Could not create a plugin credential for %s on RabbitMQ at %s: %s", plugin.Name, rm.RMQManagement.Client.Endpoint, err.Error())
 				continue
 			}
 			err = rm.RMQManagement.RegisterPluginCredential(credential)
 			if err != nil {
-				logger.Error.Printf("Could not register the credential %s to RabbitMQ at %s: %s", credential.Username, rm.RMQManagement.client.Endpoint, err.Error())
+				logger.Error.Printf("Could not register the credential %s to RabbitMQ at %s: %s", credential.Username, rm.RMQManagement.Client.Endpoint, err.Error())
 				continue
 			}
 			deployablePlugin, err := rm.CreateK3SDeployment(plugin, credential)
@@ -379,43 +399,54 @@ func (rm *ResourceManager) Run(chanPluginToUpdate <-chan *datatype.Plugin) {
 
 // RMQManagement structs a connection to RMQManagement
 type RMQManagement struct {
-	rabbitmqManagementURI      string
-	rabbitmqManagementUsername string
-	rabbitmqManagementPassword string
-	client                     *rabbithole.Client
+	RabbitmqManagementURI      string
+	RabbitmqManagementUsername string
+	RabbitmqManagementPassword string
+	Client                     *rabbithole.Client
+	Simulate                   bool
 }
 
 // NewRMQManagement creates and returns an instance of connection to RMQManagement
-func NewRMQManagement(rmqManagementURI string, rmqManagementUsername string, rmqManagementPassword string) (*RMQManagement, error) {
+func NewRMQManagement(rmqManagementURI string, rmqManagementUsername string, rmqManagementPassword string, simulate bool) (*RMQManagement, error) {
+	if simulate {
+		return &RMQManagement{
+			RabbitmqManagementURI:      rmqManagementURI,
+			RabbitmqManagementUsername: rmqManagementUsername,
+			RabbitmqManagementPassword: rmqManagementPassword,
+			Client:                     nil,
+			Simulate:                   simulate,
+		}, nil
+	}
 	c, err := rabbithole.NewClient(rmqManagementURI, rmqManagementUsername, rmqManagementPassword)
 	if err != nil {
 		return nil, err
 	}
 	return &RMQManagement{
-		rabbitmqManagementURI:      rmqManagementURI,
-		rabbitmqManagementUsername: rmqManagementUsername,
-		rabbitmqManagementPassword: rmqManagementPassword,
-		client:                     c,
+		RabbitmqManagementURI:      rmqManagementURI,
+		RabbitmqManagementUsername: rmqManagementUsername,
+		RabbitmqManagementPassword: rmqManagementPassword,
+		Client:                     c,
+		Simulate:                   simulate,
 	}, nil
 }
 
 // RegisterPluginCredential registers given plugin credential to designated RMQ server
 func (rmq *RMQManagement) RegisterPluginCredential(credential datatype.PluginCredential) error {
 	// The functions below come from Sean's RunPlugin
-	if _, err := rmq.client.PutUser(credential.Username, rabbithole.UserSettings{
+	if _, err := rmq.Client.PutUser(credential.Username, rabbithole.UserSettings{
 		Password: credential.Password,
 	}); err != nil {
 		return err
 	}
 
-	if _, err := rmq.client.UpdatePermissionsIn("/", credential.Username, rabbithole.Permissions{
+	if _, err := rmq.Client.UpdatePermissionsIn("/", credential.Username, rabbithole.Permissions{
 		Configure: "^amq.gen",
 		Read:      ".*",
 		Write:     ".*",
 	}); err != nil {
 		return err
 	}
-	logger.Debug.Printf("Plugin credential %s:%s is registered in RabbitMQ at %s", credential.Username, credential.Password, rmq.rabbitmqManagementURI)
+	logger.Debug.Printf("Plugin credential %s:%s is registered in RabbitMQ at %s", credential.Username, credential.Password, rmq.RabbitmqManagementURI)
 	return nil
 }
 

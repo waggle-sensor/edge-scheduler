@@ -4,9 +4,11 @@ import (
 	"flag"
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/sagecontinuum/ses/pkg/nodescheduler"
 	"github.com/sagecontinuum/ses/pkg/simplescheduler"
+	"k8s.io/client-go/util/homedir"
 )
 
 func getenv(key string, def string) string {
@@ -16,19 +18,22 @@ func getenv(key string, def string) string {
 	return def
 }
 
+func detectDefaultKubeconfig() string {
+	if home := homedir.HomeDir(); home != "" {
+		return filepath.Join(home, ".kube", "config")
+	}
+	return ""
+}
+
 func main() {
 	var (
-		registry                   string
-		rabbitmqManagementURI      string
-		rabbitmqManagementUsername string
-		rabbitmqManagementPassword string
+		kubeconfig string
+		registry   string
 	)
-	flag.StringVar(&registry, "registry", "waggle/", "Path to ECR registry")
-	flag.StringVar(&rabbitmqManagementURI, "rabbitmq-management-uri", getenv("RABBITMQ_MANAGEMENT_URI", "http://wes-rabbitmq:15672"), "rabbitmq management uri")
-	flag.StringVar(&rabbitmqManagementUsername, "rabbitmq-management-username", getenv("RABBITMQ_MANAGEMENT_USERNAME", "admin"), "rabbitmq management username")
-	flag.StringVar(&rabbitmqManagementPassword, "rabbitmq-management-password", getenv("RABBITMQ_MANAGEMENT_PASSWORD", "admin"), "rabbitmq management password")
+	flag.StringVar(&kubeconfig, "kubeconfig", getenv("KUBECONFIG", detectDefaultKubeconfig()), "path to the kubeconfig file")
+	flag.StringVar(&registry, "registry", "", "Path to ECR registry")
 	// Assume this to be running inside a Kubernetes cluster
-	k3sClient, err := nodescheduler.GetK3SClient(false, "/Users/yongho.kim/tmp/maingate_kubeconfig")
+	k3sClient, err := nodescheduler.GetK3SClient(false, kubeconfig)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -44,9 +49,9 @@ func main() {
 	}
 
 	scheduler := simplescheduler.NewSimpleScheduler(rm)
-	err = scheduler.Configure()
-	if err != nil {
-		log.Fatal(err)
-	}
+	// err = scheduler.Configure()
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
 	scheduler.Run()
 }

@@ -19,16 +19,18 @@ type NodeGoalManager struct {
 	scienceGoals             map[string]*datatype.ScienceGoal
 	cloudSchedulerBaseURL    string
 	NodeID                   string
+	Simulate                 bool
 	chanNewGoalToGoalManager chan *datatype.ScienceGoal
 	rmqHandler               *interfacing.RabbitMQHandler
 }
 
 // NewGoalManager creates and returns an instance of goal manager
-func NewNodeGoalManager(cloudSchedulerURL string, nodeID string) (*NodeGoalManager, error) {
+func NewNodeGoalManager(cloudSchedulerURL string, nodeID string, simulate bool) (*NodeGoalManager, error) {
 	return &NodeGoalManager{
 		scienceGoals:             make(map[string]*datatype.ScienceGoal),
 		cloudSchedulerBaseURL:    cloudSchedulerURL,
 		NodeID:                   nodeID,
+		Simulate:                 simulate,
 		chanNewGoalToGoalManager: make(chan *datatype.ScienceGoal, 100),
 	}, nil
 }
@@ -56,8 +58,9 @@ func (ngm *NodeGoalManager) Run(chanToScheduler chan *datatype.ScienceGoal) {
 	} else {
 		useRabbitMQ = false
 	}
-	go ngm.pullingGoalsFromCloudScheduler(useRabbitMQ)
-
+	if !ngm.Simulate {
+		go ngm.pullingGoalsFromCloudScheduler(useRabbitMQ)
+	}
 	for {
 		select {
 		case scienceGoal := <-ngm.chanNewGoalToGoalManager:

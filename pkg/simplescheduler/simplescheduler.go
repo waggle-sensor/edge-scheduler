@@ -1,6 +1,7 @@
 package simplescheduler
 
 import (
+	"github.com/sagecontinuum/ses/pkg/logger"
 	"github.com/sagecontinuum/ses/pkg/nodescheduler"
 )
 
@@ -28,7 +29,7 @@ func (ss *SimpleScheduler) Configure() error {
 	if err != nil {
 		return err
 	}
-	err = ss.ResourceManager.ForwardService("wes-rabbitmq", "default", "ses", []int32{5672})
+	err = ss.ResourceManager.ForwardService("wes-rabbitmq", "default", "ses")
 	if err != nil {
 		return err
 	}
@@ -41,5 +42,7 @@ func (ss *SimpleScheduler) BringUpServices() {
 }
 
 func (ss *SimpleScheduler) Run() {
+	logger.Info.Println("Simple scheduler starts")
 
+	logger.Info.Println("Simple scheduler exits")
 }
