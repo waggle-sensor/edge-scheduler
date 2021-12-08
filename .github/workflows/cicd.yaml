@@ -25,5 +25,7 @@ jobs:
           files: |
             runplugin-amd64
             runplugin-arm64
+            pluginctl-amd64
+            pluginctl-arm64
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
