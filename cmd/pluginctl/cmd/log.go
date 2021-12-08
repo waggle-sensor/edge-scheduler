@@ -1,11 +1,12 @@
 package cmd
 
 import (
-	"fmt"
-	"io"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/sagecontinuum/ses/pkg/logger"
-	"github.com/sagecontinuum/ses/pkg/nodescheduler"
+	"github.com/sagecontinuum/ses/pkg/pluginctl"
 	"github.com/spf13/cobra"
 )
 
@@ -24,29 +25,53 @@ var cmdLog = &cobra.Command{
 		name = args[0]
 		logger.Debug.Printf("args: %v", args)
 
-		resourceManager, err := nodescheduler.NewK3SResourceManager("", false, kubeconfig, nil, false)
+		pluginCtl, err := pluginctl.NewPluginCtl(kubeconfig)
 		if err != nil {
-			fmt.Printf("ERROR: %s", err.Error())
+			logger.Error.Println(err.Error())
 		}
-		resourceManager.Namespace = "default"
-		podLog, err := resourceManager.GetPodLog(name, true)
+		printLogFunc, terminateLog, err := pluginCtl.PrintLog(name, followLog)
 		if err != nil {
-			fmt.Printf("ERROR: %s", err.Error())
+			logger.Error.Println(err.Error())
 		} else {
-			defer podLog.Close()
-			buf := make([]byte, 2000)
+			c := make(chan os.Signal, 1)
+			signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+			go printLogFunc()
 			for {
-				numBytes, err := podLog.Read(buf)
-				if numBytes == 0 {
-					break
+				select {
+				case <-c:
+					logger.Debug.Println("Log terminated from user")
+					return
+				case <-terminateLog:
+					logger.Debug.Println("Log terminated from handler")
+					return
 				}
-				if err == io.EOF {
-					break
-				} else if err != nil {
-					// return err
-				}
-				fmt.Println(string(buf[:numBytes]))
 			}
 		}
+
+		// podLog, err := pluginctl.Log(name, followLog)
+		// if err != nil {
+		// 	logger.Error.Println("%s", err.Error())
+		// } else {
+		// 	c := make(chan os.Signal, 1)
+		// 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+		// 	go func() {
+		// 		buf := make([]byte, 2000)
+		// 		for {
+		// 			numBytes, err := podLog.Read(buf)
+		// 			if numBytes == 0 {
+		// 				break
+		// 			}
+		// 			if err == io.EOF {
+		// 				break
+		// 			} else if err != nil {
+		// 				// return err
+		// 			}
+		// 			fmt.Println(string(buf[:numBytes]))
+		// 		}
+		// 		c <- nil
+		// 	}()
+		// 	<-c
+		// 	podLog.Close()
+		// }
 	},
 }

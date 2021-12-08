@@ -10,17 +10,17 @@ import (
 )
 
 func init() {
-	cmdDeploy.Flags().StringVarP(&name, "name", "n", "", "Specify plugin name")
-	cmdDeploy.Flags().StringVar(&node, "node", "", "run plugin on node")
-	cmdDeploy.Flags().StringVarP(&job, "job", "j", "sage", "Specify job name")
-	cmdDeploy.Flags().StringVar(&selectorStr, "selector", "", "Specify where plugin can run")
-	cmdDeploy.Flags().BoolVarP(&privileged, "privileged", "p", false, "Deploy as privileged plugin")
-	rootCmd.AddCommand(cmdDeploy)
+	cmdRun.Flags().StringVarP(&name, "name", "n", "", "Specify plugin name")
+	cmdRun.Flags().StringVar(&node, "node", "", "run plugin on node")
+	cmdRun.Flags().StringVarP(&job, "job", "j", "sage", "Specify job name")
+	cmdRun.Flags().StringVar(&selectorStr, "selector", "", "Specify where plugin can run")
+	cmdRun.Flags().BoolVarP(&privileged, "privileged", "p", false, "Deploy as privileged plugin")
+	rootCmd.AddCommand(cmdRun)
 }
 
-var cmdDeploy = &cobra.Command{
-	Use:              "deploy [FLAGS] PLUGIN_IMAGE [-- PLUGIN ARGUMENTS]",
-	Short:            "Deploy a plugin",
+var cmdRun = &cobra.Command{
+	Use:              "run [FLAGS] PLUGIN_IMAGE [-- PLUGIN ARGUMENTS]",
+	Short:            "Run a plugin",
 	TraverseChildren: true,
 	Args:             cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
@@ -49,9 +49,6 @@ var cmdDeploy = &cobra.Command{
 		if err = pluginCtl.Deploy(spec); err != nil {
 			logger.Error.Println(err.Error())
 		}
-
 		fmt.Printf("Launched the plugin %s successfully\n", name)
-		fmt.Printf("You may check the log: pluginctl log %s\n", name)
-		fmt.Printf("To terminate the job: pluginctl rm %s\n", name)
 	},
 }

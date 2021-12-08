@@ -334,6 +334,13 @@ func (rm *ResourceManager) LaunchPlugin(deployment *appsv1.Deployment) error {
 	return err
 }
 
+func (rm *ResourceManager) ListPlugin() (*appsv1.DeploymentList, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Second)
+	defer cancel()
+	list, err := rm.Clientset.AppsV1().Deployments(rm.Namespace).List(ctx, metav1.ListOptions{})
+	return list, err
+}
+
 // TerminatePlugin terminates the k3s deployment of given plugin name
 func (rm *ResourceManager) TerminatePlugin(pluginName string) error {
 	pluginNameInLowcase := strings.ToLower(pluginName)

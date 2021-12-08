@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/sagecontinuum/ses/pkg/logger"
-	"github.com/sagecontinuum/ses/pkg/nodescheduler"
+	"github.com/sagecontinuum/ses/pkg/pluginctl"
 	"github.com/spf13/cobra"
 )
 
@@ -22,15 +22,15 @@ var cmdRm = &cobra.Command{
 		logger.Debug.Printf("kubeconfig: %s", kubeconfig)
 		name = args[0]
 		logger.Debug.Printf("args: %v", args)
-
-		resourceManager, err := nodescheduler.NewK3SResourceManager("", false, kubeconfig, nil, false)
+		pluginCtl, err := pluginctl.NewPluginCtl(kubeconfig)
 		if err != nil {
-			fmt.Printf("ERROR: %s", err.Error())
+			logger.Error.Println(err.Error())
 		}
-		resourceManager.Namespace = "default"
-		err = resourceManager.TerminatePlugin(name)
+		err = pluginCtl.Terminate(name)
 		if err != nil {
-			fmt.Printf("ERROR: %s", err.Error())
+			logger.Error.Printf("%s", err.Error())
+		} else {
+			fmt.Printf("Terminated the plugin %s successfully\n", name)
 		}
 	},
 }
