@@ -1,15 +1,12 @@
 package knowledgebase
 
 import (
-	"encoding/json"
 	"os"
 	"os/exec"
-	"strings"
 	"time"
 
 	"github.com/sagecontinuum/ses/pkg/datatype"
 	"github.com/sagecontinuum/ses/pkg/logger"
-	"github.com/zeromq/goczmq"
 )
 
 const (
@@ -48,33 +45,33 @@ func (kb *Knowledgebase) Run(chanContextEventToScheduler chan<- datatype.EventPl
 
 	for {
 		chanExit := make(chan error)
-		go func() {
-			logger.Info.Printf("Starting event listener...")
-			socket, err := goczmq.NewPair("ipc:///tmp/event.sock")
-			// socket = socket.Connect("ipc:///tmp/event.sock")
-			if err != nil {
-				chanExit <- err
-				return
-			}
-			defer socket.Destroy()
-			for {
-				byteMessage, _, err := socket.RecvFrame()
-				if err != nil {
-					chanExit <- err
-					return
-				}
-				var event datatype.EventPluginContext
-				err = json.Unmarshal(byteMessage, &event)
-				if err != nil {
-					logger.Error.Printf("Failed to parse plugin context event %s", byteMessage)
-					continue
-				}
-				// scheduler (especially k3s) does not like Cap words...
-				event.PluginName = strings.ToLower(event.PluginName)
-				chanContextEventToScheduler <- event
-				logger.Info.Printf("Event received from KB: %v", event)
-			}
-		}()
+		// go func() {
+		// 	logger.Info.Printf("Starting event listener...")
+		// 	socket, err := goczmq.NewPair("ipc:///tmp/event.sock")
+		// 	// socket = socket.Connect("ipc:///tmp/event.sock")
+		// 	if err != nil {
+		// 		chanExit <- err
+		// 		return
+		// 	}
+		// 	defer socket.Destroy()
+		// 	for {
+		// 		byteMessage, _, err := socket.RecvFrame()
+		// 		if err != nil {
+		// 			chanExit <- err
+		// 			return
+		// 		}
+		// 		var event datatype.EventPluginContext
+		// 		err = json.Unmarshal(byteMessage, &event)
+		// 		if err != nil {
+		// 			logger.Error.Printf("Failed to parse plugin context event %s", byteMessage)
+		// 			continue
+		// 		}
+		// 		// scheduler (especially k3s) does not like Cap words...
+		// 		event.PluginName = strings.ToLower(event.PluginName)
+		// 		chanContextEventToScheduler <- event
+		// 		logger.Info.Printf("Event received from KB: %v", event)
+		// 	}
+		// }()
 		err := <-chanExit
 		logger.Error.Printf("Event receiver failed: %s", err)
 		time.Sleep(3 * time.Second)
@@ -99,36 +96,36 @@ func (kb *Knowledgebase) RegisterRules(scienceGoal *datatype.ScienceGoal, nodeNa
 
 // runIPCToKB communicates with the Python KB to exchange rules and events
 func (kb *Knowledgebase) runIPCToKB() {
-	for {
-		chanExit := make(chan error)
-		go func() {
-			socket, err := goczmq.NewReq("ipc:///tmp/kb.sock")
-			if err != nil {
-				chanExit <- err
-				return
-			}
-			defer socket.Destroy()
-			for {
-				request := <-kb.chanToKB
-				byteJSON, _ := json.Marshal(request)
-				err = socket.SendFrame(byteJSON, goczmq.FlagNone)
-				if err != nil {
-					chanExit <- err
-					return
-				}
-				_, _, err = socket.RecvFrame()
-				if err != nil {
-					chanExit <- err
-					return
-				} else {
-					logger.Debug.Printf("Sending %v to KB is successful", request)
-				}
-			}
-		}()
-		err := <-chanExit
-		logger.Error.Printf("IPC to KB failed: %s", err)
-		time.Sleep(3 * time.Second)
-	}
+	// for {
+	// 	chanExit := make(chan error)
+	// 	go func() {
+	// 		socket, err := goczmq.NewReq("ipc:///tmp/kb.sock")
+	// 		if err != nil {
+	// 			chanExit <- err
+	// 			return
+	// 		}
+	// 		defer socket.Destroy()
+	// 		for {
+	// 			request := <-kb.chanToKB
+	// 			byteJSON, _ := json.Marshal(request)
+	// 			err = socket.SendFrame(byteJSON, goczmq.FlagNone)
+	// 			if err != nil {
+	// 				chanExit <- err
+	// 				return
+	// 			}
+	// 			_, _, err = socket.RecvFrame()
+	// 			if err != nil {
+	// 				chanExit <- err
+	// 				return
+	// 			} else {
+	// 				logger.Debug.Printf("Sending %v to KB is successful", request)
+	// 			}
+	// 		}
+	// 	}()
+	// 	err := <-chanExit
+	// 	logger.Error.Printf("IPC to KB failed: %s", err)
+	// 	time.Sleep(3 * time.Second)
+	// }
 }
 
 // launchKB launches and manages the Python KB
