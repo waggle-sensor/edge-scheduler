@@ -43,6 +43,11 @@ func (ss *SimpleScheduler) BringUpServices() {
 
 func (ss *SimpleScheduler) Run() {
 	logger.Info.Println("Simple scheduler starts")
-
+	// runplugin.run()
+	// defer runplugin.cleanup()
+	// while state == running {
+	// 	attach log
+	// 	OR kubectl logs <<pod>>
+	// }
 	logger.Info.Println("Simple scheduler exits")
 }

@@ -6,9 +6,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
 	"path"
 	"strings"
+	"time"
 
 	rabbithole "github.com/michaelklishin/rabbit-hole"
 	"github.com/sagecontinuum/ses/pkg/datatype"
@@ -362,6 +364,26 @@ func (rm *ResourceManager) TerminatePlugin(pluginName string) error {
 	}
 	logger.Info.Printf("Deleted deployment of plugin %s", pluginNameInLowcase)
 	return err
+}
+
+func (rm *ResourceManager) GetPodLog(jobName string, follow bool) (podLogHandler io.ReadCloser, err error) {
+	// TODO: Later we use pod name as we run plugins in one-shot?
+	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Second)
+	defer cancel()
+	job, err := rm.Clientset.AppsV1().Deployments(rm.Namespace).Get(ctx, jobName, metav1.GetOptions{})
+	if err != nil {
+		return
+	}
+	selector := job.Spec.Selector
+	labels, err := metav1.LabelSelectorAsSelector(selector)
+	pods, err := rm.Clientset.CoreV1().Pods(rm.Namespace).List(ctx, metav1.ListOptions{LabelSelector: labels.String()})
+	if err != nil {
+		return
+	}
+	// podWatcher, err = rm.Clientset.CoreV1().Pods(rm.Namespace).Watch(ctx, metav1.ListOptions{LabelSelector: selector.String()})
+	req := rm.Clientset.CoreV1().Pods(rm.Namespace).GetLogs(pods.Items[0].Name, &apiv1.PodLogOptions{Follow: follow})
+	podLogHandler, err = req.Stream(context.TODO())
+	return
 }
 
 func (rm *ResourceManager) Run(chanPluginToUpdate <-chan *datatype.Plugin) {
