@@ -8,7 +8,8 @@ import (
 )
 
 const (
-	maxChannelBuffer = 100
+	maxChannelBuffer      = 100
+	configMapNameForGoals = "wes-ses-goals"
 )
 
 type NodeScheduler struct {
@@ -22,6 +23,9 @@ type NodeScheduler struct {
 	chanRunGoal                 chan *datatype.ScienceGoal
 	chanStopPlugin              chan *datatype.Plugin
 	chanPluginToK3SClient       chan *datatype.Plugin
+	waitingList                 []*datatype.Plugin
+	readyList                   []*datatype.Plugin
+	executingList               []*datatype.Plugin
 }
 
 func NewNodeScheduler(rm *ResourceManager, kb *knowledgebase.Knowledgebase, gm *NodeGoalManager, api *APIServer, simulate bool) (*NodeScheduler, error) {
@@ -36,6 +40,9 @@ func NewNodeScheduler(rm *ResourceManager, kb *knowledgebase.Knowledgebase, gm *
 		chanRunGoal:                 make(chan *datatype.ScienceGoal, maxChannelBuffer),
 		chanStopPlugin:              make(chan *datatype.Plugin, maxChannelBuffer),
 		chanPluginToK3SClient:       make(chan *datatype.Plugin, maxChannelBuffer),
+		waitingList:                 make([]*datatype.Plugin, 0),
+		readyList:                   make([]*datatype.Plugin, 0),
+		executingList:               make([]*datatype.Plugin, 0),
 	}, nil
 }
 
@@ -44,6 +51,8 @@ func NewNodeScheduler(rm *ResourceManager, kb *knowledgebase.Knowledgebase, gm *
 // - "ses" namespace
 //
 // - "wes-rabbitmq" and "wes-audio-server" services available in "ses" namespace
+//
+// - "wes-ses-goal" configmap that accepts user goals
 func (ns *NodeScheduler) Configure() (err error) {
 	if ns.Simulate {
 		return
@@ -59,7 +68,16 @@ func (ns *NodeScheduler) Configure() (err error) {
 			return
 		}
 	}
-	return
+	err = ns.ResourceManager.CreateConfigMap(configMapNameForGoals, map[string]string{}, "default")
+	if err != nil {
+		return
+	}
+	watcher, err := ns.ResourceManager.WatchConfigMap(configMapNameForGoals, "default")
+	if err != nil {
+		return
+	}
+	ns.GoalManager.GoalWatcher = watcher
+	return nil
 }
 
 // Run handles communications between components for scheduling

@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	"github.com/sagecontinuum/ses/pkg/logger"
 	// "github.com/urfave/negroni"
 )
 
@@ -19,11 +20,10 @@ const (
 var (
 	// Channels for IPC
 	chanFromMeasure = make(chan RMQMessage)
-
-	mainRouter *mux.Router
 )
 
 type APIServer struct {
+	mainRouter *mux.Router
 }
 
 func NewAPIServer() (*APIServer, error) {
@@ -31,7 +31,17 @@ func NewAPIServer() (*APIServer, error) {
 }
 
 func (api *APIServer) Run() {
-
+	log.Printf("initializing...")
+	api.mainRouter = mux.NewRouter()
+	r := api.mainRouter
+	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintln(w, `{"id": "Node scheduler", "version": "0.0.5"}`)
+	})
+	api_route := r.PathPrefix("/api/v1").Subrouter()
+	api_route.Handle("/kb/rules", http.HandlerFunc(handlerClauses)).Methods(http.MethodGet, http.MethodPost)
+	api_route.Handle("/kb/senses", http.HandlerFunc(handlerSenses)).Methods(http.MethodGet, http.MethodPost, http.MethodDelete)
+	api_route.Handle("/goals", http.HandlerFunc(handlerGoals)).Methods(http.MethodGet, http.MethodPost, http.MethodPut)
+	logger.Info.Fatalln(http.ListenAndServe("0.0.0.0:8080", r))
 }
 
 func respondJSON(w http.ResponseWriter, statusCode int, data interface{}) {
@@ -83,7 +93,6 @@ func handlerGoals(w http.ResponseWriter, r *http.Request) {
 		// respondJSON(w, http.StatusOK, clauses)
 	} else if r.Method == POST {
 		log.Printf("hit POST")
-
 		respondJSON(w, http.StatusOK, "")
 	} else if r.Method == PUT {
 		log.Printf("hit PUT")
@@ -102,22 +111,4 @@ func handlerGoals(w http.ResponseWriter, r *http.Request) {
 		// chanTriggerSchedule <- "received new goal via api"
 		respondJSON(w, http.StatusOK, "")
 	}
-}
-
-func createRouter() {
-	log.Printf("initializing...")
-	mainRouter = mux.NewRouter()
-	r := mainRouter
-
-	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, `{"id": "Local scheduler"}`)
-	})
-
-	api := r.PathPrefix("/api/v1").Subrouter()
-	api.Handle("/kb/rules", http.HandlerFunc(handlerClauses)).Methods(http.MethodGet, http.MethodPost)
-	api.Handle("/kb/senses", http.HandlerFunc(handlerSenses)).Methods(http.MethodGet, http.MethodPost, http.MethodDelete)
-
-	api.Handle("/goals", http.HandlerFunc(handlerGoals)).Methods(http.MethodGet, http.MethodPost, http.MethodPut)
-
-	log.Fatalln(http.ListenAndServe("0.0.0.0:8080", r))
 }

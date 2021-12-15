@@ -17,17 +17,16 @@ func init() {
 var cmdPs = &cobra.Command{
 	Use:   "ps [APP_NAME]",
 	Short: "Query plugin status",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) (err error) {
 		pluginCtl, err := pluginctl.NewPluginCtl(kubeconfig)
 		if err != nil {
 			logger.Error.Println(err.Error())
 		}
-		list, err := pluginCtl.ResourceManager.ListPlugin()
+		list, err := pluginCtl.GetPlugins()
 		if err != nil {
-			logger.Error.Println(err.Error())
+			return
 		}
-		for _, plugin := range list.Items {
-			fmt.Printf("%s\n", plugin.Name)
-		}
+		fmt.Println(list)
+		return
 	},
 }

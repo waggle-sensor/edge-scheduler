@@ -12,6 +12,8 @@ import (
 	"github.com/sagecontinuum/ses/pkg/interfacing"
 	"github.com/sagecontinuum/ses/pkg/logger"
 	yaml "gopkg.in/yaml.v2"
+	apiv1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/watch"
 )
 
 // GoalManager structs a goal manager for nodescheduler
@@ -22,6 +24,7 @@ type NodeGoalManager struct {
 	Simulate                 bool
 	chanNewGoalToGoalManager chan *datatype.ScienceGoal
 	rmqHandler               *interfacing.RabbitMQHandler
+	GoalWatcher              watch.Interface
 }
 
 // NewGoalManager creates and returns an instance of goal manager
@@ -52,14 +55,15 @@ func (ngm *NodeGoalManager) SetRMQHandler(rmqHandler *interfacing.RabbitMQHandle
 // and keeps goals managed up-to-date with the help from the events
 func (ngm *NodeGoalManager) Run(chanToScheduler chan *datatype.ScienceGoal) {
 	// NOTE: use RabbitMQ to receive goals if set
-	var useRabbitMQ bool
-	if ngm.rmqHandler != nil {
-		useRabbitMQ = true
-	} else {
-		useRabbitMQ = false
-	}
+	// var useRabbitMQ bool
+	// if ngm.rmqHandler != nil {
+	// 	useRabbitMQ = true
+	// } else {
+	// 	useRabbitMQ = false
+	// }
 	if !ngm.Simulate {
-		go ngm.pullingGoalsFromCloudScheduler(useRabbitMQ)
+		// go ngm.pullGoalsFromCloudScheduler(useRabbitMQ)
+		go ngm.pullGoalsFromK3S()
 	}
 	for {
 		select {
@@ -71,8 +75,28 @@ func (ngm *NodeGoalManager) Run(chanToScheduler chan *datatype.ScienceGoal) {
 	}
 }
 
+func (ngm *NodeGoalManager) pullGoalsFromK3S() {
+	logger.Info.Printf("Pull goals from k3s configmap %s", configMapNameForGoals)
+	if ngm.GoalWatcher == nil {
+		logger.Error.Printf("No Goal watcher is set. Cannot pull goals from k3s configmap %s", configMapNameForGoals)
+		return
+	}
+	chanGoal := ngm.GoalWatcher.ResultChan()
+	for {
+		event := <-chanGoal
+		switch event.Type {
+		case watch.Modified:
+			if updatedConfigMap, ok := event.Object.(*apiv1.ConfigMap); ok {
+				logger.Debug.Printf("%v", updatedConfigMap.Data)
+			}
+		default:
+		}
+
+	}
+}
+
 // pullingGoalsFromCloudScheduler periodically pulls goals from the cloud scheduler
-func (gm *NodeGoalManager) pullingGoalsFromCloudScheduler(useRabbitMQ bool) {
+func (gm *NodeGoalManager) pullGoalsFromCloudScheduler(useRabbitMQ bool) {
 	if useRabbitMQ {
 		for {
 			logger.Info.Printf("SES endpoint: %s", gm.rmqHandler.RabbitmqURI)

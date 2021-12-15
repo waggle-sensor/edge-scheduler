@@ -8,12 +8,23 @@ import (
 type Plugin struct {
 	Name         string       `yaml:"name,omitempty"`
 	Version      string       `yaml:"version,omitempty"`
+	PluginSpec   PluginSpec   `yaml:"pluginspec,omitempty"`
 	Status       PluginStatus `yaml:"status,omitempty"`
 	Tags         []string     `yaml:"tags,omitempty"`
 	Hardware     []string     `yaml:"hardware,omitempty"`
 	Architecture []string     `yaml:"architecture,omitempty"`
 	DataShims    []*DataShim  `yaml:"datashims,omitempty"`
 	Profile      []Profile    `yaml:"profile,omitempty"`
+}
+
+type PluginSpec struct {
+	Image      string            `json:"image"`
+	Args       []string          `json:"args"`
+	Privileged bool              `json:"privileged"`
+	Node       string            `json:"node"`
+	Job        string            `json:"job"`
+	Name       string            `json:"name"`
+	Selector   map[string]string `json:"selector"`
 }
 
 // PluginStatus structs status about a plugin that includes

@@ -43,6 +43,8 @@ func detectDefaultKubeconfig() string {
 
 func init() {
 	rootCmd.AddCommand(completionCmd)
+	// To prevent printing the usage when commands end with an error
+	rootCmd.SilenceUsage = true
 	rootCmd.PersistentFlags().StringVar(&kubeconfig, "kubeconfig", getenv("KUBECONFIG", detectDefaultKubeconfig()), "path to the kubeconfig file")
 }
 

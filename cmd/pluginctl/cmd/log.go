@@ -20,18 +20,17 @@ var cmdLog = &cobra.Command{
 	Short:            "Print logs of a plugin",
 	TraverseChildren: true,
 	Args:             cobra.MaximumNArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) (err error) {
 		logger.Debug.Printf("kubeconfig: %s", kubeconfig)
 		name = args[0]
 		logger.Debug.Printf("args: %v", args)
-
 		pluginCtl, err := pluginctl.NewPluginCtl(kubeconfig)
 		if err != nil {
-			logger.Error.Println(err.Error())
+			return
 		}
 		printLogFunc, terminateLog, err := pluginCtl.PrintLog(name, followLog)
 		if err != nil {
-			logger.Error.Println(err.Error())
+			return
 		} else {
 			c := make(chan os.Signal, 1)
 			signal.Notify(c, os.Interrupt, syscall.SIGTERM)

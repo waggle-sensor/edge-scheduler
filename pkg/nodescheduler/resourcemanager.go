@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -17,16 +19,26 @@ import (
 	"github.com/sagecontinuum/ses/pkg/logger"
 
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	apiv1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/util/homedir"
 )
 
 const (
-	namespace = "ses"
+	namespace             = "ses"
+	rancherKubeconfigPath = "/etc/rancher/k3s/k3s.yaml"
+)
+
+var (
+	hostPathDirectoryOrCreate       = apiv1.HostPathDirectoryOrCreate
+	backOffLimit              int32 = 0
 )
 
 // ResourceManager structs a resource manager talking to a local computing cluster to schedule plugins
@@ -73,6 +85,34 @@ func generatePassword() string {
 		panic(err)
 	}
 	return hex.EncodeToString(b)
+}
+
+func labelsForConfig(plugin *datatype.Plugin) map[string]string {
+	return map[string]string{
+		"app":                           plugin.Name,
+		"role":                          "plugin", // TODO drop in place of sagecontinuum.org/role
+		"sagecontinuum.org/role":        "plugin",
+		"sagecontinuum.org/plugin-job":  plugin.PluginSpec.Job,
+		"sagecontinuum.org/plugin-task": plugin.Name,
+	}
+}
+
+func nodeSelectorForConfig(plugin *datatype.Plugin) map[string]string {
+	vals := map[string]string{}
+	if plugin.PluginSpec.Node != "" {
+		vals["k3s.io/hostname"] = plugin.PluginSpec.Node
+	}
+	for k, v := range plugin.PluginSpec.Selector {
+		vals[k] = v
+	}
+	return vals
+}
+
+func securityContextForConfig(plugin *datatype.Plugin) *apiv1.SecurityContext {
+	if plugin.PluginSpec.Privileged {
+		return &apiv1.SecurityContext{Privileged: &plugin.PluginSpec.Privileged}
+	}
+	return nil
 }
 
 // CreatePluginCredential creates a credential inside RabbitMQ server for the plugin
@@ -156,9 +196,156 @@ func (rm *ResourceManager) ForwardService(serviceName string, fromNamespace stri
 	return err
 }
 
-// CreateK3SDeployment creates and returns a K3S deployment object of the plugin
+func (rm *ResourceManager) CreateConfigMap(name string, data map[string]string, namespace string) error {
+	var config apiv1.ConfigMap
+	config.Name = name
+	config.Data = data
+	if namespace == "" {
+		namespace = rm.Namespace
+	}
+	_, err := rm.Clientset.CoreV1().ConfigMaps(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			_, err = rm.Clientset.CoreV1().ConfigMaps(namespace).Create(context.TODO(), &config, metav1.CreateOptions{})
+			return err
+		} else {
+			return err
+		}
+	}
+	_, err = rm.Clientset.CoreV1().ConfigMaps(namespace).Update(context.TODO(), &config, metav1.UpdateOptions{})
+	return err
+}
+
+// WatchConfigMap
+func (rm *ResourceManager) WatchConfigMap(name string, namespace string) (watch.Interface, error) {
+	if namespace == "" {
+		namespace = rm.Namespace
+	}
+	configMap, err := rm.Clientset.CoreV1().ConfigMaps(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	// var selector *metav1.LabelSelector
+	// err = metav1.Convert_Map_string_To_string_To_v1_LabelSelector(&configMap.Labels, selector, nil)
+	watcher, err := rm.Clientset.CoreV1().ConfigMaps(namespace).Watch(context.TODO(), metav1.SingleObject(metav1.ObjectMeta{Name: configMap.Name, Namespace: configMap.Namespace}))
+	return watcher, err
+}
+
+// CreateK3SJob creates and returns a Kubernetes job object of the pllugin
+func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, error) {
+	return &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      plugin.Name,
+			Namespace: rm.Namespace,
+		},
+		Spec: batchv1.JobSpec{
+			Template: v1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: labelsForConfig(plugin),
+				},
+				Spec: apiv1.PodSpec{
+					NodeSelector:  nodeSelectorForConfig(plugin),
+					RestartPolicy: apiv1.RestartPolicyNever,
+					Containers: []apiv1.Container{
+						{
+							SecurityContext: securityContextForConfig(plugin),
+							Name:            plugin.Name,
+							Image:           plugin.PluginSpec.Image,
+							Args:            plugin.PluginSpec.Args,
+							Env: []apiv1.EnvVar{
+								{
+									Name:  "PULSE_SERVER",
+									Value: "tcp:wes-audio-server:4713",
+								},
+								{
+									Name:  "WAGGLE_PLUGIN_HOST",
+									Value: "wes-rabbitmq",
+								},
+								{
+									Name:  "WAGGLE_PLUGIN_PORT",
+									Value: "5672",
+								},
+								{
+									Name:  "WAGGLE_PLUGIN_USERNAME",
+									Value: "plugin",
+								},
+								{
+									Name:  "WAGGLE_PLUGIN_PASSWORD",
+									Value: "plugin",
+								},
+								// NOTE WAGGLE_APP_ID is used to bind plugin <-> Pod identities.
+								{
+									Name: "WAGGLE_APP_ID",
+									ValueFrom: &apiv1.EnvVarSource{
+										FieldRef: &apiv1.ObjectFieldSelector{
+											FieldPath: "metadata.uid",
+										},
+									},
+								},
+							},
+							Resources: apiv1.ResourceRequirements{
+								Limits:   apiv1.ResourceList{},
+								Requests: apiv1.ResourceList{},
+							},
+							VolumeMounts: []apiv1.VolumeMount{
+								{
+									Name:      "uploads",
+									MountPath: "/run/waggle/uploads",
+								},
+								{
+									Name:      "waggle-data-config",
+									MountPath: "/run/waggle/data-config.json",
+									SubPath:   "data-config.json",
+								},
+								{
+									Name:      "wes-audio-server-plugin-conf",
+									MountPath: "/etc/asound.conf",
+									SubPath:   "asound.conf",
+								},
+							},
+						},
+					},
+					Volumes: []apiv1.Volume{
+						{
+							Name: "uploads",
+							VolumeSource: apiv1.VolumeSource{
+								HostPath: &apiv1.HostPathVolumeSource{
+									Path: path.Join("/media/plugin-data/uploads", plugin.PluginSpec.Name, plugin.Version),
+									Type: &hostPathDirectoryOrCreate,
+								},
+							},
+						},
+						{
+							Name: "waggle-data-config",
+							VolumeSource: apiv1.VolumeSource{
+								ConfigMap: &apiv1.ConfigMapVolumeSource{
+									LocalObjectReference: apiv1.LocalObjectReference{
+										Name: "waggle-data-config",
+									},
+								},
+							},
+						},
+						{
+							Name: "wes-audio-server-plugin-conf",
+							VolumeSource: apiv1.VolumeSource{
+								ConfigMap: &apiv1.ConfigMapVolumeSource{
+									LocalObjectReference: apiv1.LocalObjectReference{
+										Name: "wes-audio-server-plugin-conf",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			BackoffLimit: &backOffLimit,
+		},
+	}, nil
+}
+
+// CreateDeployment creates and returns a Kubernetes deployment object of the plugin
 // It also embeds a K3S configmap for plugin if needed
-func (rm *ResourceManager) CreateK3SDeployment(plugin *datatype.Plugin, credential datatype.PluginCredential) (*appsv1.Deployment, error) {
+func (rm *ResourceManager) CreateDeployment(plugin *datatype.Plugin, credential datatype.PluginCredential) (*appsv1.Deployment, error) {
 	// k3s does not accept uppercase letters as container name
 	pluginNameInLowcase := strings.ToLower(plugin.Name)
 
@@ -322,27 +509,42 @@ func (rm *ResourceManager) CreateDataConfigMap(configName string, datashims []*d
 	return err
 }
 
+func (rm *ResourceManager) RunPlugin(job *batchv1.Job) (*batchv1.Job, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	jobClient := rm.Clientset.BatchV1().Jobs(rm.Namespace)
+	return jobClient.Create(ctx, job, metav1.CreateOptions{})
+}
+
 // LaunchPlugin launches a k3s deployment in the cluster
 func (rm *ResourceManager) LaunchPlugin(deployment *appsv1.Deployment) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	deploymentsClient := rm.Clientset.AppsV1().Deployments(rm.Namespace)
-
-	result, err := deploymentsClient.Create(context.TODO(), deployment, metav1.CreateOptions{})
+	result, err := deploymentsClient.Create(ctx, deployment, metav1.CreateOptions{})
 	if err != nil {
-		logger.Info.Printf("Failed to create deployment %s.\n", err)
+		logger.Error.Printf("Failed to create deployment %s.\n", err)
 	}
 	logger.Info.Printf("Created deployment for plugin %q\n", result.GetObjectMeta().GetName())
 	return err
 }
 
-func (rm *ResourceManager) ListPlugin() (*appsv1.DeploymentList, error) {
+func (rm *ResourceManager) ListJobs() (*batchv1.JobList, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Second)
+	defer cancel()
+	list, err := rm.Clientset.BatchV1().Jobs(rm.Namespace).List(ctx, metav1.ListOptions{})
+	return list, err
+}
+
+func (rm *ResourceManager) ListDeployments() (*appsv1.DeploymentList, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Second)
 	defer cancel()
 	list, err := rm.Clientset.AppsV1().Deployments(rm.Namespace).List(ctx, metav1.ListOptions{})
 	return list, err
 }
 
-// TerminatePlugin terminates the k3s deployment of given plugin name
-func (rm *ResourceManager) TerminatePlugin(pluginName string) error {
+// TerminateDeployment terminates given Kubernetes deployment
+func (rm *ResourceManager) TerminateDeployment(pluginName string) error {
 	pluginNameInLowcase := strings.ToLower(pluginName)
 
 	deploymentsClient := rm.Clientset.AppsV1().Deployments(rm.Namespace)
@@ -373,24 +575,35 @@ func (rm *ResourceManager) TerminatePlugin(pluginName string) error {
 	return err
 }
 
-func (rm *ResourceManager) GetPodLog(jobName string, follow bool) (podLogHandler io.ReadCloser, err error) {
+func (rm *ResourceManager) TerminateJob(jobName string) error {
+	return rm.Clientset.BatchV1().Jobs(rm.Namespace).Delete(context.TODO(), jobName, metav1.DeleteOptions{})
+}
+
+func (rm *ResourceManager) GetPluginLog(jobName string, follow bool) (io.ReadCloser, error) {
 	// TODO: Later we use pod name as we run plugins in one-shot?
 	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Second)
 	defer cancel()
-	job, err := rm.Clientset.AppsV1().Deployments(rm.Namespace).Get(ctx, jobName, metav1.GetOptions{})
+	job, err := rm.Clientset.BatchV1().Jobs(rm.Namespace).Get(ctx, jobName, metav1.GetOptions{})
 	if err != nil {
-		return
+		return nil, err
 	}
 	selector := job.Spec.Selector
 	labels, err := metav1.LabelSelectorAsSelector(selector)
 	pods, err := rm.Clientset.CoreV1().Pods(rm.Namespace).List(ctx, metav1.ListOptions{LabelSelector: labels.String()})
 	if err != nil {
-		return
+		return nil, err
 	}
+	switch pods.Items[0].Status.Phase {
+	case apiv1.PodPending:
+		return nil, fmt.Errorf("The plugin is in pending state")
+	case apiv1.PodRunning:
+	case apiv1.PodSucceeded:
+	case apiv1.PodFailed:
+		req := rm.Clientset.CoreV1().Pods(rm.Namespace).GetLogs(pods.Items[0].Name, &apiv1.PodLogOptions{Follow: follow})
+		return req.Stream(context.TODO())
+	}
+	return nil, fmt.Errorf("The plugin (pod) is in unknown state")
 	// podWatcher, err = rm.Clientset.CoreV1().Pods(rm.Namespace).Watch(ctx, metav1.ListOptions{LabelSelector: selector.String()})
-	req := rm.Clientset.CoreV1().Pods(rm.Namespace).GetLogs(pods.Items[0].Name, &apiv1.PodLogOptions{Follow: follow})
-	podLogHandler, err = req.Stream(context.TODO())
-	return
 }
 
 func (rm *ResourceManager) Run(chanPluginToUpdate <-chan *datatype.Plugin) {
@@ -408,7 +621,7 @@ func (rm *ResourceManager) Run(chanPluginToUpdate <-chan *datatype.Plugin) {
 				logger.Error.Printf("Could not register the credential %s to RabbitMQ at %s: %s", credential.Username, rm.RMQManagement.Client.Endpoint, err.Error())
 				continue
 			}
-			deployablePlugin, err := rm.CreateK3SDeployment(plugin, credential)
+			deployablePlugin, err := rm.CreateDeployment(plugin, credential)
 			if err != nil {
 				logger.Error.Printf("Could not create a k3s deployment for plugin %s: %s", plugin.Name, err.Error())
 				continue
@@ -418,7 +631,7 @@ func (rm *ResourceManager) Run(chanPluginToUpdate <-chan *datatype.Plugin) {
 				logger.Error.Printf("Failed to launch plugin %s: %s", plugin.Name, err.Error())
 			}
 		} else if plugin.Status.SchedulingStatus == datatype.Stopped {
-			err := rm.TerminatePlugin(plugin.Name)
+			err := rm.TerminateJob(plugin.Name)
 			if err != nil {
 				logger.Error.Printf("Failed to stop plugin %s: %s", plugin.Name, err.Error())
 			}
@@ -496,4 +709,14 @@ func GetK3SClient(incluster bool, pathToConfig string) (*kubernetes.Clientset, e
 		}
 		return kubernetes.NewForConfig(config)
 	}
+}
+
+func DetectDefaultKubeconfig() string {
+	if _, err := os.ReadFile(rancherKubeconfigPath); err == nil {
+		return rancherKubeconfigPath
+	}
+	if home := homedir.HomeDir(); home != "" {
+		return filepath.Join(home, ".kube", "config")
+	}
+	return ""
 }

@@ -18,19 +18,19 @@ var cmdRm = &cobra.Command{
 	Short:            "Remove plugin",
 	TraverseChildren: true,
 	Args:             cobra.MaximumNArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) (err error) {
 		logger.Debug.Printf("kubeconfig: %s", kubeconfig)
 		name = args[0]
 		logger.Debug.Printf("args: %v", args)
 		pluginCtl, err := pluginctl.NewPluginCtl(kubeconfig)
 		if err != nil {
-			logger.Error.Println(err.Error())
+			return
 		}
-		err = pluginCtl.Terminate(name)
+		err = pluginCtl.TerminatePlugin(name)
 		if err != nil {
-			logger.Error.Printf("%s", err.Error())
-		} else {
-			fmt.Printf("Terminated the plugin %s successfully\n", name)
+			return
 		}
+		fmt.Printf("Terminated the plugin %s successfully\n", name)
+		return
 	},
 }
