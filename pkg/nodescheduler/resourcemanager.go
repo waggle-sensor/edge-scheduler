@@ -231,6 +231,20 @@ func (rm *ResourceManager) WatchConfigMap(name string, namespace string) (watch.
 	return watcher, err
 }
 
+func (rm *ResourceManager) WatchJob(name string, namespace string) (watch.Interface, error) {
+	if namespace == "" {
+		namespace = rm.Namespace
+	}
+	job, err := rm.Clientset.BatchV1().Jobs(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	// var selector *metav1.LabelSelector
+	// err = metav1.Convert_Map_string_To_string_To_v1_LabelSelector(&configMap.Labels, selector, nil)
+	watcher, err := rm.Clientset.BatchV1().Jobs(namespace).Watch(context.TODO(), metav1.SingleObject(metav1.ObjectMeta{Name: job.Name, Namespace: job.Namespace}))
+	return watcher, err
+}
+
 // CreateK3SJob creates and returns a Kubernetes job object of the pllugin
 func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, error) {
 	return &batchv1.Job{
@@ -579,6 +593,23 @@ func (rm *ResourceManager) TerminateJob(jobName string) error {
 	return rm.Clientset.BatchV1().Jobs(rm.Namespace).Delete(context.TODO(), jobName, metav1.DeleteOptions{})
 }
 
+func (rm *ResourceManager) GetPluginStatus(jobName string) (string, error) {
+	// TODO: Later we use pod name as we run plugins in one-shot?
+	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Second)
+	defer cancel()
+	job, err := rm.Clientset.BatchV1().Jobs(rm.Namespace).Get(ctx, jobName, metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+	selector := job.Spec.Selector
+	labels, err := metav1.LabelSelectorAsSelector(selector)
+	pods, err := rm.Clientset.CoreV1().Pods(rm.Namespace).List(ctx, metav1.ListOptions{LabelSelector: labels.String()})
+	if err != nil {
+		return "", err
+	}
+	return string(pods.Items[0].Status.Phase), nil
+}
+
 func (rm *ResourceManager) GetPluginLog(jobName string, follow bool) (io.ReadCloser, error) {
 	// TODO: Later we use pod name as we run plugins in one-shot?
 	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Second)
@@ -597,12 +628,14 @@ func (rm *ResourceManager) GetPluginLog(jobName string, follow bool) (io.ReadClo
 	case apiv1.PodPending:
 		return nil, fmt.Errorf("The plugin is in pending state")
 	case apiv1.PodRunning:
+		fallthrough
 	case apiv1.PodSucceeded:
+		fallthrough
 	case apiv1.PodFailed:
 		req := rm.Clientset.CoreV1().Pods(rm.Namespace).GetLogs(pods.Items[0].Name, &apiv1.PodLogOptions{Follow: follow})
 		return req.Stream(context.TODO())
 	}
-	return nil, fmt.Errorf("The plugin (pod) is in unknown state")
+	return nil, fmt.Errorf("The plugin (pod) is in %q state", string(pods.Items[0].Status.Phase))
 	// podWatcher, err = rm.Clientset.CoreV1().Pods(rm.Namespace).Watch(ctx, metav1.ListOptions{LabelSelector: selector.String()})
 }
 

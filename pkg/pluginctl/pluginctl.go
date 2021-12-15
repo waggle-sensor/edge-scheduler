@@ -140,7 +140,7 @@ func (p *PluginCtl) PrintLog(pluginName string, follow bool) (func(), chan os.Si
 					flag <- nil
 					return
 				}
-				fmt.Println(string(buf[:numBytes]))
+				fmt.Printf(string(buf[:numBytes]))
 			}
 		}
 	}, flag, nil
@@ -148,6 +148,10 @@ func (p *PluginCtl) PrintLog(pluginName string, follow bool) (func(), chan os.Si
 
 func (p *PluginCtl) TerminatePlugin(pluginName string) error {
 	return p.ResourceManager.TerminateJob(pluginName)
+}
+
+func (p *PluginCtl) GetPluginStatus(name string) (string, error) {
+	return p.ResourceManager.GetPluginStatus(name)
 }
 
 func (p *PluginCtl) GetPlugins() (formattedList string, err error) {
@@ -183,6 +187,7 @@ func (p *PluginCtl) GetPlugins() (formattedList string, err error) {
 		duration = ""
 		status = "UNKNOWN"
 		if plugin.Status.StartTime != nil {
+			// NOTE: Time format in Go is so special. https://pkg.go.dev/time#Time.Format
 			startTime = plugin.Status.StartTime.Time.UTC().Format("2006/01/02 15:04:05 MST")
 			if plugin.Status.CompletionTime != nil {
 				duration = plugin.Status.CompletionTime.Sub(plugin.Status.StartTime.Time).String()

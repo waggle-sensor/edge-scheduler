@@ -28,11 +28,9 @@ var cmdDeploy = &cobra.Command{
 		logger.Debug.Printf("args: %v", args)
 		pluginCtl, err := pluginctl.NewPluginCtl(kubeconfig)
 		if err != nil {
-			logger.Error.Println(err.Error())
 			return err
 		}
 		if pluginName, err := pluginCtl.Deploy(name, selectorStr, node, privileged, args[0], args[1:]); err != nil {
-			logger.Error.Println(err.Error())
 			return err
 		} else {
 			fmt.Printf("Launched the plugin %s successfully \n", pluginName)

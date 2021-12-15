@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/sagecontinuum/ses/pkg/logger"
 	"github.com/sagecontinuum/ses/pkg/pluginctl"
 	"github.com/spf13/cobra"
 )
@@ -20,7 +19,7 @@ var cmdPs = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
 		pluginCtl, err := pluginctl.NewPluginCtl(kubeconfig)
 		if err != nil {
-			logger.Error.Println(err.Error())
+			return
 		}
 		list, err := pluginCtl.GetPlugins()
 		if err != nil {

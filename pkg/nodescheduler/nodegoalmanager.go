@@ -91,7 +91,6 @@ func (ngm *NodeGoalManager) pullGoalsFromK3S() {
 			}
 		default:
 		}
-
 	}
 }
 
