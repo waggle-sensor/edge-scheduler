@@ -18,11 +18,11 @@ import (
 
 // GoalManager structs a goal manager for nodescheduler
 type NodeGoalManager struct {
-	scienceGoals             map[string]*datatype.ScienceGoal
+	scienceGoals             map[string]*datatype.Goal
 	cloudSchedulerBaseURL    string
 	NodeID                   string
 	Simulate                 bool
-	chanNewGoalToGoalManager chan *datatype.ScienceGoal
+	chanNewGoalToGoalManager chan *datatype.Goal
 	rmqHandler               *interfacing.RabbitMQHandler
 	GoalWatcher              watch.Interface
 }
@@ -30,16 +30,16 @@ type NodeGoalManager struct {
 // NewGoalManager creates and returns an instance of goal manager
 func NewNodeGoalManager(cloudSchedulerURL string, nodeID string, simulate bool) (*NodeGoalManager, error) {
 	return &NodeGoalManager{
-		scienceGoals:             make(map[string]*datatype.ScienceGoal),
+		scienceGoals:             make(map[string]*datatype.Goal),
 		cloudSchedulerBaseURL:    cloudSchedulerURL,
 		NodeID:                   nodeID,
 		Simulate:                 simulate,
-		chanNewGoalToGoalManager: make(chan *datatype.ScienceGoal, 100),
+		chanNewGoalToGoalManager: make(chan *datatype.Goal, 100),
 	}, nil
 }
 
 // GetScienceGoal returns the goal of given goal_id
-func (ngm *NodeGoalManager) GetScienceGoal(goalID string) (*datatype.ScienceGoal, error) {
+func (ngm *NodeGoalManager) GetScienceGoal(goalID string) (*datatype.Goal, error) {
 	if goal, exist := ngm.scienceGoals[goalID]; exist {
 		return goal, nil
 	}
@@ -53,7 +53,7 @@ func (ngm *NodeGoalManager) SetRMQHandler(rmqHandler *interfacing.RabbitMQHandle
 
 // RunGoalManager handles goal related events from both cloud and local
 // and keeps goals managed up-to-date with the help from the events
-func (ngm *NodeGoalManager) Run(chanToScheduler chan *datatype.ScienceGoal) {
+func (ngm *NodeGoalManager) Run(chanToScheduler chan *datatype.Goal) {
 	// NOTE: use RabbitMQ to receive goals if set
 	// var useRabbitMQ bool
 	// if ngm.rmqHandler != nil {
@@ -68,8 +68,8 @@ func (ngm *NodeGoalManager) Run(chanToScheduler chan *datatype.ScienceGoal) {
 	for {
 		select {
 		case scienceGoal := <-ngm.chanNewGoalToGoalManager:
-			logger.Info.Printf("Received a goal from SES:%s id:(%s)", scienceGoal.Name, scienceGoal.ID)
-			ngm.scienceGoals[scienceGoal.ID] = scienceGoal
+			logger.Info.Printf("Received a goal %q", scienceGoal.Name)
+			ngm.scienceGoals[scienceGoal.Name] = scienceGoal
 			chanToScheduler <- scienceGoal
 		}
 	}
@@ -88,8 +88,14 @@ func (ngm *NodeGoalManager) pullGoalsFromK3S() {
 		case watch.Modified:
 			if updatedConfigMap, ok := event.Object.(*apiv1.ConfigMap); ok {
 				logger.Debug.Printf("%v", updatedConfigMap.Data)
+				var goal datatype.Goal
+				err := yaml.Unmarshal([]byte(updatedConfigMap.Data["goals"]), &goal)
+				if err != nil {
+					logger.Error.Printf("Failed to load goals from Kubernetes ConfigMap %q", err.Error())
+				} else {
+					ngm.chanNewGoalToGoalManager <- &goal
+				}
 			}
-		default:
 		}
 	}
 }
@@ -114,11 +120,11 @@ func (gm *NodeGoalManager) pullGoalsFromCloudScheduler(useRabbitMQ bool) {
 				logger.Info.Printf("%v", pulledGoals)
 				// TODO: this does not account for goal status change
 				//       from SES -- may or may not happen
-				for _, goal := range pulledGoals {
-					if _, exist := gm.scienceGoals[goal.ID]; !exist {
-						gm.chanNewGoalToGoalManager <- &goal
-					}
-				}
+				// for _, goal := range pulledGoals {
+				// 	if _, exist := gm.scienceGoals[goal.ID]; !exist {
+				// 		gm.chanNewGoalToGoalManager <- &goal
+				// 	}
+				// }
 			}
 		}
 	} else {
@@ -144,11 +150,11 @@ func (gm *NodeGoalManager) pullGoalsFromCloudScheduler(useRabbitMQ bool) {
 
 			// TODO: this does not account for goal status change
 			//       from SES -- may or may not happen
-			for _, goal := range pulledGoals {
-				if _, exist := gm.scienceGoals[goal.ID]; !exist {
-					gm.chanNewGoalToGoalManager <- &goal
-				}
-			}
+			// for _, goal := range pulledGoals {
+			// 	if _, exist := gm.scienceGoals[goal.ID]; !exist {
+			// 		gm.chanNewGoalToGoalManager <- &goal
+			// 	}
+			// }
 		}
 	}
 }

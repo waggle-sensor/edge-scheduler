@@ -19,6 +19,7 @@ type Plugin struct {
 
 type PluginSpec struct {
 	Image      string            `json:"image"`
+	Version    string            `json:"version"`
 	Args       []string          `json:"args"`
 	Privileged bool              `json:"privileged"`
 	Node       string            `json:"node"`

@@ -61,20 +61,7 @@ func (sg *SubGoal) GetPlugin(pluginName string) *Plugin {
 	return nil
 }
 
-// type Goal struct {
-// 	APIVersion string `yaml:"apiVersion"`
-// 	Header     struct {
-// 		GoalId      string   `yaml:"goalId"`
-// 		GoalName    string   `yaml:"goalName"`
-// 		Priority    int      `yaml:"priority"`
-// 		TargetNodes []string `yaml:"targetNodes"`
-// 		UserId      string   `yaml:"userId"`
-// 	}
-// 	Body struct {
-// 		AppConfig    []PluginConfig `yaml:"appConfig"`
-// 		Rules        []string       `yaml:"rules"`
-// 		SensorConfig struct {
-// 			Plugins []Plugin `yaml:"plugins"`
-// 		}
-// 	}
-// }
+type Goal struct {
+	Name    string `yaml:"name"`
+	Plugins []PluginSpec
+}

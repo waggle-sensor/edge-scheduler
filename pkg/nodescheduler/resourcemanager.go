@@ -39,6 +39,7 @@ const (
 var (
 	hostPathDirectoryOrCreate       = apiv1.HostPathDirectoryOrCreate
 	backOffLimit              int32 = 0
+	ttlSecondsAfterFinished   int32 = 3600 * 12
 )
 
 // ResourceManager structs a resource manager talking to a local computing cluster to schedule plugins
@@ -87,30 +88,30 @@ func generatePassword() string {
 	return hex.EncodeToString(b)
 }
 
-func labelsForConfig(plugin *datatype.Plugin) map[string]string {
+func labelsForConfig(pluginSpec *datatype.PluginSpec) map[string]string {
 	return map[string]string{
-		"app":                           plugin.Name,
+		"app":                           pluginSpec.Name,
 		"role":                          "plugin", // TODO drop in place of sagecontinuum.org/role
 		"sagecontinuum.org/role":        "plugin",
-		"sagecontinuum.org/plugin-job":  plugin.PluginSpec.Job,
-		"sagecontinuum.org/plugin-task": plugin.Name,
+		"sagecontinuum.org/plugin-job":  pluginSpec.Job,
+		"sagecontinuum.org/plugin-task": pluginSpec.Name,
 	}
 }
 
-func nodeSelectorForConfig(plugin *datatype.Plugin) map[string]string {
+func nodeSelectorForConfig(pluginSpec *datatype.PluginSpec) map[string]string {
 	vals := map[string]string{}
-	if plugin.PluginSpec.Node != "" {
-		vals["k3s.io/hostname"] = plugin.PluginSpec.Node
+	if pluginSpec.Node != "" {
+		vals["k3s.io/hostname"] = pluginSpec.Node
 	}
-	for k, v := range plugin.PluginSpec.Selector {
+	for k, v := range pluginSpec.Selector {
 		vals[k] = v
 	}
 	return vals
 }
 
-func securityContextForConfig(plugin *datatype.Plugin) *apiv1.SecurityContext {
-	if plugin.PluginSpec.Privileged {
-		return &apiv1.SecurityContext{Privileged: &plugin.PluginSpec.Privileged}
+func securityContextForConfig(pluginSpec *datatype.PluginSpec) *apiv1.SecurityContext {
+	if pluginSpec.Privileged {
+		return &apiv1.SecurityContext{Privileged: &pluginSpec.Privileged}
 	}
 	return nil
 }
@@ -246,26 +247,26 @@ func (rm *ResourceManager) WatchJob(name string, namespace string) (watch.Interf
 }
 
 // CreateK3SJob creates and returns a Kubernetes job object of the pllugin
-func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, error) {
+func (rm *ResourceManager) CreateJob(pluginSpec *datatype.PluginSpec) (*batchv1.Job, error) {
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      plugin.Name,
+			Name:      pluginSpec.Name,
 			Namespace: rm.Namespace,
 		},
 		Spec: batchv1.JobSpec{
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: labelsForConfig(plugin),
+					Labels: labelsForConfig(pluginSpec),
 				},
 				Spec: apiv1.PodSpec{
-					NodeSelector:  nodeSelectorForConfig(plugin),
+					NodeSelector:  nodeSelectorForConfig(pluginSpec),
 					RestartPolicy: apiv1.RestartPolicyNever,
 					Containers: []apiv1.Container{
 						{
-							SecurityContext: securityContextForConfig(plugin),
-							Name:            plugin.Name,
-							Image:           plugin.PluginSpec.Image,
-							Args:            plugin.PluginSpec.Args,
+							SecurityContext: securityContextForConfig(pluginSpec),
+							Name:            pluginSpec.Name,
+							Image:           strings.Join([]string{pluginSpec.Image, pluginSpec.Version}, ":"),
+							Args:            pluginSpec.Args,
 							Env: []apiv1.EnvVar{
 								{
 									Name:  "PULSE_SERVER",
@@ -324,7 +325,7 @@ func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, err
 							Name: "uploads",
 							VolumeSource: apiv1.VolumeSource{
 								HostPath: &apiv1.HostPathVolumeSource{
-									Path: path.Join("/media/plugin-data/uploads", plugin.PluginSpec.Name, plugin.Version),
+									Path: path.Join("/media/plugin-data/uploads", pluginSpec.Name, pluginSpec.Version),
 									Type: &hostPathDirectoryOrCreate,
 								},
 							},
@@ -352,7 +353,8 @@ func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, err
 					},
 				},
 			},
-			BackoffLimit: &backOffLimit,
+			BackoffLimit:            &backOffLimit,
+			TTLSecondsAfterFinished: &ttlSecondsAfterFinished,
 		},
 	}, nil
 }

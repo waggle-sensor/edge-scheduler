@@ -1,0 +1,29 @@
+name: mygoal
+plugins:
+- name: imagesampler-top
+  image: waggle/plugin-image-sampler
+  version: 0.2.5
+  args:
+  - "-stream"
+  - "top"
+- name: imagesampler-bottom
+  image: waggle/plugin-image-sampler
+  version: 0.2.5
+  args:
+  - "-stream"
+  - "bottom"
+- name: cloudcover-top
+  image: waggle/plugin-cloudcover-unet
+  version: 0.0.1
+  args:
+  - "-stream"
+  - "top"
+  selector:
+    resource.gpu: true
+- name: objectcounter-bottom
+  image: waggle/plugin-objectcounter
+  version: 0.3.1
+  args:
+  - "-stream"
+  - "bottom"
+  - "-all-objects"

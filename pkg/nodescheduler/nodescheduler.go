@@ -19,13 +19,13 @@ type NodeScheduler struct {
 	APIServer                   *APIServer
 	Simulate                    bool
 	chanContextEventToScheduler chan datatype.EventPluginContext
-	chanFromGoalManager         chan *datatype.ScienceGoal
+	chanFromGoalManager         chan *datatype.Goal
 	chanRunGoal                 chan *datatype.ScienceGoal
 	chanStopPlugin              chan *datatype.Plugin
 	chanPluginToK3SClient       chan *datatype.Plugin
-	waitingList                 []*datatype.Plugin
-	readyList                   []*datatype.Plugin
-	executingList               []*datatype.Plugin
+	waitingList                 []datatype.PluginSpec
+	readyList                   []datatype.PluginSpec
+	executingList               []datatype.PluginSpec
 }
 
 func NewNodeScheduler(rm *ResourceManager, kb *knowledgebase.Knowledgebase, gm *NodeGoalManager, api *APIServer, simulate bool) (*NodeScheduler, error) {
@@ -36,13 +36,13 @@ func NewNodeScheduler(rm *ResourceManager, kb *knowledgebase.Knowledgebase, gm *
 		APIServer:                   api,
 		Simulate:                    simulate,
 		chanContextEventToScheduler: make(chan datatype.EventPluginContext, maxChannelBuffer),
-		chanFromGoalManager:         make(chan *datatype.ScienceGoal, maxChannelBuffer),
+		chanFromGoalManager:         make(chan *datatype.Goal, maxChannelBuffer),
 		chanRunGoal:                 make(chan *datatype.ScienceGoal, maxChannelBuffer),
 		chanStopPlugin:              make(chan *datatype.Plugin, maxChannelBuffer),
 		chanPluginToK3SClient:       make(chan *datatype.Plugin, maxChannelBuffer),
-		waitingList:                 make([]*datatype.Plugin, 0),
-		readyList:                   make([]*datatype.Plugin, 0),
-		executingList:               make([]*datatype.Plugin, 0),
+		waitingList:                 make([]datatype.PluginSpec, 0),
+		readyList:                   make([]datatype.PluginSpec, 0),
+		executingList:               make([]datatype.PluginSpec, 0),
 	}, nil
 }
 
@@ -89,26 +89,27 @@ func (ns *NodeScheduler) Run() {
 
 	for {
 		select {
-		case contextEvent := <-ns.chanContextEventToScheduler:
-			scienceGoal, err := ns.GoalManager.GetScienceGoal(contextEvent.GoalID)
-			if err != nil {
-				logger.Error.Printf("%s", err.Error())
-				continue
-			}
-			subGoal := scienceGoal.GetMySubGoal(ns.GoalManager.NodeID)
-			err = subGoal.UpdatePluginContext(contextEvent)
-			if err != nil {
-				logger.Error.Printf("%s", err.Error())
-				continue
-			}
-			// When a plugin becomes runnable see if it can be scheduled
-			if contextEvent.Status == datatype.Runnable {
-				ns.chanRunGoal <- scienceGoal
-			} else if contextEvent.Status == datatype.Stoppable {
-				ns.chanStopPlugin <- subGoal.GetPlugin(contextEvent.PluginName)
-			}
+		// case contextEvent := <-ns.chanContextEventToScheduler:
+		// 	scienceGoal, err := ns.GoalManager.GetScienceGoal(contextEvent.GoalID)
+		// 	if err != nil {
+		// 		logger.Error.Printf("%s", err.Error())
+		// 		continue
+		// 	}
+		// 	subGoal := scienceGoal.GetMySubGoal(ns.GoalManager.NodeID)
+		// 	err = subGoal.UpdatePluginContext(contextEvent)
+		// 	if err != nil {
+		// 		logger.Error.Printf("%s", err.Error())
+		// 		continue
+		// 	}
+		// 	// When a plugin becomes runnable see if it can be scheduled
+		// 	if contextEvent.Status == datatype.Runnable {
+		// 		ns.chanRunGoal <- scienceGoal
+		// 	} else if contextEvent.Status == datatype.Stoppable {
+		// 		ns.chanStopPlugin <- subGoal.GetPlugin(contextEvent.PluginName)
+		// 	}
 		case scienceGoal := <-ns.chanFromGoalManager:
-			ns.Knowledgebase.RegisterRules(scienceGoal, ns.GoalManager.NodeID)
+			// ns.Knowledgebase.RegisterRules(scienceGoal, ns.GoalManager.NodeID)
+			ns.waitingList = scienceGoal.Plugins
 		case scheduledScienceGoal := <-ns.chanRunGoal:
 			logger.Info.Printf("Goal %s needs scheduling", scheduledScienceGoal.Name)
 			subGoal := scheduledScienceGoal.GetMySubGoal(ns.GoalManager.NodeID)
