@@ -63,5 +63,5 @@ func (sg *SubGoal) GetPlugin(pluginName string) *Plugin {
 
 type Goal struct {
 	Name    string `yaml:"name"`
-	Plugins []PluginSpec
+	Plugins []*PluginSpec
 }

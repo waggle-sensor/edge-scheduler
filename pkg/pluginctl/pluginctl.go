@@ -17,6 +17,7 @@ import (
 	"github.com/sagecontinuum/ses/pkg/logger"
 	"github.com/sagecontinuum/ses/pkg/nodescheduler"
 	v1 "k8s.io/api/batch/v1"
+	apiv1 "k8s.io/api/core/v1"
 )
 
 type PluginCtl struct {
@@ -88,7 +89,8 @@ func (p *PluginCtl) Deploy(name string, selectorStr string, node string, privile
 	pluginSpec := datatype.PluginSpec{
 		Privileged: privileged,
 		Node:       node,
-		Image:      pluginImage,
+		Image:      parts[0],
+		Version:    parts[1],
 		Args:       pluginArgs,
 		Job:        "",
 		Name:       name,
@@ -99,12 +101,7 @@ func (p *PluginCtl) Deploy(name string, selectorStr string, node string, privile
 		return "", err
 	}
 	pluginSpec.Job = jobName
-	plugin := &datatype.Plugin{
-		Name:       jobName,
-		Version:    parts[1],
-		PluginSpec: pluginSpec,
-	}
-	job, err := p.ResourceManager.CreateJob(plugin)
+	job, err := p.ResourceManager.CreateJob(&pluginSpec)
 	if err != nil {
 		return "", err
 	}
@@ -150,7 +147,7 @@ func (p *PluginCtl) TerminatePlugin(pluginName string) error {
 	return p.ResourceManager.TerminateJob(pluginName)
 }
 
-func (p *PluginCtl) GetPluginStatus(name string) (string, error) {
+func (p *PluginCtl) GetPluginStatus(name string) (apiv1.PodPhase, error) {
 	return p.ResourceManager.GetPluginStatus(name)
 }
 

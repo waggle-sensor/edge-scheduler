@@ -27,3 +27,5 @@ plugins:
   - "-stream"
   - "bottom"
   - "-all-objects"
+  selector:
+    resource.gpu: true

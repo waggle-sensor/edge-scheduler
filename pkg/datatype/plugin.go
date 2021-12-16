@@ -53,7 +53,7 @@ const (
 	// Running indicates a plugin is assigned resource and running
 	Running SchedulingStatus = "Running"
 	// Stopped indicates a plugin is stopped by scheduler
-	Stopped = "Stopped"
+	Stopped SchedulingStatus = "Stopped"
 )
 
 // EventPluginContext structs a message about plugin context change

@@ -3,8 +3,6 @@ package nodescheduler
 import (
 	"github.com/sagecontinuum/ses/pkg/datatype"
 	"github.com/sagecontinuum/ses/pkg/knowledgebase"
-	"github.com/sagecontinuum/ses/pkg/logger"
-	"github.com/sagecontinuum/ses/pkg/nodescheduler/policy"
 )
 
 const (
@@ -22,10 +20,10 @@ type NodeScheduler struct {
 	chanFromGoalManager         chan *datatype.Goal
 	chanRunGoal                 chan *datatype.ScienceGoal
 	chanStopPlugin              chan *datatype.Plugin
-	chanPluginToK3SClient       chan *datatype.Plugin
-	waitingList                 []datatype.PluginSpec
-	readyList                   []datatype.PluginSpec
-	executingList               []datatype.PluginSpec
+	chanPluginToResourceManager chan *datatype.PluginSpec
+	waitingList                 []*datatype.PluginSpec
+	readyList                   []*datatype.PluginSpec
+	executingList               []*datatype.PluginSpec
 }
 
 func NewNodeScheduler(rm *ResourceManager, kb *knowledgebase.Knowledgebase, gm *NodeGoalManager, api *APIServer, simulate bool) (*NodeScheduler, error) {
@@ -39,10 +37,10 @@ func NewNodeScheduler(rm *ResourceManager, kb *knowledgebase.Knowledgebase, gm *
 		chanFromGoalManager:         make(chan *datatype.Goal, maxChannelBuffer),
 		chanRunGoal:                 make(chan *datatype.ScienceGoal, maxChannelBuffer),
 		chanStopPlugin:              make(chan *datatype.Plugin, maxChannelBuffer),
-		chanPluginToK3SClient:       make(chan *datatype.Plugin, maxChannelBuffer),
-		waitingList:                 make([]datatype.PluginSpec, 0),
-		readyList:                   make([]datatype.PluginSpec, 0),
-		executingList:               make([]datatype.PluginSpec, 0),
+		chanPluginToResourceManager: make(chan *datatype.PluginSpec, maxChannelBuffer),
+		waitingList:                 make([]*datatype.PluginSpec, 0),
+		readyList:                   make([]*datatype.PluginSpec, 0),
+		executingList:               make([]*datatype.PluginSpec, 0),
 	}, nil
 }
 
@@ -83,8 +81,8 @@ func (ns *NodeScheduler) Configure() (err error) {
 // Run handles communications between components for scheduling
 func (ns *NodeScheduler) Run() {
 	go ns.GoalManager.Run(ns.chanFromGoalManager)
-	go ns.Knowledgebase.Run(ns.chanContextEventToScheduler)
-	go ns.ResourceManager.Run(ns.chanPluginToK3SClient)
+	// go ns.Knowledgebase.Run(ns.chanContextEventToScheduler)
+	go ns.ResourceManager.Run(ns.chanPluginToResourceManager)
 	go ns.APIServer.Run()
 
 	for {
@@ -109,39 +107,45 @@ func (ns *NodeScheduler) Run() {
 		// 	}
 		case scienceGoal := <-ns.chanFromGoalManager:
 			// ns.Knowledgebase.RegisterRules(scienceGoal, ns.GoalManager.NodeID)
+			ns.ResourceManager.CleanUp()
 			ns.waitingList = scienceGoal.Plugins
-		case scheduledScienceGoal := <-ns.chanRunGoal:
-			logger.Info.Printf("Goal %s needs scheduling", scheduledScienceGoal.Name)
-			subGoal := scheduledScienceGoal.GetMySubGoal(ns.GoalManager.NodeID)
-			pluginsSubjectToSchedule := subGoal.GetSchedulablePlugins()
-			logger.Info.Printf("Plugins subject to run: %v", pluginsSubjectToSchedule)
-			// TODO: Resource model is not applied here -- needs improvements
-			orderedPluginsToRun := policy.SimpleSchedulingPolicy(pluginsSubjectToSchedule, datatype.Resource{
-				CPU:       999999,
-				Memory:    999999,
-				GPUMemory: 999999,
-			})
-			logger.Debug.Printf("Ordered plugins subject to run: %v", orderedPluginsToRun)
-			// Launch plugins
-			for _, plugin := range orderedPluginsToRun {
-				plugin.Status.SchedulingStatus = datatype.Running
-				ns.chanPluginToK3SClient <- plugin
-				logger.Info.Printf("Plugin %s has been scheduled to run", plugin.Name)
-			}
-			// // Launch plugins
-			// if launchPlugins(schedulablePluginConfigs, pluginsToRun) {
-			// 	// Track the plugin
-			// 	// TODO: Later get status from k3s to track running plugins
-			// 	currentPlugins = append(currentPlugins, pluginsToRun...)
-			// }
-			// logger.Info.Print("======================================")
-			// scheduleTriggered = false
-		case pluginToStop := <-ns.chanStopPlugin:
-			if pluginToStop.Status.SchedulingStatus == datatype.Running {
-				pluginToStop.Status.SchedulingStatus = datatype.Stopped
-				ns.chanPluginToK3SClient <- pluginToStop
-				logger.Info.Printf("Plugin %s has been triggered to stop", pluginToStop.Name)
-			}
+			// case scheduledScienceGoal := <-ns.chanRunGoal:
+			// 	logger.Info.Printf("Goal %s needs scheduling", scheduledScienceGoal.Name)
+			// 	subGoal := scheduledScienceGoal.GetMySubGoal(ns.GoalManager.NodeID)
+			// 	pluginsSubjectToSchedule := subGoal.GetSchedulablePlugins()
+			// 	logger.Info.Printf("Plugins subject to run: %v", pluginsSubjectToSchedule)
+			// 	// TODO: Resource model is not applied here -- needs improvements
+			// 	orderedPluginsToRun := policy.SimpleSchedulingPolicy(pluginsSubjectToSchedule, datatype.Resource{
+			// 		CPU:       999999,
+			// 		Memory:    999999,
+			// 		GPUMemory: 999999,
+			// 	})
+			// 	logger.Debug.Printf("Ordered plugins subject to run: %v", orderedPluginsToRun)
+			// 	// Launch plugins
+			// 	for _, plugin := range orderedPluginsToRun {
+			// 		plugin.Status.SchedulingStatus = datatype.Running
+			// 		ns.chanPluginToResourceManager <- plugin
+			// 		logger.Info.Printf("Plugin %s has been scheduled to run", plugin.Name)
+			// 	}
+			// 	// // Launch plugins
+			// 	// if launchPlugins(schedulablePluginConfigs, pluginsToRun) {
+			// 	// 	// Track the plugin
+			// 	// 	// TODO: Later get status from k3s to track running plugins
+			// 	// 	currentPlugins = append(currentPlugins, pluginsToRun...)
+			// 	// }
+			// 	// logger.Info.Print("======================================")
+			// 	// scheduleTriggered = false
+			// case pluginToStop := <-ns.chanStopPlugin:
+			// 	if pluginToStop.Status.SchedulingStatus == datatype.Running {
+			// 		pluginToStop.Status.SchedulingStatus = datatype.Stopped
+			// 		ns.chanPluginToK3SClient <- pluginToStop
+			// 		logger.Info.Printf("Plugin %s has been triggered to stop", pluginToStop.Name)
+			// 	}
 		}
+		// Main logic: round robin + FIFO
+		// for _, pluginSpec := range ns.waitingList {
+		// 	ns.readyList = append(ns.readyList, pluginSpec)
+		// 	ns.waitingList.
+		// }
 	}
 }

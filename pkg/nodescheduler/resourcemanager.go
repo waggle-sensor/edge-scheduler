@@ -32,7 +32,7 @@ import (
 )
 
 const (
-	namespace             = "ses"
+	namespace             = "default"
 	rancherKubeconfigPath = "/etc/rancher/k3s/k3s.yaml"
 )
 
@@ -592,10 +592,11 @@ func (rm *ResourceManager) TerminateDeployment(pluginName string) error {
 }
 
 func (rm *ResourceManager) TerminateJob(jobName string) error {
+	// need to terminate any running pods associated to the job
 	return rm.Clientset.BatchV1().Jobs(rm.Namespace).Delete(context.TODO(), jobName, metav1.DeleteOptions{})
 }
 
-func (rm *ResourceManager) GetPluginStatus(jobName string) (string, error) {
+func (rm *ResourceManager) GetPluginStatus(jobName string) (apiv1.PodPhase, error) {
 	// TODO: Later we use pod name as we run plugins in one-shot?
 	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Second)
 	defer cancel()
@@ -609,7 +610,12 @@ func (rm *ResourceManager) GetPluginStatus(jobName string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return string(pods.Items[0].Status.Phase), nil
+	if len(pods.Items) > 0 {
+		return pods.Items[0].Status.Phase, nil
+	} else {
+		return "", fmt.Errorf("No pod exists for job %q", jobName)
+	}
+
 }
 
 func (rm *ResourceManager) GetPluginLog(jobName string, follow bool) (io.ReadCloser, error) {
@@ -641,36 +647,59 @@ func (rm *ResourceManager) GetPluginLog(jobName string, follow bool) (io.ReadClo
 	// podWatcher, err = rm.Clientset.CoreV1().Pods(rm.Namespace).Watch(ctx, metav1.ListOptions{LabelSelector: selector.String()})
 }
 
-func (rm *ResourceManager) Run(chanPluginToUpdate <-chan *datatype.Plugin) {
+// CleanUp removes all currently running jobs
+func (rm *ResourceManager) CleanUp() error {
+	jobs, err := rm.ListJobs()
+	if err != nil {
+		return err
+	}
+	for _, job := range jobs.Items {
+		podStatus, err := rm.GetPluginStatus(job.Name)
+		if err != nil {
+			logger.Debug.Printf("Failed to read %q's pod status. Skipping...", job.Name)
+			continue
+		}
+		logger.Debug.Printf("Job %q's pod status %q", job.Name, podStatus)
+		switch podStatus {
+		case apiv1.PodPending:
+			fallthrough
+		case apiv1.PodRunning:
+			rm.TerminateJob(job.Name)
+		}
+	}
+	return nil
+}
+
+func (rm *ResourceManager) Run(chanPluginToUpdate <-chan *datatype.PluginSpec) {
 	for {
 		plugin := <-chanPluginToUpdate
-		logger.Debug.Printf("Plugin %s:%s needs to be in %s state", plugin.Name, plugin.Version, plugin.Status.SchedulingStatus)
-		if plugin.Status.SchedulingStatus == datatype.Running {
-			credential, err := rm.CreatePluginCredential(plugin)
-			if err != nil {
-				logger.Error.Printf("Could not create a plugin credential for %s on RabbitMQ at %s: %s", plugin.Name, rm.RMQManagement.Client.Endpoint, err.Error())
-				continue
-			}
-			err = rm.RMQManagement.RegisterPluginCredential(credential)
-			if err != nil {
-				logger.Error.Printf("Could not register the credential %s to RabbitMQ at %s: %s", credential.Username, rm.RMQManagement.Client.Endpoint, err.Error())
-				continue
-			}
-			deployablePlugin, err := rm.CreateDeployment(plugin, credential)
-			if err != nil {
-				logger.Error.Printf("Could not create a k3s deployment for plugin %s: %s", plugin.Name, err.Error())
-				continue
-			}
-			err = rm.LaunchPlugin(deployablePlugin)
-			if err != nil {
-				logger.Error.Printf("Failed to launch plugin %s: %s", plugin.Name, err.Error())
-			}
-		} else if plugin.Status.SchedulingStatus == datatype.Stopped {
-			err := rm.TerminateJob(plugin.Name)
-			if err != nil {
-				logger.Error.Printf("Failed to stop plugin %s: %s", plugin.Name, err.Error())
-			}
-		}
+		logger.Debug.Printf("Plugin %s:%s", plugin.Name, plugin.Version)
+		// if plugin.Status.SchedulingStatus == datatype.Running {
+		// 	credential, err := rm.CreatePluginCredential(plugin)
+		// 	if err != nil {
+		// 		logger.Error.Printf("Could not create a plugin credential for %s on RabbitMQ at %s: %s", plugin.Name, rm.RMQManagement.Client.Endpoint, err.Error())
+		// 		continue
+		// 	}
+		// 	err = rm.RMQManagement.RegisterPluginCredential(credential)
+		// 	if err != nil {
+		// 		logger.Error.Printf("Could not register the credential %s to RabbitMQ at %s: %s", credential.Username, rm.RMQManagement.Client.Endpoint, err.Error())
+		// 		continue
+		// 	}
+		// 	deployablePlugin, err := rm.CreateDeployment(plugin, credential)
+		// 	if err != nil {
+		// 		logger.Error.Printf("Could not create a k3s deployment for plugin %s: %s", plugin.Name, err.Error())
+		// 		continue
+		// 	}
+		// 	err = rm.LaunchPlugin(deployablePlugin)
+		// 	if err != nil {
+		// 		logger.Error.Printf("Failed to launch plugin %s: %s", plugin.Name, err.Error())
+		// 	}
+		// } else if plugin.Status.SchedulingStatus == datatype.Stopped {
+		// 	err := rm.TerminateJob(plugin.Name)
+		// 	if err != nil {
+		// 		logger.Error.Printf("Failed to stop plugin %s: %s", plugin.Name, err.Error())
+		// 	}
+		// }
 	}
 }
 

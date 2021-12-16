@@ -15,7 +15,7 @@ func init() {
 
 var cmdPs = &cobra.Command{
 	Use:   "ps [APP_NAME]",
-	Short: "Query plugin status",
+	Short: "Query plugin list",
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
 		pluginCtl, err := pluginctl.NewPluginCtl(kubeconfig)
 		if err != nil {

@@ -11,6 +11,7 @@ import (
 	"github.com/sagecontinuum/ses/pkg/pluginctl"
 	"github.com/spf13/cobra"
 	batchv1 "k8s.io/api/batch/v1"
+	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/watch"
 )
 
@@ -48,11 +49,11 @@ var cmdRun = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			if pluginStatus != "Pending" {
+			if pluginStatus != apiv1.PodPending {
 				break
 			}
 			logger.Info.Printf("Plugin is in %q state. Waiting...", pluginStatus)
-			time.Sleep(3 * time.Second)
+			time.Sleep(2 * time.Second)
 		}
 		c := make(chan os.Signal, 1)
 		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
