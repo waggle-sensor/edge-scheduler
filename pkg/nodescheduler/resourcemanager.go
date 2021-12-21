@@ -3,6 +3,7 @@ package nodescheduler
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -11,7 +12,10 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	rabbithole "github.com/michaelklishin/rabbit-hole"
@@ -39,7 +43,7 @@ const (
 var (
 	hostPathDirectoryOrCreate       = apiv1.HostPathDirectoryOrCreate
 	backOffLimit              int32 = 0
-	ttlSecondsAfterFinished   int32 = 3600 * 12
+	ttlSecondsAfterFinished   int32 = 3600
 )
 
 // ResourceManager structs a resource manager talking to a local computing cluster to schedule plugins
@@ -49,6 +53,9 @@ type ResourceManager struct {
 	Clientset     *kubernetes.Clientset
 	RMQManagement *RMQManagement
 	Simulate      bool
+	Plugins       []*datatype.Plugin
+	reserved      bool
+	mutex         sync.Mutex
 }
 
 // NewResourceManager returns an instance of ResourceManager
@@ -60,6 +67,8 @@ func NewK3SResourceManager(registry string, incluster bool, kubeconfig string, r
 			Clientset:     nil,
 			RMQManagement: rmqManagement,
 			Simulate:      simulate,
+			Plugins:       make([]*datatype.Plugin, 0),
+			reserved:      false,
 		}, nil
 	}
 	registryAddress, err := url.Parse(registry)
@@ -121,7 +130,7 @@ func (rm *ResourceManager) CreatePluginCredential(plugin *datatype.Plugin) (data
 	// TODO: We will need to add instance of plugin as a aprt of Username
 	// username should follow "plugin.NAME:VERSION" format to publish messages via WES
 	credential := datatype.PluginCredential{
-		Username: fmt.Sprint("plugin.", strings.ToLower(plugin.Name), ":", plugin.Version),
+		Username: fmt.Sprint("plugin.", strings.ToLower(plugin.Name), ":", plugin.PluginSpec.Version),
 		Password: generatePassword(),
 	}
 	return credential, nil
@@ -232,41 +241,63 @@ func (rm *ResourceManager) WatchConfigMap(name string, namespace string) (watch.
 	return watcher, err
 }
 
-func (rm *ResourceManager) WatchJob(name string, namespace string) (watch.Interface, error) {
+func (rm *ResourceManager) WatchJob(name string, namespace string, retry int) (watcher watch.Interface, err error) {
 	if namespace == "" {
 		namespace = rm.Namespace
 	}
-	job, err := rm.Clientset.BatchV1().Jobs(namespace).Get(context.TODO(), name, metav1.GetOptions{})
-	if err != nil {
-		return nil, err
+	for i := 0; i <= retry; i++ {
+		job, err := rm.Clientset.BatchV1().Jobs(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+		if err != nil {
+			logger.Debug.Printf("Failed to job %q", err.Error())
+			time.Sleep(3 * time.Second)
+			continue
+		}
+		// var selector *metav1.LabelSelector
+		// err = metav1.Convert_Map_string_To_string_To_v1_LabelSelector(&configMap.Labels, selector, nil)
+		watcher, err = rm.Clientset.BatchV1().Jobs(namespace).Watch(context.TODO(), metav1.SingleObject(metav1.ObjectMeta{Name: job.Name, Namespace: job.Namespace}))
+		if err != nil {
+			logger.Debug.Printf("Failed to get watcher for %q: %q", job.Name, err.Error())
+			time.Sleep(3 * time.Second)
+			continue
+		}
+		break
 	}
-	// var selector *metav1.LabelSelector
-	// err = metav1.Convert_Map_string_To_string_To_v1_LabelSelector(&configMap.Labels, selector, nil)
-	watcher, err := rm.Clientset.BatchV1().Jobs(namespace).Watch(context.TODO(), metav1.SingleObject(metav1.ObjectMeta{Name: job.Name, Namespace: job.Namespace}))
+	return
+}
+
+func (rm *ResourceManager) WatchJobs(namespace string) (watch.Interface, error) {
+	if namespace == "" {
+		namespace = rm.Namespace
+	}
+	watcher, err := rm.Clientset.BatchV1().Jobs(namespace).Watch(context.TODO(), metav1.ListOptions{})
 	return watcher, err
 }
 
 // CreateK3SJob creates and returns a Kubernetes job object of the pllugin
-func (rm *ResourceManager) CreateJob(pluginSpec *datatype.PluginSpec) (*batchv1.Job, error) {
+func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, error) {
+	jobName, err := pluginNameForSpec(plugin.PluginSpec)
+	if err != nil {
+		return nil, err
+	}
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      pluginSpec.Name,
+			Name:      jobName,
 			Namespace: rm.Namespace,
 		},
 		Spec: batchv1.JobSpec{
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: labelsForConfig(pluginSpec),
+					Labels: labelsForConfig(plugin.PluginSpec),
 				},
 				Spec: apiv1.PodSpec{
-					NodeSelector:  nodeSelectorForConfig(pluginSpec),
+					NodeSelector:  nodeSelectorForConfig(plugin.PluginSpec),
 					RestartPolicy: apiv1.RestartPolicyNever,
 					Containers: []apiv1.Container{
 						{
-							SecurityContext: securityContextForConfig(pluginSpec),
-							Name:            pluginSpec.Name,
-							Image:           strings.Join([]string{pluginSpec.Image, pluginSpec.Version}, ":"),
-							Args:            pluginSpec.Args,
+							SecurityContext: securityContextForConfig(plugin.PluginSpec),
+							Name:            plugin.Name,
+							Image:           plugin.PluginSpec.Image,
+							Args:            plugin.PluginSpec.Args,
 							Env: []apiv1.EnvVar{
 								{
 									Name:  "PULSE_SERVER",
@@ -325,7 +356,7 @@ func (rm *ResourceManager) CreateJob(pluginSpec *datatype.PluginSpec) (*batchv1.
 							Name: "uploads",
 							VolumeSource: apiv1.VolumeSource{
 								HostPath: &apiv1.HostPathVolumeSource{
-									Path: path.Join("/media/plugin-data/uploads", pluginSpec.Name, pluginSpec.Version),
+									Path: path.Join("/media/plugin-data/uploads", plugin.Name, plugin.PluginSpec.Version),
 									Type: &hostPathDirectoryOrCreate,
 								},
 							},
@@ -372,7 +403,7 @@ func (rm *ResourceManager) CreateDeployment(plugin *datatype.Plugin, credential 
 			Name: "uploads",
 			VolumeSource: apiv1.VolumeSource{
 				HostPath: &apiv1.HostPathVolumeSource{
-					Path: path.Join("/media/plugin-data/uploads", pluginNameInLowcase, plugin.Version),
+					Path: path.Join("/media/plugin-data/uploads", pluginNameInLowcase, plugin.PluginSpec.Version),
 					Type: &hostPathDirectoryOrCreate,
 				},
 			},
@@ -438,17 +469,17 @@ func (rm *ResourceManager) CreateDeployment(plugin *datatype.Plugin, credential 
 							Name: pluginNameInLowcase,
 							Image: path.Join(
 								rm.ECRRegistry.Path,
-								strings.Join([]string{plugin.Name, plugin.Version}, ":"),
+								plugin.PluginSpec.Image,
 							),
 							// Args: plugin.Args,
 							Env: []apiv1.EnvVar{
 								{
 									Name:  "WAGGLE_PLUGIN_NAME",
-									Value: strings.Join([]string{plugin.Name, plugin.Version}, ":"),
+									Value: strings.Join([]string{plugin.Name, plugin.PluginSpec.Version}, ":"),
 								},
 								{
 									Name:  "WAGGLE_PLUGIN_VERSION",
-									Value: plugin.Version,
+									Value: plugin.PluginSpec.Version,
 								},
 								{
 									Name:  "WAGGLE_PLUGIN_USERNAME",
@@ -592,8 +623,8 @@ func (rm *ResourceManager) TerminateDeployment(pluginName string) error {
 }
 
 func (rm *ResourceManager) TerminateJob(jobName string) error {
-	// need to terminate any running pods associated to the job
-	return rm.Clientset.BatchV1().Jobs(rm.Namespace).Delete(context.TODO(), jobName, metav1.DeleteOptions{})
+	deleteDependencies := metav1.DeletePropagationBackground
+	return rm.Clientset.BatchV1().Jobs(rm.Namespace).Delete(context.TODO(), jobName, metav1.DeleteOptions{PropagationPolicy: &deleteDependencies})
 }
 
 func (rm *ResourceManager) GetPluginStatus(jobName string) (apiv1.PodPhase, error) {
@@ -615,7 +646,6 @@ func (rm *ResourceManager) GetPluginStatus(jobName string) (apiv1.PodPhase, erro
 	} else {
 		return "", fmt.Errorf("No pod exists for job %q", jobName)
 	}
-
 }
 
 func (rm *ResourceManager) GetPluginLog(jobName string, follow bool) (io.ReadCloser, error) {
@@ -654,6 +684,10 @@ func (rm *ResourceManager) CleanUp() error {
 		return err
 	}
 	for _, job := range jobs.Items {
+		// Skip WES service jobs
+		if strings.Contains(job.Name, "wes") {
+			continue
+		}
 		podStatus, err := rm.GetPluginStatus(job.Name)
 		if err != nil {
 			logger.Debug.Printf("Failed to read %q's pod status. Skipping...", job.Name)
@@ -665,15 +699,132 @@ func (rm *ResourceManager) CleanUp() error {
 			fallthrough
 		case apiv1.PodRunning:
 			rm.TerminateJob(job.Name)
+			logger.Debug.Printf("Job %q terminated successfully", job.Name)
 		}
 	}
 	return nil
 }
 
-func (rm *ResourceManager) Run(chanPluginToUpdate <-chan *datatype.PluginSpec) {
+func (rm *ResourceManager) UpdateReservation(value bool) {
+	rm.mutex.Lock()
+	defer rm.mutex.Unlock()
+	rm.reserved = value
+}
+
+func (rm *ResourceManager) WillItFit(plugin *datatype.Plugin) bool {
+	if rm.reserved {
+		return false
+	} else {
+		return true
+	}
+}
+
+func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin, chanNotify chan<- string) {
+	logger.Debug.Printf("Running plugin %q...", plugin.Name)
+	rm.UpdateReservation(true)
+	job, err := rm.CreateJob(plugin)
+	if err != nil {
+		logger.Error.Printf("Failed to create Kubernetes Job for %q: %q", plugin.Name, err.Error())
+		chanNotify <- err.Error()
+		return
+	}
+	_, err = rm.RunPlugin(job)
+	if err != nil {
+		logger.Error.Printf("Failed to run %q: %q", job.Name, err.Error())
+		chanNotify <- err.Error()
+		return
+	}
+	logger.Info.Printf("Plugin %q deployed", job.Name)
+	plugin.UpdatePluginSchedulingStatus(datatype.Running)
+	watcher, err := rm.WatchJob(job.Name, rm.Namespace, 3)
+	if err != nil {
+		logger.Error.Printf("Failed to watch %q. Abort the execution", job.Name)
+		rm.TerminateJob(job.Name)
+		chanNotify <- err.Error()
+		return
+	}
+	chanEvent := watcher.ResultChan()
 	for {
-		plugin := <-chanPluginToUpdate
-		logger.Debug.Printf("Plugin %s:%s", plugin.Name, plugin.Version)
+		event := <-chanEvent
+		switch event.Type {
+		case watch.Added:
+			fallthrough
+		case watch.Deleted:
+			fallthrough
+		case watch.Modified:
+			job := event.Object.(*batchv1.Job)
+			if len(job.Status.Conditions) > 0 {
+				logger.Debug.Printf("%s: %s", event.Type, job.Status.Conditions[0].Type)
+				switch job.Status.Conditions[0].Type {
+				case batchv1.JobComplete:
+					fallthrough
+				case batchv1.JobFailed:
+					plugin.UpdatePluginSchedulingStatus(datatype.Waiting)
+					rm.UpdateReservation(false)
+					chanNotify <- fmt.Sprintf("done running %s", job.Name)
+					return
+				}
+			} else {
+				logger.Debug.Printf("%s: %s", event.Type, "UNKNOWN")
+			}
+		}
+	}
+}
+
+func (rm *ResourceManager) Run(chanPluginToUpdate <-chan *datatype.Plugin) {
+	for {
+		select {
+		case plugin := <-chanPluginToUpdate:
+			logger.Debug.Printf("Plugin status changed to %q", plugin.Status.SchedulingStatus)
+			switch plugin.Status.SchedulingStatus {
+			case datatype.Ready:
+				logger.Debug.Printf("Running the plugin %q...", plugin.Name)
+				job, err := rm.CreateJob(plugin)
+				if err != nil {
+					logger.Error.Printf("Failed to create Kubernetes Job for %q: %q", plugin.Name, err.Error())
+				} else {
+					_, err = rm.RunPlugin(job)
+					if err != nil {
+						logger.Error.Printf("Failed to run %q: %q", plugin.Name, err.Error())
+					} else {
+						logger.Info.Printf("Plugin %q deployed", plugin.Name)
+						plugin.UpdatePluginSchedulingStatus(datatype.Running)
+						rm.UpdateReservation(true)
+						go func() {
+							watcher, err := rm.WatchJob(plugin.Name, rm.Namespace, 0)
+							if err != nil {
+								logger.Error.Printf("Failed to watch %q. Abort the execution", plugin.Name)
+								rm.TerminateJob(job.Name)
+							}
+							chanEvent := watcher.ResultChan()
+							for {
+								event := <-chanEvent
+								switch event.Type {
+								case watch.Added:
+									fallthrough
+								case watch.Deleted:
+									fallthrough
+								case watch.Modified:
+									job := event.Object.(*batchv1.Job)
+									if len(job.Status.Conditions) > 0 {
+										logger.Debug.Printf("%s: %s", event.Type, job.Status.Conditions[0].Type)
+										switch job.Status.Conditions[0].Type {
+										case batchv1.JobComplete:
+											fallthrough
+										case batchv1.JobFailed:
+											plugin.UpdatePluginSchedulingStatus(datatype.Waiting)
+											rm.UpdateReservation(false)
+										}
+									} else {
+										logger.Debug.Printf("%s: %s", event.Type, "UNKNOWN")
+									}
+								}
+							}
+						}()
+					}
+				}
+			}
+		}
 		// if plugin.Status.SchedulingStatus == datatype.Running {
 		// 	credential, err := rm.CreatePluginCredential(plugin)
 		// 	if err != nil {
@@ -701,6 +852,49 @@ func (rm *ResourceManager) Run(chanPluginToUpdate <-chan *datatype.PluginSpec) {
 		// 	}
 		// }
 	}
+}
+
+var validNamePattern = regexp.MustCompile("^[a-z0-9-]+$")
+
+func pluginNameForSpec(spec *datatype.PluginSpec) (string, error) {
+	// if no given name for the plugin, use PLUGIN-VERSION-INSTANCE format for name
+	// INSTANCE is calculated as Sha256("DOMAIN/PLUGIN:VERSION&ARGUMENTS") and
+	// take the first 8 hex letters.
+	// NOTE: if multiple plugins with the same version and arguments are given for
+	//       the same domain, only one deployment will be applied to the cluster
+	// NOTE2: To comply with RFC 1123 for Kubernetes object name, only lower alphanumeric
+	//        characters with '-' is allowed
+	if spec.Name != "" {
+		jobName := strings.Join([]string{spec.Name, strconv.FormatInt(time.Now().Unix(), 10)}, "-")
+		if !validNamePattern.MatchString(jobName) {
+			return "", fmt.Errorf("plugin name must consist of alphanumeric characters with '-' RFC1123")
+		}
+		return jobName, nil
+	}
+	return generateJobNameForSpec(spec)
+}
+
+// generateJobNameForSpec generates a consistent name for a Spec.
+//
+// Very important note from: https://pkg.go.dev/encoding/json#Marshal
+//
+// Map values encode as JSON objects. The map's key type must either be a string, an integer type,
+// or implement encoding.TextMarshaler. The map keys are sorted and used as JSON object keys by applying
+// the following rules, subject to the UTF-8 coercion described for string values above:
+//
+// The "map keys are sorted" bit is important for us as it allows us to ensure the hash is consistent.
+func generateJobNameForSpec(spec *datatype.PluginSpec) (string, error) {
+	specjson, err := json.Marshal(spec)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(specjson)
+	instance := hex.EncodeToString(sum[:])[:8]
+	parts := strings.Split(path.Base(spec.Image), ":")
+	if len(parts) != 2 {
+		return "", fmt.Errorf("invalid plugin name %q", spec.Image)
+	}
+	return strings.Join([]string{parts[0], strings.ReplaceAll(parts[1], ".", "-"), instance}, "-"), nil
 }
 
 // RMQManagement structs a connection to RMQManagement

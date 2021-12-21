@@ -2,13 +2,13 @@ package datatype
 
 import (
 	"fmt"
+	"time"
 )
 
 // Plugin structs plugin metadata from ECR
 type Plugin struct {
 	Name         string       `yaml:"name,omitempty"`
-	Version      string       `yaml:"version,omitempty"`
-	PluginSpec   PluginSpec   `yaml:"pluginspec,omitempty"`
+	PluginSpec   *PluginSpec  `yaml:"pluginspec,omitempty"`
 	Status       PluginStatus `yaml:"status,omitempty"`
 	Tags         []string     `yaml:"tags,omitempty"`
 	Hardware     []string     `yaml:"hardware,omitempty"`
@@ -34,6 +34,7 @@ type PluginStatus struct {
 	ContextStatus    ContextStatus    `yaml:"context,omitempty"`
 	SchedulingStatus SchedulingStatus `yaml:"scheduling,omitempty"`
 	KnobStatus       *Profile         `yaml:"knob,omitempty"`
+	Since            time.Time
 }
 
 // ContextStatus represents contextual status of a plugin
@@ -50,6 +51,10 @@ const (
 type SchedulingStatus string
 
 const (
+	// Waiting indicates a plugin is not activated and in waiting
+	Waiting SchedulingStatus = "Waiting"
+	// Ready indicates a plugin is ready to be scheduled
+	Ready SchedulingStatus = "Ready"
 	// Running indicates a plugin is assigned resource and running
 	Running SchedulingStatus = "Running"
 	// Stopped indicates a plugin is stopped by scheduler
@@ -80,6 +85,13 @@ type PluginCredential struct {
 // 	Env     map[string]string `yaml:"env"`
 // 	Configs map[string]string `yaml:"configs"`
 // }
+
+// UpdatePluginContext updates contextual status of the plugin
+func (p *Plugin) UpdatePluginSchedulingStatus(status SchedulingStatus) error {
+	p.Status.SchedulingStatus = status
+	p.Status.Since = time.Now()
+	return nil
+}
 
 // UpdatePluginContext updates contextual status of the plugin
 func (p *Plugin) UpdatePluginContext(status ContextStatus) error {

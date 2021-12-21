@@ -8,6 +8,7 @@ require (
 	github.com/imdario/mergo v0.3.11 // indirect
 	github.com/michaelklishin/rabbit-hole v1.5.0
 	github.com/michaelklishin/rabbit-hole/v2 v2.6.0
+	github.com/nu7hatch/gouuid v0.0.0-20131221200532-179d4d0c4d8d // indirect
 	github.com/pebbe/zmq4 v1.2.1
 	github.com/spf13/cobra v1.1.3
 	github.com/streadway/amqp v1.0.0

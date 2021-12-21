@@ -8,6 +8,7 @@ import (
 	"path"
 	"time"
 
+	uuid "github.com/nu7hatch/gouuid"
 	"github.com/sagecontinuum/ses/pkg/datatype"
 	"github.com/sagecontinuum/ses/pkg/interfacing"
 	"github.com/sagecontinuum/ses/pkg/logger"
@@ -18,11 +19,11 @@ import (
 
 // GoalManager structs a goal manager for nodescheduler
 type NodeGoalManager struct {
-	scienceGoals             map[string]*datatype.Goal
+	ScienceGoals             map[string]*datatype.ScienceGoal
 	cloudSchedulerBaseURL    string
 	NodeID                   string
 	Simulate                 bool
-	chanNewGoalToGoalManager chan *datatype.Goal
+	chanNewGoalToGoalManager chan *datatype.ScienceGoal
 	rmqHandler               *interfacing.RabbitMQHandler
 	GoalWatcher              watch.Interface
 }
@@ -30,17 +31,17 @@ type NodeGoalManager struct {
 // NewGoalManager creates and returns an instance of goal manager
 func NewNodeGoalManager(cloudSchedulerURL string, nodeID string, simulate bool) (*NodeGoalManager, error) {
 	return &NodeGoalManager{
-		scienceGoals:             make(map[string]*datatype.Goal),
+		ScienceGoals:             make(map[string]*datatype.ScienceGoal),
 		cloudSchedulerBaseURL:    cloudSchedulerURL,
 		NodeID:                   nodeID,
 		Simulate:                 simulate,
-		chanNewGoalToGoalManager: make(chan *datatype.Goal, 100),
+		chanNewGoalToGoalManager: make(chan *datatype.ScienceGoal, 100),
 	}, nil
 }
 
 // GetScienceGoal returns the goal of given goal_id
-func (ngm *NodeGoalManager) GetScienceGoal(goalID string) (*datatype.Goal, error) {
-	if goal, exist := ngm.scienceGoals[goalID]; exist {
+func (ngm *NodeGoalManager) GetScienceGoal(goalID string) (*datatype.ScienceGoal, error) {
+	if goal, exist := ngm.ScienceGoals[goalID]; exist {
 		return goal, nil
 	}
 	return nil, fmt.Errorf("The goal %s does not exist", goalID)
@@ -53,7 +54,7 @@ func (ngm *NodeGoalManager) SetRMQHandler(rmqHandler *interfacing.RabbitMQHandle
 
 // RunGoalManager handles goal related events from both cloud and local
 // and keeps goals managed up-to-date with the help from the events
-func (ngm *NodeGoalManager) Run(chanToScheduler chan *datatype.Goal) {
+func (ngm *NodeGoalManager) Run(chanToScheduler chan datatype.Event) {
 	// NOTE: use RabbitMQ to receive goals if set
 	// var useRabbitMQ bool
 	// if ngm.rmqHandler != nil {
@@ -69,8 +70,8 @@ func (ngm *NodeGoalManager) Run(chanToScheduler chan *datatype.Goal) {
 		select {
 		case scienceGoal := <-ngm.chanNewGoalToGoalManager:
 			logger.Info.Printf("Received a goal %q", scienceGoal.Name)
-			ngm.scienceGoals[scienceGoal.Name] = scienceGoal
-			chanToScheduler <- scienceGoal
+			ngm.ScienceGoals[scienceGoal.Name] = scienceGoal
+			chanToScheduler <- datatype.NewEvent(datatype.EventNewGoal, scienceGoal.Name)
 		}
 	}
 }
@@ -88,16 +89,45 @@ func (ngm *NodeGoalManager) pullGoalsFromK3S() {
 		case watch.Modified:
 			if updatedConfigMap, ok := event.Object.(*apiv1.ConfigMap); ok {
 				logger.Debug.Printf("%v", updatedConfigMap.Data)
-				var goal datatype.Goal
-				err := yaml.Unmarshal([]byte(updatedConfigMap.Data["goals"]), &goal)
+				var jobTemplate datatype.JobTemplate
+				err := yaml.Unmarshal([]byte(updatedConfigMap.Data["goals"]), &jobTemplate)
 				if err != nil {
 					logger.Error.Printf("Failed to load goals from Kubernetes ConfigMap %q", err.Error())
 				} else {
-					ngm.chanNewGoalToGoalManager <- &goal
+					scienceGoal, err := ngm.convertJobTemplateToScienceGoal(&jobTemplate)
+					if err != nil {
+						logger.Error.Printf("Failed to convert into Science Goal %q", err.Error())
+					} else {
+						ngm.chanNewGoalToGoalManager <- scienceGoal
+					}
 				}
 			}
 		}
 	}
+}
+
+func (gm *NodeGoalManager) convertJobTemplateToScienceGoal(job *datatype.JobTemplate) (*datatype.ScienceGoal, error) {
+	u, _ := uuid.NewV4()
+	var subGoal datatype.SubGoal
+	subGoal.Node = &datatype.Node{
+		Name: gm.NodeID,
+	}
+	for _, pluginSpec := range job.Plugins {
+		subGoal.Plugins = append(subGoal.Plugins, &datatype.Plugin{
+			Name:       pluginSpec.Name,
+			PluginSpec: pluginSpec,
+			Status: datatype.PluginStatus{
+				SchedulingStatus: datatype.Waiting,
+			},
+		})
+	}
+	return &datatype.ScienceGoal{
+		ID:   u.String(),
+		Name: job.Name,
+		SubGoals: []*datatype.SubGoal{
+			&subGoal,
+		},
+	}, nil
 }
 
 // pullingGoalsFromCloudScheduler periodically pulls goals from the cloud scheduler

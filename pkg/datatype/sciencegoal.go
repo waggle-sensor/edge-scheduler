@@ -22,6 +22,7 @@ func (g *ScienceGoal) GetMySubGoal(nodeName string) *SubGoal {
 
 // SubGoal structs node-specific goal along with conditions and rules
 type SubGoal struct {
+	Name         string    `yaml:"name,omitempty"`
 	Node         *Node     `yaml:"node,omitempty"`
 	Plugins      []*Plugin `yaml:"plugins,omitempty"`
 	Sciencerules []string  `yaml:"sciencerules,omitempty"`
@@ -61,7 +62,7 @@ func (sg *SubGoal) GetPlugin(pluginName string) *Plugin {
 	return nil
 }
 
-type Goal struct {
+type JobTemplate struct {
 	Name    string `yaml:"name"`
 	Plugins []*PluginSpec
 }

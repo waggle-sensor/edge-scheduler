@@ -16,9 +16,10 @@ import (
 	"github.com/sagecontinuum/ses/pkg/datatype"
 	"github.com/sagecontinuum/ses/pkg/logger"
 	"github.com/sagecontinuum/ses/pkg/nodescheduler"
-	v1 "k8s.io/api/batch/v1"
 	apiv1 "k8s.io/api/core/v1"
 )
+
+const pluginctlJob = "Pluginctl"
 
 type PluginCtl struct {
 	ResourceManager *nodescheduler.ResourceManager
@@ -35,7 +36,7 @@ func NewPluginCtl(kubeconfig string) (*PluginCtl, error) {
 
 var validNamePattern = regexp.MustCompile("^[a-z0-9-]+$")
 
-func jobNameForSpec(spec *datatype.PluginSpec) (string, error) {
+func pluginNameForSpec(spec *datatype.PluginSpec) (string, error) {
 	// if no given name for the plugin, use PLUGIN-VERSION-INSTANCE format for name
 	// INSTANCE is calculated as Sha256("DOMAIN/PLUGIN:VERSION&ARGUMENTS") and
 	// take the first 8 hex letters.
@@ -89,19 +90,23 @@ func (p *PluginCtl) Deploy(name string, selectorStr string, node string, privile
 	pluginSpec := datatype.PluginSpec{
 		Privileged: privileged,
 		Node:       node,
-		Image:      parts[0],
+		Image:      pluginImage,
 		Version:    parts[1],
 		Args:       pluginArgs,
-		Job:        "",
 		Name:       name,
+		Job:        pluginctlJob,
 		Selector:   selector,
 	}
-	jobName, err := jobNameForSpec(&pluginSpec)
+	pluginName, err := pluginNameForSpec(&pluginSpec)
 	if err != nil {
 		return "", err
 	}
-	pluginSpec.Job = jobName
-	job, err := p.ResourceManager.CreateJob(&pluginSpec)
+	pluginSpec.Name = pluginName
+	plugin := datatype.Plugin{
+		Name:       pluginName,
+		PluginSpec: &pluginSpec,
+	}
+	job, err := p.ResourceManager.CreateJob(&plugin)
 	if err != nil {
 		return "", err
 	}
@@ -151,6 +156,9 @@ func (p *PluginCtl) GetPluginStatus(name string) (apiv1.PodPhase, error) {
 	return p.ResourceManager.GetPluginStatus(name)
 }
 
+// GetPlugins returns list of plugins. It is assumed that each Kubernetes job handling
+// a plugin has only one Kubernetes pod, so only the first pod associated to the job is
+// considered when printing state of the job.
 func (p *PluginCtl) GetPlugins() (formattedList string, err error) {
 	list, err := p.ResourceManager.ListJobs()
 	if err != nil {
@@ -174,7 +182,7 @@ func (p *PluginCtl) GetPlugins() (formattedList string, err error) {
 	var (
 		startTime string
 		duration  string
-		status    v1.JobConditionType
+		status    string
 	)
 	for _, plugin := range list.Items {
 		if strings.Contains(plugin.Name, "wes") {
@@ -186,12 +194,18 @@ func (p *PluginCtl) GetPlugins() (formattedList string, err error) {
 		if plugin.Status.StartTime != nil {
 			// NOTE: Time format in Go is so special. https://pkg.go.dev/time#Time.Format
 			startTime = plugin.Status.StartTime.Time.UTC().Format("2006/01/02 15:04:05 MST")
+		}
+		if len(plugin.Status.Conditions) > 0 {
+			status = string(plugin.Status.Conditions[0].Type)
 			if plugin.Status.CompletionTime != nil {
 				duration = plugin.Status.CompletionTime.Sub(plugin.Status.StartTime.Time).String()
 			}
-		}
-		if len(plugin.Status.Conditions) > 0 {
-			status = plugin.Status.Conditions[0].Type
+		} else {
+			podPhase, err := p.ResourceManager.GetPluginStatus(plugin.Name)
+			if err == nil {
+				status = string(podPhase)
+			}
+			duration = time.Now().Sub(plugin.Status.StartTime.Time).String()
 		}
 		formattedList += fmt.Sprintf("%-*s%-*s%-*s%-*s\n", maxLengthName+3, plugin.Name, maxLengthStatus+3, status, maxLengthStartTime+3, startTime, maxLengthDuration+3, duration)
 	}

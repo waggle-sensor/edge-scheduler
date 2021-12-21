@@ -16,7 +16,7 @@ type Job struct {
 // AddPlugin adds given plugin to the job
 func (j *Job) AddPlugin(plugin Plugin) {
 	for _, p := range j.Plugins {
-		if p.Name == plugin.Name && p.Version == plugin.Version {
+		if p.Name == plugin.Name && p.PluginSpec.Version == plugin.PluginSpec.Version {
 			return
 		}
 	}
