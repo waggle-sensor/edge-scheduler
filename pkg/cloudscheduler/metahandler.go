@@ -36,7 +36,7 @@ func NewMetaHandler(dataDir string) (*MetaHandler, error) {
 func (mh *MetaHandler) GetPlugin(name string, version string) (datatype.Plugin, error) {
 	for _, plugin := range mh.plugins {
 		if plugin.Name == name &&
-			plugin.Version == version {
+			plugin.PluginSpec.Version == version {
 			return plugin, nil
 		}
 	}
@@ -115,7 +115,7 @@ func nodeExistInArray(node datatype.Node, nodes []datatype.Node) bool {
 func pluginExistInArray(plugin datatype.Plugin, plugins []datatype.Plugin) bool {
 	for _, pluginInArray := range plugins {
 		if pluginInArray.Name == plugin.Name &&
-			pluginInArray.Version == plugin.Version {
+			pluginInArray.PluginSpec.Version == plugin.PluginSpec.Version {
 			return true
 		}
 	}

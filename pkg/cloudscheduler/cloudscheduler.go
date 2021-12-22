@@ -101,7 +101,7 @@ func (cs *CloudScheduler) handlerSubmitJobs(w http.ResponseWriter, r *http.Reque
 		if len(job.PluginTags) > 0 {
 			foundPlugins := cs.Meta.GetPluginsByTags(job.PluginTags)
 			for _, p := range foundPlugins {
-				logger.Debug.Printf("Plugin %s:%s is added to job %s", p.Name, p.Version, job.Name)
+				logger.Debug.Printf("Plugin %s:%s is added to job %s", p.Name, p.PluginSpec.Version, job.Name)
 				job.AddPlugin(p)
 			}
 			logger.Info.Printf("Found %d plugins by the tags", len(foundPlugins))
@@ -145,7 +145,7 @@ func (cs *CloudScheduler) handlerSubmitJobs(w http.ResponseWriter, r *http.Reque
 		if len(job.PluginTags) > 0 {
 			foundPlugins := cs.Meta.GetPluginsByTags(job.PluginTags)
 			for _, p := range foundPlugins {
-				logger.Debug.Printf("Plugin %s:%s is added to job %s", p.Name, p.Version, job.Name)
+				logger.Debug.Printf("Plugin %s:%s is added to job %s", p.Name, p.PluginSpec.Version, job.Name)
 				job.AddPlugin(p)
 			}
 			logger.Info.Printf("Found %d plugins by the tags", len(foundPlugins))

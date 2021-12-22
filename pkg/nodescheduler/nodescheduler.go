@@ -51,6 +51,8 @@ func NewNodeScheduler(rm *ResourceManager, kb *knowledgebase.Knowledgebase, gm *
 //
 // - "wes-rabbitmq" and "wes-audio-server" services available in "ses" namespace
 //
+// - "waggle-data-config" and "wes-audio-server-plugin-conf" configmaps
+//
 // - "wes-ses-goal" configmap that accepts user goals
 func (ns *NodeScheduler) Configure() (err error) {
 	if ns.Simulate {
@@ -65,6 +67,13 @@ func (ns *NodeScheduler) Configure() (err error) {
 		err = ns.ResourceManager.ForwardService(service, "default", "ses")
 		if err != nil {
 			return
+		}
+	}
+	configMapsToBring := []string{"waggle-data-config", "wes-audio-server-plugin-conf"}
+	for _, configMapName := range configMapsToBring {
+		err = ns.ResourceManager.CopyConfigMap(configMapName, "default", ns.ResourceManager.Namespace)
+		if err != nil {
+			logger.Error.Printf("Failed to create ConfigMap %q: %q", configMapName, err.Error())
 		}
 	}
 	err = ns.ResourceManager.CreateConfigMap(configMapNameForGoals, map[string]string{}, "default")
@@ -83,7 +92,7 @@ func (ns *NodeScheduler) Configure() (err error) {
 func (ns *NodeScheduler) Run() {
 	go ns.GoalManager.Run(ns.chanFromGoalManager)
 	// go ns.Knowledgebase.Run(ns.chanContextEventToScheduler)
-	// go ns.ResourceManager.Run(ns.chanPluginToResourceManager)
+	go ns.ResourceManager.Run(ns.chanPluginToResourceManager)
 	go ns.APIServer.Run()
 
 	for {

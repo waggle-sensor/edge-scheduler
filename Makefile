@@ -1,5 +1,4 @@
-version?=0.4.0
-
+version?=0.9.0
 build:
 	echo "Building cloudscheduler..."
 	go build -o bin/cloudscheduler cmd/cloudscheduler/main.go

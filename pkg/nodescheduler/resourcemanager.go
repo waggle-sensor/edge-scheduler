@@ -33,10 +33,11 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
+	metrics "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
 const (
-	namespace             = "default"
+	namespace             = "ses"
 	rancherKubeconfigPath = "/etc/rancher/k3s/k3s.yaml"
 )
 
@@ -51,6 +52,7 @@ type ResourceManager struct {
 	Namespace     string
 	ECRRegistry   *url.URL
 	Clientset     *kubernetes.Clientset
+	MetricsClient *metrics.Clientset
 	RMQManagement *RMQManagement
 	Simulate      bool
 	Plugins       []*datatype.Plugin
@@ -65,6 +67,7 @@ func NewK3SResourceManager(registry string, incluster bool, kubeconfig string, r
 			Namespace:     namespace,
 			ECRRegistry:   nil,
 			Clientset:     nil,
+			MetricsClient: nil,
 			RMQManagement: rmqManagement,
 			Simulate:      simulate,
 			Plugins:       make([]*datatype.Plugin, 0),
@@ -79,10 +82,15 @@ func NewK3SResourceManager(registry string, incluster bool, kubeconfig string, r
 	if err != nil {
 		return
 	}
+	metricsClient, err := GetK3SMetricsClient(incluster, kubeconfig)
+	if err != nil {
+		return
+	}
 	return &ResourceManager{
 		Namespace:     namespace,
 		ECRRegistry:   registryAddress,
 		Clientset:     k3sClient,
+		MetricsClient: metricsClient,
 		RMQManagement: rmqManagement,
 		Simulate:      simulate,
 	}, nil
@@ -164,6 +172,15 @@ func (rm *ResourceManager) CreateNamespace(namespace string) error {
 		metav1.CreateOptions{},
 	)
 	return err
+}
+
+// CopyConfigMap copies Kubernetes ConfigMap between namespaces
+func (rm *ResourceManager) CopyConfigMap(configMapName string, fromNamespace string, toNamespace string) error {
+	configMap, err := rm.Clientset.CoreV1().ConfigMaps(fromNamespace).Get(context.TODO(), configMapName, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	return rm.CreateConfigMap(configMap.Name, configMap.Data, toNamespace)
 }
 
 // ForwardService forwards a service from one namespace to other namespace for given ports
@@ -771,87 +788,114 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin, chanNot
 	}
 }
 
+func (rm *ResourceManager) GatherResourceUse() {
+	// rm.Clientset.metricsv1
+}
+
 func (rm *ResourceManager) Run(chanPluginToUpdate <-chan *datatype.Plugin) {
-	for {
-		select {
-		case plugin := <-chanPluginToUpdate:
-			logger.Debug.Printf("Plugin status changed to %q", plugin.Status.SchedulingStatus)
-			switch plugin.Status.SchedulingStatus {
-			case datatype.Ready:
-				logger.Debug.Printf("Running the plugin %q...", plugin.Name)
-				job, err := rm.CreateJob(plugin)
-				if err != nil {
-					logger.Error.Printf("Failed to create Kubernetes Job for %q: %q", plugin.Name, err.Error())
-				} else {
-					_, err = rm.RunPlugin(job)
-					if err != nil {
-						logger.Error.Printf("Failed to run %q: %q", plugin.Name, err.Error())
-					} else {
-						logger.Info.Printf("Plugin %q deployed", plugin.Name)
-						plugin.UpdatePluginSchedulingStatus(datatype.Running)
-						rm.UpdateReservation(true)
-						go func() {
-							watcher, err := rm.WatchJob(plugin.Name, rm.Namespace, 0)
-							if err != nil {
-								logger.Error.Printf("Failed to watch %q. Abort the execution", plugin.Name)
-								rm.TerminateJob(job.Name)
-							}
-							chanEvent := watcher.ResultChan()
-							for {
-								event := <-chanEvent
-								switch event.Type {
-								case watch.Added:
-									fallthrough
-								case watch.Deleted:
-									fallthrough
-								case watch.Modified:
-									job := event.Object.(*batchv1.Job)
-									if len(job.Status.Conditions) > 0 {
-										logger.Debug.Printf("%s: %s", event.Type, job.Status.Conditions[0].Type)
-										switch job.Status.Conditions[0].Type {
-										case batchv1.JobComplete:
-											fallthrough
-										case batchv1.JobFailed:
-											plugin.UpdatePluginSchedulingStatus(datatype.Waiting)
-											rm.UpdateReservation(false)
-										}
-									} else {
-										logger.Debug.Printf("%s: %s", event.Type, "UNKNOWN")
-									}
-								}
-							}
-						}()
-					}
-				}
-			}
-		}
-		// if plugin.Status.SchedulingStatus == datatype.Running {
-		// 	credential, err := rm.CreatePluginCredential(plugin)
-		// 	if err != nil {
-		// 		logger.Error.Printf("Could not create a plugin credential for %s on RabbitMQ at %s: %s", plugin.Name, rm.RMQManagement.Client.Endpoint, err.Error())
-		// 		continue
-		// 	}
-		// 	err = rm.RMQManagement.RegisterPluginCredential(credential)
-		// 	if err != nil {
-		// 		logger.Error.Printf("Could not register the credential %s to RabbitMQ at %s: %s", credential.Username, rm.RMQManagement.Client.Endpoint, err.Error())
-		// 		continue
-		// 	}
-		// 	deployablePlugin, err := rm.CreateDeployment(plugin, credential)
-		// 	if err != nil {
-		// 		logger.Error.Printf("Could not create a k3s deployment for plugin %s: %s", plugin.Name, err.Error())
-		// 		continue
-		// 	}
-		// 	err = rm.LaunchPlugin(deployablePlugin)
-		// 	if err != nil {
-		// 		logger.Error.Printf("Failed to launch plugin %s: %s", plugin.Name, err.Error())
-		// 	}
-		// } else if plugin.Status.SchedulingStatus == datatype.Stopped {
-		// 	err := rm.TerminateJob(plugin.Name)
-		// 	if err != nil {
-		// 		logger.Error.Printf("Failed to stop plugin %s: %s", plugin.Name, err.Error())
-		// 	}
-		// }
+	if rm.MetricsClient == nil {
+		logger.Info.Println("No metrics client is set. Metrics information cannot be obtained")
+		return
 	}
+	logger.Info.Println("Start collecting metrics from Kubernetes")
+	podMetrics, err := rm.MetricsClient.MetricsV1beta1().PodMetricses(rm.Namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		logger.Error.Println("Error:", err)
+		return
+	}
+	for _, podMetric := range podMetrics.Items {
+		podContainers := podMetric.Containers
+		for _, container := range podContainers {
+			cpuQuantity, ok := container.Usage.Cpu().AsInt64()
+			memQuantity, ok := container.Usage.Memory().AsInt64()
+			if !ok {
+				return
+			}
+			msg := fmt.Sprintf("Container Name: %s \n CPU usage: %d \n Memory usage: %d", container.Name, cpuQuantity, memQuantity)
+			logger.Debug.Println(msg)
+		}
+
+	}
+	// for {
+	// 	select {
+	// 	case plugin := <-chanPluginToUpdate:
+	// 		logger.Debug.Printf("Plugin status changed to %q", plugin.Status.SchedulingStatus)
+	// 		switch plugin.Status.SchedulingStatus {
+	// 		case datatype.Ready:
+	// 			logger.Debug.Printf("Running the plugin %q...", plugin.Name)
+	// 			job, err := rm.CreateJob(plugin)
+	// 			if err != nil {
+	// 				logger.Error.Printf("Failed to create Kubernetes Job for %q: %q", plugin.Name, err.Error())
+	// 			} else {
+	// 				_, err = rm.RunPlugin(job)
+	// 				if err != nil {
+	// 					logger.Error.Printf("Failed to run %q: %q", plugin.Name, err.Error())
+	// 				} else {
+	// 					logger.Info.Printf("Plugin %q deployed", plugin.Name)
+	// 					plugin.UpdatePluginSchedulingStatus(datatype.Running)
+	// 					rm.UpdateReservation(true)
+	// 					go func() {
+	// 						watcher, err := rm.WatchJob(plugin.Name, rm.Namespace, 0)
+	// 						if err != nil {
+	// 							logger.Error.Printf("Failed to watch %q. Abort the execution", plugin.Name)
+	// 							rm.TerminateJob(job.Name)
+	// 						}
+	// 						chanEvent := watcher.ResultChan()
+	// 						for {
+	// 							event := <-chanEvent
+	// 							switch event.Type {
+	// 							case watch.Added:
+	// 								fallthrough
+	// 							case watch.Deleted:
+	// 								fallthrough
+	// 							case watch.Modified:
+	// 								job := event.Object.(*batchv1.Job)
+	// 								if len(job.Status.Conditions) > 0 {
+	// 									logger.Debug.Printf("%s: %s", event.Type, job.Status.Conditions[0].Type)
+	// 									switch job.Status.Conditions[0].Type {
+	// 									case batchv1.JobComplete:
+	// 										fallthrough
+	// 									case batchv1.JobFailed:
+	// 										plugin.UpdatePluginSchedulingStatus(datatype.Waiting)
+	// 										rm.UpdateReservation(false)
+	// 									}
+	// 								} else {
+	// 									logger.Debug.Printf("%s: %s", event.Type, "UNKNOWN")
+	// 								}
+	// 							}
+	// 						}
+	// 					}()
+	// 				}
+	// 			}
+	// 		}
+	// 	}
+	// if plugin.Status.SchedulingStatus == datatype.Running {
+	// 	credential, err := rm.CreatePluginCredential(plugin)
+	// 	if err != nil {
+	// 		logger.Error.Printf("Could not create a plugin credential for %s on RabbitMQ at %s: %s", plugin.Name, rm.RMQManagement.Client.Endpoint, err.Error())
+	// 		continue
+	// 	}
+	// 	err = rm.RMQManagement.RegisterPluginCredential(credential)
+	// 	if err != nil {
+	// 		logger.Error.Printf("Could not register the credential %s to RabbitMQ at %s: %s", credential.Username, rm.RMQManagement.Client.Endpoint, err.Error())
+	// 		continue
+	// 	}
+	// 	deployablePlugin, err := rm.CreateDeployment(plugin, credential)
+	// 	if err != nil {
+	// 		logger.Error.Printf("Could not create a k3s deployment for plugin %s: %s", plugin.Name, err.Error())
+	// 		continue
+	// 	}
+	// 	err = rm.LaunchPlugin(deployablePlugin)
+	// 	if err != nil {
+	// 		logger.Error.Printf("Failed to launch plugin %s: %s", plugin.Name, err.Error())
+	// 	}
+	// } else if plugin.Status.SchedulingStatus == datatype.Stopped {
+	// 	err := rm.TerminateJob(plugin.Name)
+	// 	if err != nil {
+	// 		logger.Error.Printf("Failed to stop plugin %s: %s", plugin.Name, err.Error())
+	// 	}
+	// }
+	// }
 }
 
 var validNamePattern = regexp.MustCompile("^[a-z0-9-]+$")
@@ -966,6 +1010,23 @@ func GetK3SClient(incluster bool, pathToConfig string) (*kubernetes.Clientset, e
 			return nil, err
 		}
 		return kubernetes.NewForConfig(config)
+	}
+}
+
+// GetK3SMetricsClient returns an instance of Metrics clientset talking to a K3S cluster
+func GetK3SMetricsClient(incluster bool, pathToConfig string) (*metrics.Clientset, error) {
+	if incluster {
+		config, err := rest.InClusterConfig()
+		if err != nil {
+			return nil, err
+		}
+		return metrics.NewForConfig(config)
+	} else {
+		config, err := clientcmd.BuildConfigFromFlags("", pathToConfig)
+		if err != nil {
+			return nil, err
+		}
+		return metrics.NewForConfig(config)
 	}
 }
 
