@@ -77,7 +77,7 @@ func generateJobNameForSpec(spec *datatype.PluginSpec) (string, error) {
 	return strings.Join([]string{parts[0], strings.ReplaceAll(parts[1], ".", "-"), instance}, "-"), nil
 }
 
-func (p *PluginCtl) Deploy(name string, selectorStr string, node string, privileged bool, pluginImage string, pluginArgs []string) (string, error) {
+func (p *PluginCtl) Deploy(name string, selectorStr string, node string, entrypoint string, privileged bool, pluginImage string, pluginArgs []string) (string, error) {
 	selector, err := ParseSelector(selectorStr)
 	if err != nil {
 		return "", fmt.Errorf("Failed to parse selector %q", err.Error())
@@ -96,6 +96,7 @@ func (p *PluginCtl) Deploy(name string, selectorStr string, node string, privile
 		Name:       name,
 		Job:        pluginctlJob,
 		Selector:   selector,
+		Entrypoint: entrypoint,
 	}
 	pluginName, err := pluginNameForSpec(&pluginSpec)
 	if err != nil {

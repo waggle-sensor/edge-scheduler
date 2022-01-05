@@ -12,6 +12,7 @@ func init() {
 	cmdDeploy.Flags().StringVarP(&name, "name", "n", "", "Specify plugin name")
 	cmdDeploy.Flags().StringVar(&node, "node", "", "run plugin on node")
 	cmdDeploy.Flags().StringVar(&selectorStr, "selector", "", "Specify where plugin can run")
+	cmdDeploy.Flags().StringVar(&entrypoint, "entrypoint", "", "Specify command to run inside plugin")
 	cmdDeploy.Flags().BoolVarP(&privileged, "privileged", "p", false, "Deploy as privileged plugin")
 	rootCmd.AddCommand(cmdDeploy)
 }
@@ -25,12 +26,13 @@ var cmdDeploy = &cobra.Command{
 		logger.Debug.Printf("kubeconfig: %s", kubeconfig)
 		logger.Debug.Printf("name: %s", name)
 		logger.Debug.Printf("selector: %s", selectorStr)
+		logger.Debug.Printf("entrypoint: %s", entrypoint)
 		logger.Debug.Printf("args: %v", args)
 		pluginCtl, err := pluginctl.NewPluginCtl(kubeconfig)
 		if err != nil {
 			return err
 		}
-		if pluginName, err := pluginCtl.Deploy(name, selectorStr, node, privileged, args[0], args[1:]); err != nil {
+		if pluginName, err := pluginCtl.Deploy(name, selectorStr, node, entrypoint, privileged, args[0], args[1:]); err != nil {
 			return err
 		} else {
 			fmt.Printf("Launched the plugin %s successfully \n", pluginName)

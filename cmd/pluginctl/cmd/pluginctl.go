@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	version               = "0.0.0"
+	version               = "0.8.3"
 	rancherKubeconfigPath = "/etc/rancher/k3s/k3s.yaml"
 )
 
@@ -22,6 +22,7 @@ var (
 	job         string
 	selectorStr string
 	followLog   bool
+	entrypoint  string
 )
 
 func getenv(key string, def string) string {

@@ -26,6 +26,7 @@ type PluginSpec struct {
 	Job        string            `json:"job"`
 	Name       string            `json:"name"`
 	Selector   map[string]string `json:"selector"`
+	Entrypoint string            `json:"entrypoint"`
 }
 
 // PluginStatus structs status about a plugin that includes

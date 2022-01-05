@@ -93,6 +93,11 @@ func (ns *NodeScheduler) Run() {
 	go ns.GoalManager.Run(ns.chanFromGoalManager)
 	// go ns.Knowledgebase.Run(ns.chanContextEventToScheduler)
 	go ns.ResourceManager.Run(ns.chanPluginToResourceManager)
+	// NOTE: The garbage collector runs to clean up completed/failed jobs
+	//       This should be done by Kubernetes with versions higher than v1.21
+	//       v1.20 could do it by enabling TTL controller, but could not set it
+	//       via k3s server --kube-control-manager-arg feature-gates=TTL...=true
+	go ns.ResourceManager.RunGabageCollector()
 	go ns.APIServer.Run()
 
 	for {

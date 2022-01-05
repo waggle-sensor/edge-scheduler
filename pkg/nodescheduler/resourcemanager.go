@@ -44,7 +44,7 @@ const (
 var (
 	hostPathDirectoryOrCreate       = apiv1.HostPathDirectoryOrCreate
 	backOffLimit              int32 = 0
-	ttlSecondsAfterFinished   int32 = 3600
+	ttlSecondsAfterFinished   int32 = 600
 )
 
 // ResourceManager structs a resource manager talking to a local computing cluster to schedule plugins
@@ -296,6 +296,66 @@ func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, err
 	if err != nil {
 		return nil, err
 	}
+	container := apiv1.Container{
+		SecurityContext: securityContextForConfig(plugin.PluginSpec),
+		Name:            plugin.Name,
+		Image:           plugin.PluginSpec.Image,
+		Args:            plugin.PluginSpec.Args,
+		Env: []apiv1.EnvVar{
+			{
+				Name:  "PULSE_SERVER",
+				Value: "tcp:wes-audio-server:4713",
+			},
+			{
+				Name:  "WAGGLE_PLUGIN_HOST",
+				Value: "wes-rabbitmq",
+			},
+			{
+				Name:  "WAGGLE_PLUGIN_PORT",
+				Value: "5672",
+			},
+			{
+				Name:  "WAGGLE_PLUGIN_USERNAME",
+				Value: "plugin",
+			},
+			{
+				Name:  "WAGGLE_PLUGIN_PASSWORD",
+				Value: "plugin",
+			},
+			// NOTE WAGGLE_APP_ID is used to bind plugin <-> Pod identities.
+			{
+				Name: "WAGGLE_APP_ID",
+				ValueFrom: &apiv1.EnvVarSource{
+					FieldRef: &apiv1.ObjectFieldSelector{
+						FieldPath: "metadata.uid",
+					},
+				},
+			},
+		},
+		Resources: apiv1.ResourceRequirements{
+			Limits:   apiv1.ResourceList{},
+			Requests: apiv1.ResourceList{},
+		},
+		VolumeMounts: []apiv1.VolumeMount{
+			{
+				Name:      "uploads",
+				MountPath: "/run/waggle/uploads",
+			},
+			{
+				Name:      "waggle-data-config",
+				MountPath: "/run/waggle/data-config.json",
+				SubPath:   "data-config.json",
+			},
+			{
+				Name:      "wes-audio-server-plugin-conf",
+				MountPath: "/etc/asound.conf",
+				SubPath:   "asound.conf",
+			},
+		},
+	}
+	if plugin.PluginSpec.Entrypoint != "" {
+		container.Command = []string{plugin.PluginSpec.Entrypoint}
+	}
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      jobName,
@@ -309,65 +369,7 @@ func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, err
 				Spec: apiv1.PodSpec{
 					NodeSelector:  nodeSelectorForConfig(plugin.PluginSpec),
 					RestartPolicy: apiv1.RestartPolicyNever,
-					Containers: []apiv1.Container{
-						{
-							SecurityContext: securityContextForConfig(plugin.PluginSpec),
-							Name:            plugin.Name,
-							Image:           plugin.PluginSpec.Image,
-							Args:            plugin.PluginSpec.Args,
-							Env: []apiv1.EnvVar{
-								{
-									Name:  "PULSE_SERVER",
-									Value: "tcp:wes-audio-server:4713",
-								},
-								{
-									Name:  "WAGGLE_PLUGIN_HOST",
-									Value: "wes-rabbitmq",
-								},
-								{
-									Name:  "WAGGLE_PLUGIN_PORT",
-									Value: "5672",
-								},
-								{
-									Name:  "WAGGLE_PLUGIN_USERNAME",
-									Value: "plugin",
-								},
-								{
-									Name:  "WAGGLE_PLUGIN_PASSWORD",
-									Value: "plugin",
-								},
-								// NOTE WAGGLE_APP_ID is used to bind plugin <-> Pod identities.
-								{
-									Name: "WAGGLE_APP_ID",
-									ValueFrom: &apiv1.EnvVarSource{
-										FieldRef: &apiv1.ObjectFieldSelector{
-											FieldPath: "metadata.uid",
-										},
-									},
-								},
-							},
-							Resources: apiv1.ResourceRequirements{
-								Limits:   apiv1.ResourceList{},
-								Requests: apiv1.ResourceList{},
-							},
-							VolumeMounts: []apiv1.VolumeMount{
-								{
-									Name:      "uploads",
-									MountPath: "/run/waggle/uploads",
-								},
-								{
-									Name:      "waggle-data-config",
-									MountPath: "/run/waggle/data-config.json",
-									SubPath:   "data-config.json",
-								},
-								{
-									Name:      "wes-audio-server-plugin-conf",
-									MountPath: "/etc/asound.conf",
-									SubPath:   "asound.conf",
-								},
-							},
-						},
-					},
+					Containers:    []apiv1.Container{container},
 					Volumes: []apiv1.Volume{
 						{
 							Name: "uploads",
@@ -792,30 +794,80 @@ func (rm *ResourceManager) GatherResourceUse() {
 	// rm.Clientset.metricsv1
 }
 
+// GabageCollector cleans up completed/failed jobs that exceed
+// their lifespan specified in `ttlSecondsAfterFinished`
+//
+// NOTE: This should be done by Kubernetes TTL controller with TTLSecondsAfterFinished specified in job,
+// but could not get it enabled in k3s with Kubernetes v1.20 that has the TTL controller disabled
+// by default. Kubernetes v1.21+ has the controller enabled by default
+func (rm *ResourceManager) RunGabageCollector() {
+	for {
+		jobList, err := rm.ListJobs()
+		if err != nil {
+			logger.Error.Printf("Failed to get job list %q", err.Error())
+		} else {
+			for _, job := range jobList.Items {
+				podPhase, err := rm.GetPluginStatus(job.Name)
+				if err != nil {
+					continue
+				}
+				switch podPhase {
+				case apiv1.PodFailed:
+					fallthrough
+				case apiv1.PodSucceeded:
+					elapsedSeconds := time.Now().Sub(job.CreationTimestamp.Time).Seconds()
+					if elapsedSeconds > float64(ttlSecondsAfterFinished) {
+						logger.Debug.Printf("%q exceeded ttlSeconds of %.2f. Cleaning up...", job.Name, elapsedSeconds)
+						rm.TerminateJob(job.Name)
+					}
+				}
+			}
+		}
+		time.Sleep(1 * time.Minute)
+	}
+}
+
 func (rm *ResourceManager) Run(chanPluginToUpdate <-chan *datatype.Plugin) {
 	if rm.MetricsClient == nil {
 		logger.Info.Println("No metrics client is set. Metrics information cannot be obtained")
 		return
 	}
 	logger.Info.Println("Start collecting metrics from Kubernetes")
-	podMetrics, err := rm.MetricsClient.MetricsV1beta1().PodMetricses(rm.Namespace).List(context.TODO(), metav1.ListOptions{})
-	if err != nil {
-		logger.Error.Println("Error:", err)
-		return
-	}
-	for _, podMetric := range podMetrics.Items {
-		podContainers := podMetric.Containers
-		for _, container := range podContainers {
-			cpuQuantity, ok := container.Usage.Cpu().AsInt64()
-			memQuantity, ok := container.Usage.Memory().AsInt64()
+	for {
+		nodeMetrics, err := rm.MetricsClient.MetricsV1beta1().NodeMetricses().List(context.TODO(), metav1.ListOptions{})
+		if err != nil {
+			logger.Error.Println("Error:", err)
+			return
+		}
+		for _, nodeMetric := range nodeMetrics.Items {
+			cpuQuantity, ok := nodeMetric.Usage.Cpu().AsInt64()
+			memQuantity, ok := nodeMetric.Usage.Memory().AsInt64()
 			if !ok {
 				return
 			}
-			msg := fmt.Sprintf("Container Name: %s \n CPU usage: %d \n Memory usage: %d", container.Name, cpuQuantity, memQuantity)
+			msg := fmt.Sprintf("Node Name: %s \n CPU usage: %d \n Memory usage: %d", nodeMetric.Name, cpuQuantity, memQuantity)
 			logger.Debug.Println(msg)
 		}
-
+		podMetrics, err := rm.MetricsClient.MetricsV1beta1().PodMetricses(rm.Namespace).List(context.TODO(), metav1.ListOptions{})
+		if err != nil {
+			logger.Error.Println("Error:", err)
+			return
+		}
+		for _, podMetric := range podMetrics.Items {
+			podContainers := podMetric.Containers
+			for _, container := range podContainers {
+				cpuQuantity, ok := container.Usage.Cpu().AsInt64()
+				memQuantity, ok := container.Usage.Memory().AsInt64()
+				if !ok {
+					return
+				}
+				msg := fmt.Sprintf("Container Name: %s \n CPU usage: %d \n Memory usage: %d", container.Name, cpuQuantity, memQuantity)
+				logger.Debug.Println(msg)
+			}
+		}
+		time.Sleep(1 * time.Millisecond)
 	}
+
 	// for {
 	// 	select {
 	// 	case plugin := <-chanPluginToUpdate:
