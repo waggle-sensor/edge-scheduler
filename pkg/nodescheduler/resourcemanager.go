@@ -667,6 +667,23 @@ func (rm *ResourceManager) GetPluginStatus(jobName string) (apiv1.PodPhase, erro
 	}
 }
 
+func (rm *ResourceManager) GetPodName(jobName string) (name string, err error) {
+	// TODO: Later we use pod name as we run plugins in one-shot?
+	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Second)
+	defer cancel()
+	job, err := rm.Clientset.BatchV1().Jobs(rm.Namespace).Get(ctx, jobName, metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+	selector := job.Spec.Selector
+	labels, err := metav1.LabelSelectorAsSelector(selector)
+	pods, err := rm.Clientset.CoreV1().Pods(rm.Namespace).List(ctx, metav1.ListOptions{LabelSelector: labels.String()})
+	if err != nil {
+		return "", err
+	}
+	return pods.Items[0].Name, nil
+}
+
 func (rm *ResourceManager) GetPluginLog(jobName string, follow bool) (io.ReadCloser, error) {
 	// TODO: Later we use pod name as we run plugins in one-shot?
 	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Second)
@@ -798,7 +815,7 @@ func (rm *ResourceManager) GatherResourceUse() {
 // their lifespan specified in `ttlSecondsAfterFinished`
 //
 // NOTE: This should be done by Kubernetes TTL controller with TTLSecondsAfterFinished specified in job,
-// but could not get it enabled in k3s with Kubernetes v1.20 that has the TTL controller disabled
+// but it could not get enabled in k3s with Kubernetes v1.20 that has the TTL controller disabled
 // by default. Kubernetes v1.21+ has the controller enabled by default
 func (rm *ResourceManager) RunGabageCollector() {
 	for {
@@ -848,25 +865,53 @@ func (rm *ResourceManager) Run(chanPluginToUpdate <-chan *datatype.Plugin) {
 			msg := fmt.Sprintf("Node Name: %s \n CPU usage: %d \n Memory usage: %d", nodeMetric.Name, cpuQuantity, memQuantity)
 			logger.Debug.Println(msg)
 		}
-		podMetrics, err := rm.MetricsClient.MetricsV1beta1().PodMetricses(rm.Namespace).List(context.TODO(), metav1.ListOptions{})
-		if err != nil {
-			logger.Error.Println("Error:", err)
-			return
-		}
-		for _, podMetric := range podMetrics.Items {
-			podContainers := podMetric.Containers
-			for _, container := range podContainers {
-				cpuQuantity, ok := container.Usage.Cpu().AsInt64()
-				memQuantity, ok := container.Usage.Memory().AsInt64()
-				if !ok {
-					return
-				}
-				msg := fmt.Sprintf("Container Name: %s \n CPU usage: %d \n Memory usage: %d", container.Name, cpuQuantity, memQuantity)
-				logger.Debug.Println(msg)
-			}
-		}
-		time.Sleep(1 * time.Millisecond)
 	}
+	// podMetrics, err := rm.MetricsClient.MetricsV1beta1().PodMetricses(rm.Namespace).List(context.TODO(), metav1.ListOptions{})
+	// if err != nil {
+	// 	logger.Error.Println("Error:", err)
+	// 	return
+	// }
+	// for _, podMetric := range podMetrics.Items {
+	// 	podContainers := podMetric.Containers
+	// 	for _, container := range podContainers {
+	// 		cpuQuantity, ok := container.Usage.Cpu().AsInt64()
+	// 		memQuantity, ok := container.Usage.Memory().AsInt64()
+	// 		if !ok {
+	// 			return
+	// 		}
+	// 		msg := fmt.Sprintf("Container Name: %s \n CPU usage: %d \n Memory usage: %d", container.Name, cpuQuantity, memQuantity)
+	// 		logger.Debug.Println(msg)
+	// 	}
+	// }
+	// 	time.Sleep(1 * time.Millisecond)
+	// }
+
+	// NOTE: Kubernetes did not allow to watch for metrics
+	// ERROR: 2022/01/05 13:55:48 resourcemanager.go:873: Error: the server does not allow this method on the requested resource (get pods.metrics.k8s.io)
+	// watcher, err := rm.MetricsClient.MetricsV1beta1().PodMetricses(rm.Namespace).Watch(context.TODO(), metav1.ListOptions{})
+	// if err != nil {
+	// 	logger.Error.Println("Error:", err)
+	// 	return
+	// }
+	// chanEvent := watcher.ResultChan()
+	// for {
+	// 	event := <-chanEvent
+	// 	switch event.Type {
+	// 	case watch.Added:
+	// 		fallthrough
+	// 	case watch.Modified:
+	// 		podMetrics := event.Object.(*v1beta1.PodMetrics)
+	// 		for _, container := range podMetrics.Containers {
+	// 			cpuQuantity, ok := container.Usage.Cpu().AsInt64()
+	// 			memQuantity, ok := container.Usage.Memory().AsInt64()
+	// 			if !ok {
+	// 				return
+	// 			}
+	// 			msg := fmt.Sprintf("Container Name: %s \n CPU usage: %d \n Memory usage: %d", container.Name, cpuQuantity, memQuantity)
+	// 			logger.Debug.Println(msg)
+	// 		}
+	// 	}
+	// }
 
 	// for {
 	// 	select {

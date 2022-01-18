@@ -23,6 +23,8 @@ var (
 	selectorStr string
 	followLog   bool
 	entrypoint  string
+	stdin       bool
+	tty         bool
 )
 
 func getenv(key string, def string) string {
@@ -43,6 +45,7 @@ func detectDefaultKubeconfig() string {
 }
 
 func init() {
+
 	rootCmd.AddCommand(completionCmd)
 	// To prevent printing the usage when commands end with an error
 	rootCmd.SilenceUsage = true
@@ -55,7 +58,7 @@ var rootCmd = &cobra.Command{
 		fmt.Printf("SAGE edge scheduler client version: %s\n", version)
 		fmt.Printf("pluginctl --help for more information\n")
 	},
-	ValidArgs: []string{"deploy", "log"},
+	ValidArgs: []string{"deploy", "logs"},
 }
 
 var completionCmd = &cobra.Command{

@@ -6,21 +6,23 @@ import (
 	"github.com/sagecontinuum/ses/pkg/logger"
 	"github.com/sagecontinuum/ses/pkg/pluginctl"
 	"github.com/spf13/cobra"
+
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	kubectl "k8s.io/kubectl/pkg/cmd"
 )
 
 func init() {
-	cmdLog.Flags().BoolVarP(&followLog, "follow", "f", false, "Specified if logs should be streamed")
-	rootCmd.AddCommand(cmdLog)
+	cmdExec.Flags().BoolVarP(&stdin, "stdin", "i", false, "Pass stdin to the container")
+	cmdExec.Flags().BoolVarP(&tty, "tty", "t", false, "Stdin is a TTY")
+	rootCmd.AddCommand(cmdExec)
 }
 
-var cmdLog = &cobra.Command{
-	Use:              "logs [FLAGS] PLUGIN_NAME",
-	Short:            "Print logs of a plugin",
-	TraverseChildren: true,
-	// DisableFlagParsing: true,
-	Args: cobra.MinimumNArgs(1),
+var cmdExec = &cobra.Command{
+	Use:                   "exec [FLAGS] PLUGIN_NAME [-- COMMAND ARGUMENTS]",
+	Short:                 "Execute a command on plugin",
+	TraverseChildren:      true,
+	DisableFlagsInUseLine: true,
+	Args:                  cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
 		logger.Debug.Printf("kubeconfig: %s", kubeconfig)
 		pluginCtl, err := pluginctl.NewPluginCtl(kubeconfig)
@@ -53,49 +55,11 @@ var cmdLog = &cobra.Command{
 		// if err != nil {
 		// 	return
 		// }
-		// printLogFunc, terminateLog, err := pluginCtl.PrintLog(name, followLog)
+		// err = pluginCtl.TerminatePlugin(name)
 		// if err != nil {
 		// 	return
-		// } else {
-		// 	c := make(chan os.Signal, 1)
-		// 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-		// 	go printLogFunc()
-		// 	for {
-		// 		select {
-		// 		case <-c:
-		// 			logger.Debug.Println("Log terminated from user")
-		// 			return
-		// 		case <-terminateLog:
-		// 			logger.Debug.Println("Log terminated from handler")
-		// 			return
-		// 		}
-		// 	}
 		// }
-
-		// podLog, err := pluginctl.Log(name, followLog)
-		// if err != nil {
-		// 	logger.Error.Println("%s", err.Error())
-		// } else {
-		// 	c := make(chan os.Signal, 1)
-		// 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-		// 	go func() {
-		// 		buf := make([]byte, 2000)
-		// 		for {
-		// 			numBytes, err := podLog.Read(buf)
-		// 			if numBytes == 0 {
-		// 				break
-		// 			}
-		// 			if err == io.EOF {
-		// 				break
-		// 			} else if err != nil {
-		// 				// return err
-		// 			}
-		// 			fmt.Println(string(buf[:numBytes]))
-		// 		}
-		// 		c <- nil
-		// 	}()
-		// 	<-c
-		// 	podLog.Close()
-		// }
+		// fmt.Printf("Terminated the plugin %s successfully\n", name)
+		// return
 	},
 }

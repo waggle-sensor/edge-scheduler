@@ -36,7 +36,7 @@ var cmdDeploy = &cobra.Command{
 			return err
 		} else {
 			fmt.Printf("Launched the plugin %s successfully \n", pluginName)
-			fmt.Printf("You may check the log: pluginctl log %s\n", pluginName)
+			fmt.Printf("You may check the log: pluginctl logs %s\n", pluginName)
 			fmt.Printf("To terminate the job: pluginctl rm %s\n", pluginName)
 		}
 		return nil
