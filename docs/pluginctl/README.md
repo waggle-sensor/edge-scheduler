@@ -19,6 +19,8 @@ chmod +x /usr/bin/pluginctl
 # Tutorials
 The tutorials show how to use `pluginctl` on Waggle/Sage nodes to test, debug, and finalize plugin development.
 
-1. [Hello World](tutorial_helloworld.md) shows how to run a Docker image
+1. [Hello World](tutorial_helloworld.md) shows how to create and run a Docker container
 
+2. [Getting into Container](tutorial_getintocontainer.md) lets you get into a container for development and testing
 
+3. [Printing Logs](tutorial_printlog.md) prints logs of a container
