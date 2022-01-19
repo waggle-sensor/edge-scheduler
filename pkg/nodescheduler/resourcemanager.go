@@ -180,7 +180,7 @@ func (rm *ResourceManager) CopyConfigMap(configMapName string, fromNamespace str
 	if err != nil {
 		return err
 	}
-	return rm.CreateConfigMap(configMap.Name, configMap.Data, toNamespace)
+	return rm.CreateConfigMap(configMap.Name, configMap.Data, toNamespace, true)
 }
 
 // ForwardService forwards a service from one namespace to other namespace for given ports
@@ -223,7 +223,7 @@ func (rm *ResourceManager) ForwardService(serviceName string, fromNamespace stri
 	return err
 }
 
-func (rm *ResourceManager) CreateConfigMap(name string, data map[string]string, namespace string) error {
+func (rm *ResourceManager) CreateConfigMap(name string, data map[string]string, namespace string, overwrite bool) error {
 	var config apiv1.ConfigMap
 	config.Name = name
 	config.Data = data
@@ -239,7 +239,9 @@ func (rm *ResourceManager) CreateConfigMap(name string, data map[string]string, 
 			return err
 		}
 	}
-	_, err = rm.Clientset.CoreV1().ConfigMaps(namespace).Update(context.TODO(), &config, metav1.UpdateOptions{})
+	if overwrite {
+		_, err = rm.Clientset.CoreV1().ConfigMaps(namespace).Update(context.TODO(), &config, metav1.UpdateOptions{})
+	}
 	return err
 }
 

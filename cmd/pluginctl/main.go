@@ -1,6 +1,8 @@
 package main
 
-import "github.com/sagecontinuum/ses/cmd/pluginctl/cmd"
+import (
+	"github.com/sagecontinuum/ses/cmd/pluginctl/cmd"
+)
 
 // exec "k8s.io/kubectl/pkg/cmd/exec"
 // "k8s.io/kubectl/pkg/cmd/util"

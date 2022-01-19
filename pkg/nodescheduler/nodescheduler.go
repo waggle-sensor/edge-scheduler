@@ -76,7 +76,7 @@ func (ns *NodeScheduler) Configure() (err error) {
 			logger.Error.Printf("Failed to create ConfigMap %q: %q", configMapName, err.Error())
 		}
 	}
-	err = ns.ResourceManager.CreateConfigMap(configMapNameForGoals, map[string]string{}, "default")
+	err = ns.ResourceManager.CreateConfigMap(configMapNameForGoals, map[string]string{}, "default", false)
 	if err != nil {
 		return
 	}

@@ -86,6 +86,8 @@ func (ngm *NodeGoalManager) pullGoalsFromK3S() {
 	for {
 		event := <-chanGoal
 		switch event.Type {
+		case watch.Added:
+			fallthrough
 		case watch.Modified:
 			if updatedConfigMap, ok := event.Object.(*apiv1.ConfigMap); ok {
 				logger.Debug.Printf("%v", updatedConfigMap.Data)

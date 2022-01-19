@@ -2,9 +2,11 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
+	"github.com/sagecontinuum/ses/pkg/logger"
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/util/homedir"
 )
@@ -15,6 +17,7 @@ const (
 )
 
 var (
+	debug       bool
 	kubeconfig  string
 	name        string
 	node        string
@@ -50,10 +53,16 @@ func init() {
 	// To prevent printing the usage when commands end with an error
 	rootCmd.SilenceUsage = true
 	rootCmd.PersistentFlags().StringVar(&kubeconfig, "kubeconfig", getenv("KUBECONFIG", detectDefaultKubeconfig()), "path to the kubeconfig file")
+	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "flag to debug")
 }
 
 var rootCmd = &cobra.Command{
 	Use: "pluginctl [FLAGS] [COMMANDS]",
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		if !debug {
+			logger.Debug.SetOutput(io.Discard)
+		}
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Printf("SAGE edge scheduler client version: %s\n", version)
 		fmt.Printf("pluginctl --help for more information\n")

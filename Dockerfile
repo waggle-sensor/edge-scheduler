@@ -15,10 +15,10 @@ RUN apt-get update \
 
 ARG TARGETARCH
 WORKDIR /tmp
-RUN wget https://golang.org/dl/go1.16.7.linux-${TARGETARCH}.tar.gz \
-  && rm -rf /usr/local/go && tar -C /usr/local -xzf go1.16.7.linux-${TARGETARCH}.tar.gz \
+RUN wget https://golang.org/dl/go1.17.6.linux-${TARGETARCH}.tar.gz \
+  && rm -rf /usr/local/go && tar -C /usr/local -xzf go1.17.6.linux-${TARGETARCH}.tar.gz \
   && echo "PATH=\$PATH:/usr/local/go/bin" | tee -a $HOME/.bashrc \
-  && rm go1.16.7.linux-${TARGETARCH}.tar.gz
+  && rm go1.17.6.linux-${TARGETARCH}.tar.gz
 
 FROM base as builder
 WORKDIR $GOPATH/src/github.com/sagecontinuum/ses
@@ -36,5 +36,10 @@ COPY requirements.txt /app/
 RUN pip3 install -r /app/requirements.txt
 
 COPY --from=builder /app/ /app/
+
+RUN chmod +x /app/pluginctl-${TARGETARCH} \
+  && ln -s /app/pluginctl-${TARGETARCH} /usr/bin/pluginctl \
+  && chmod +x /app/runplugin-${TARGETARCH} \
+  && ln -s /app/runplugin-${TARGETARCH} /usr/bin/runplugin
 
 WORKDIR /app
