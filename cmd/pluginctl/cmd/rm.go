@@ -20,7 +20,7 @@ var cmdRm = &cobra.Command{
 	Args:             cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
 		logger.Debug.Printf("kubeconfig: %s", kubeconfig)
-		name = args[0]
+		name := args[0]
 		logger.Debug.Printf("args: %v", args)
 		pluginCtl, err := pluginctl.NewPluginCtl(kubeconfig)
 		if err != nil {

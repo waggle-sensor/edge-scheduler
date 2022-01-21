@@ -202,6 +202,18 @@ func createDeploymentForConfig(config *pluginConfig) *appsv1.Deployment {
 									},
 								},
 							},
+							// NOTE This will provide WAGGLE_NODE_ID and WAGGLE_NODE_VSN for cases that a plugin
+							// needs to make a node specific choice. This is not the ideal way to manage node
+							// specific config, but may unblock things for now.
+							EnvFrom: []apiv1.EnvFromSource{
+								{
+									ConfigMapRef: &apiv1.ConfigMapEnvSource{
+										LocalObjectReference: apiv1.LocalObjectReference{
+											Name: "wes-identity",
+										},
+									},
+								},
+							},
 							Resources: apiv1.ResourceRequirements{
 								Limits:   apiv1.ResourceList{},
 								Requests: apiv1.ResourceList{},

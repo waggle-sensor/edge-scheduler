@@ -25,6 +25,18 @@ type PluginCtl struct {
 	ResourceManager *nodescheduler.ResourceManager
 }
 
+// Deployment holds the config pluginctl uses to deploy plugins
+type Deployment struct {
+	Name           string
+	SelectorString string
+	Node           string
+	Entrypoint     string
+	Privileged     bool
+	PluginImage    string
+	PluginArgs     []string
+	DevelopMode    bool
+}
+
 func NewPluginCtl(kubeconfig string) (*PluginCtl, error) {
 	resourceManager, err := nodescheduler.NewK3SResourceManager("", false, kubeconfig, nil, false)
 	if err != nil {
@@ -77,26 +89,29 @@ func generateJobNameForSpec(spec *datatype.PluginSpec) (string, error) {
 	return strings.Join([]string{parts[0], strings.ReplaceAll(parts[1], ".", "-"), instance}, "-"), nil
 }
 
-func (p *PluginCtl) Deploy(name string, selectorStr string, node string, entrypoint string, privileged bool, pluginImage string, pluginArgs []string) (string, error) {
-	selector, err := ParseSelector(selectorStr)
+func (p *PluginCtl) Deploy(dep *Deployment) (string, error) {
+	selector, err := ParseSelector(dep.SelectorString)
 	if err != nil {
 		return "", fmt.Errorf("Failed to parse selector %q", err.Error())
 	}
+
 	// split name:version from image string
-	parts := strings.Split(path.Base(pluginImage), ":")
+	parts := strings.Split(path.Base(dep.PluginImage), ":")
 	if len(parts) != 2 {
-		return "", fmt.Errorf("Invalid plugin image (plugin:version) %q", pluginImage)
+		return "", fmt.Errorf("Invalid plugin image (plugin:version) %q", dep.PluginImage)
 	}
+
 	pluginSpec := datatype.PluginSpec{
-		Privileged: privileged,
-		Node:       node,
-		Image:      pluginImage,
-		Version:    parts[1],
-		Args:       pluginArgs,
-		Name:       name,
-		Job:        pluginctlJob,
-		Selector:   selector,
-		Entrypoint: entrypoint,
+		Privileged:  dep.Privileged,
+		Node:        dep.Node,
+		Image:       dep.PluginImage,
+		Version:     parts[1],
+		Args:        dep.PluginArgs,
+		Name:        dep.Name,
+		Job:         pluginctlJob,
+		Selector:    selector,
+		Entrypoint:  dep.Entrypoint,
+		DevelopMode: dep.DevelopMode,
 	}
 	pluginName, err := pluginNameForSpec(&pluginSpec)
 	if err != nil {
@@ -206,7 +221,7 @@ func (p *PluginCtl) GetPlugins() (formattedList string, err error) {
 			if err == nil {
 				status = string(podPhase)
 			}
-			duration = time.Now().Sub(plugin.Status.StartTime.Time).String()
+			duration = time.Since(plugin.Status.StartTime.Time).String()
 		}
 		formattedList += fmt.Sprintf("%-*s%-*s%-*s%-*s\n", maxLengthName+3, plugin.Name, maxLengthStatus+3, status, maxLengthStartTime+3, startTime, maxLengthDuration+3, duration)
 	}
