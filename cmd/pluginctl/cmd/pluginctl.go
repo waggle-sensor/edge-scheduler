@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/sagecontinuum/ses/pkg/logger"
+	"github.com/sagecontinuum/ses/pkg/pluginctl"
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/util/homedir"
 )
@@ -17,18 +18,14 @@ const (
 )
 
 var (
-	debug       bool
-	kubeconfig  string
-	name        string
-	node        string
-	privileged  bool
-	job         string
-	selectorStr string
-	followLog   bool
-	entrypoint  string
-	stdin       bool
-	tty         bool
+	debug      bool
+	kubeconfig string
+	followLog  bool
+	stdin      bool
+	tty        bool
 )
+
+var deployment = &pluginctl.Deployment{}
 
 func getenv(key string, def string) string {
 	if val, ok := os.LookupEnv(key); ok {
@@ -48,7 +45,6 @@ func detectDefaultKubeconfig() string {
 }
 
 func init() {
-
 	rootCmd.AddCommand(completionCmd)
 	// To prevent printing the usage when commands end with an error
 	rootCmd.SilenceUsage = true

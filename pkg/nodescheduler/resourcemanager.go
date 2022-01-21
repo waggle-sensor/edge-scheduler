@@ -106,13 +106,24 @@ func generatePassword() string {
 }
 
 func labelsForConfig(pluginSpec *datatype.PluginSpec) map[string]string {
-	return map[string]string{
+	labels := map[string]string{
 		"app":                           pluginSpec.Name,
 		"role":                          "plugin", // TODO drop in place of sagecontinuum.org/role
 		"sagecontinuum.org/role":        "plugin",
 		"sagecontinuum.org/plugin-job":  pluginSpec.Job,
 		"sagecontinuum.org/plugin-task": pluginSpec.Name,
 	}
+
+	// in develop mode, we omit the role labels to opt out of network traffic filtering
+	// this is intended to do things like:
+	// * allow developers to initially pull from github and add packages
+	// * allow interfacing with devices in wan subnet until we add site specific exceptions
+	if pluginSpec.DevelopMode {
+		delete(labels, "role")
+		delete(labels, "sagecontinuum.org/role")
+	}
+
+	return labels
 }
 
 func nodeSelectorForConfig(pluginSpec *datatype.PluginSpec) map[string]string {
