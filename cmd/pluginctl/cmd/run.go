@@ -74,19 +74,17 @@ var cmdRun = &cobra.Command{
 			for {
 				event := <-chanGoal
 				switch event.Type {
-				case watch.Added:
-					fallthrough
-				case watch.Deleted:
-					fallthrough
-				case watch.Modified:
+				case watch.Added, watch.Deleted, watch.Modified:
 					switch obj := event.Object.(type) {
 					case *batchv1.Job:
-						logger.Debug.Printf("%s: %s", event.Type, obj.Status.Conditions[0].Type)
-						switch obj.Status.Conditions[0].Type {
-						case batchv1.JobComplete:
-							fallthrough
-						case batchv1.JobFailed:
-							c <- nil
+						if len(obj.Status.Conditions) > 0 {
+							logger.Debug.Printf("%s: %s", event.Type, obj.Status.Conditions[0].Type)
+							switch obj.Status.Conditions[0].Type {
+							case batchv1.JobComplete, batchv1.JobFailed:
+								c <- nil
+							}
+						} else {
+							logger.Debug.Printf("job unexpectedly missing status conditions: %v", obj)
 						}
 					default:
 						logger.Debug.Printf("%s: %s", event.Type, "UNKNOWN")
