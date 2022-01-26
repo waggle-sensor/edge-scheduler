@@ -1,4 +1,6 @@
 name: mygoal
+#sciencerules:
+#- 
 plugins:
 - name: imagesampler-top
   image: waggle/plugin-image-sampler

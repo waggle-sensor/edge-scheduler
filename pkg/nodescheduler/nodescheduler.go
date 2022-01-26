@@ -167,11 +167,7 @@ func (ns *NodeScheduler) Run() {
 			for name, goal := range ns.GoalManager.ScienceGoals {
 				logger.Debug.Printf("Checking Goal %q", name)
 				subGoal := goal.GetMySubGoal(ns.GoalManager.NodeID)
-				for _, plugin := range subGoal.Plugins {
-					if plugin.Status.SchedulingStatus == datatype.Waiting {
-						plugin.UpdatePluginSchedulingStatus(datatype.Ready)
-					}
-				}
+				ns.SchedulingPolicy.SimpleScheduler.PromotePlugins(subGoal)
 			}
 			// Selecte best task
 			plugin, err := ns.SchedulingPolicy.SimpleScheduler.SelectBestTask(
