@@ -190,7 +190,7 @@ func (ns *NodeScheduler) Run() {
 					if ns.ResourceManager.WillItFit(plugin) {
 						logger.Debug.Printf("Send %q to Resource Manager", plugin.Name)
 						plugin.UpdatePluginSchedulingStatus(datatype.Ready)
-						ns.ResourceManager.LaunchAndWatchPlugin(plugin, ns.chanNeedScheduling)
+						go ns.ResourceManager.LaunchAndWatchPlugin(plugin, ns.chanNeedScheduling)
 					} else {
 						logger.Debug.Printf("Resource is not availble for plugin %q", plugin.Name)
 					}

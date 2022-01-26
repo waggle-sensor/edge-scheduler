@@ -82,8 +82,19 @@ func (ngm *NodeGoalManager) Run(chanToScheduler chan datatype.Event) {
 		select {
 		case scienceGoal := <-ngm.chanGoalQueue:
 			logger.Debug.Printf("Received a goal %q", scienceGoal.Name)
-			ngm.ScienceGoals[scienceGoal.Name] = scienceGoal
-			ngm.Notifier.Notify(datatype.NewEvent(datatype.EventNewGoal, scienceGoal.Name))
+			if goal, exist := ngm.ScienceGoals[scienceGoal.Name]; exist {
+				if goal.GetMySubGoal(ngm.NodeID) == scienceGoal.GetMySubGoal(ngm.NodeID) {
+					logger.Debug.Printf("The newly submitted goal %s exists and no changes in the goal. Skipping adding the goal", scienceGoal.Name)
+				} else {
+					logger.Debug.Printf("The newly submitted goal %s exists and has changed its content. Need scheduling", scienceGoal.Name)
+					ngm.ScienceGoals[scienceGoal.Name] = scienceGoal
+					ngm.Notifier.Notify(datatype.NewEvent(datatype.EventNewGoal, scienceGoal.Name))
+				}
+			} else {
+				ngm.ScienceGoals[scienceGoal.Name] = scienceGoal
+				ngm.Notifier.Notify(datatype.NewEvent(datatype.EventNewGoal, scienceGoal.Name))
+			}
+
 		}
 	}
 }

@@ -744,9 +744,7 @@ func (rm *ResourceManager) CleanUp() error {
 		}
 		logger.Debug.Printf("Job %q's pod status %q", job.Name, podStatus)
 		switch podStatus {
-		case apiv1.PodPending:
-			fallthrough
-		case apiv1.PodRunning:
+		case apiv1.PodPending, apiv1.PodRunning:
 			rm.TerminateJob(job.Name)
 			logger.Debug.Printf("Job %q terminated successfully", job.Name)
 		}
@@ -796,10 +794,10 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin, chanNot
 	for {
 		event := <-chanEvent
 		switch event.Type {
-		case watch.Added, watch.Deleted, watch.Modified:
+		case watch.Added, watch.Modified:
 			job := event.Object.(*batchv1.Job)
 			if len(job.Status.Conditions) > 0 {
-				logger.Debug.Printf("%s: %s", event.Type, job.Status.Conditions[0].Type)
+				logger.Debug.Printf("Plugin %s status %s: %s", job.Name, event.Type, job.Status.Conditions[0].Type)
 				switch job.Status.Conditions[0].Type {
 				case batchv1.JobComplete, batchv1.JobFailed:
 					plugin.UpdatePluginSchedulingStatus(datatype.Waiting)
@@ -808,8 +806,12 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin, chanNot
 					return
 				}
 			} else {
-				logger.Debug.Printf("%s: %s", event.Type, "UNKNOWN")
+				logger.Debug.Printf("Plugin %s status %s: %s", job.Name, event.Type, "UNKNOWN")
 			}
+		case watch.Deleted:
+			logger.Debug.Printf("Plugin got deleted. Returning resource and notify")
+			rm.UpdateReservation(false)
+			rm.Notifier.Notify(datatype.NewEvent(datatype.EventPluginStatusChange, plugin.Name))
 		}
 	}
 }

@@ -36,7 +36,7 @@ func NewRealNodeSchedulerBuilder(nodeID string) *RealNodeScheduler {
 			chanRunGoal:                 make(chan *datatype.ScienceGoal, maxChannelBuffer),
 			chanStopPlugin:              make(chan *datatype.Plugin, maxChannelBuffer),
 			chanPluginToResourceManager: make(chan *datatype.Plugin, maxChannelBuffer),
-			chanNeedScheduling:          make(chan string, 1),
+			chanNeedScheduling:          make(chan string, maxChannelBuffer),
 			chanAPIServerToGoalManager:  make(chan *datatype.ScienceGoal, maxChannelBuffer),
 		},
 	}
@@ -117,7 +117,7 @@ func NewFakeNodeSchedulerBuilder(nodeID string) *FakeNodeScheduler {
 			chanRunGoal:                 make(chan *datatype.ScienceGoal, maxChannelBuffer),
 			chanStopPlugin:              make(chan *datatype.Plugin, maxChannelBuffer),
 			chanPluginToResourceManager: make(chan *datatype.Plugin, maxChannelBuffer),
-			chanNeedScheduling:          make(chan string, 1),
+			chanNeedScheduling:          make(chan string, maxChannelBuffer),
 			chanAPIServerToGoalManager:  make(chan *datatype.ScienceGoal, maxChannelBuffer),
 		},
 	}

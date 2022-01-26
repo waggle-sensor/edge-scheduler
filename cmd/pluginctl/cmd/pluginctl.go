@@ -13,11 +13,11 @@ import (
 )
 
 const (
-	version               = "0.8.4"
 	rancherKubeconfigPath = "/etc/rancher/k3s/k3s.yaml"
 )
 
 var (
+	Version    = "0.0.0"
 	debug      bool
 	kubeconfig string
 	followLog  bool
@@ -60,7 +60,7 @@ var rootCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("SAGE edge scheduler client version: %s\n", version)
+		fmt.Printf("SAGE plugin control for running plugins: %s\n", Version)
 		fmt.Printf("pluginctl --help for more information\n")
 	},
 	ValidArgs: []string{"deploy", "logs"},
