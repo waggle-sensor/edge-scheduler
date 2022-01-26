@@ -13,6 +13,7 @@ const (
 )
 
 type NodeScheduler struct {
+	NodeID                      string
 	ResourceManager             *ResourceManager
 	Knowledgebase               *knowledgebase.Knowledgebase
 	GoalManager                 *NodeGoalManager
@@ -25,25 +26,23 @@ type NodeScheduler struct {
 	chanStopPlugin              chan *datatype.Plugin
 	chanPluginToResourceManager chan *datatype.Plugin
 	chanNeedScheduling          chan string
+	chanAPIServerToGoalManager  chan *datatype.ScienceGoal
 }
 
-func NewNodeScheduler(rm *ResourceManager, kb *knowledgebase.Knowledgebase, gm *NodeGoalManager, api *APIServer, simulate bool) (*NodeScheduler, error) {
-	schedulingPolicy := policy.NewSimpleSchedulingPolicy()
-	return &NodeScheduler{
-		ResourceManager:             rm,
-		Knowledgebase:               kb,
-		GoalManager:                 gm,
-		APIServer:                   api,
-		Simulate:                    simulate,
-		SchedulingPolicy:            schedulingPolicy,
-		chanContextEventToScheduler: make(chan datatype.EventPluginContext, maxChannelBuffer),
-		chanFromGoalManager:         make(chan datatype.Event, maxChannelBuffer),
-		chanRunGoal:                 make(chan *datatype.ScienceGoal, maxChannelBuffer),
-		chanStopPlugin:              make(chan *datatype.Plugin, maxChannelBuffer),
-		chanPluginToResourceManager: make(chan *datatype.Plugin, maxChannelBuffer),
-		chanNeedScheduling:          make(chan string, 1),
-	}, nil
-}
+// func NewNodeScheduler(simulate bool) &NodeScheduler {
+// 	// schedulingPolicy := policy.NewSimpleSchedulingPolicy()
+// 	return &NodeScheduler{
+// 		Simulate:                    simulate,
+// 		SchedulingPolicy:            schedulingPolicy,
+// 		chanContextEventToScheduler: make(chan datatype.EventPluginContext, maxChannelBuffer),
+// 		chanFromGoalManager:         make(chan datatype.Event, maxChannelBuffer),
+// 		chanRunGoal:                 make(chan *datatype.ScienceGoal, maxChannelBuffer),
+// 		chanStopPlugin:              make(chan *datatype.Plugin, maxChannelBuffer),
+// 		chanPluginToResourceManager: make(chan *datatype.Plugin, maxChannelBuffer),
+// 		chanNeedScheduling:          make(chan string, 1),
+// 		chanAPIServerToGoalManager:  make(chan *datatype.ScienceGoal, maxChannelBuffer),
+// 	}
+// }
 
 // Configure sets up the followings in Kubernetes cluster
 //

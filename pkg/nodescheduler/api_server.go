@@ -3,11 +3,14 @@ package nodescheduler
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 
 	"github.com/gorilla/mux"
+	"github.com/sagecontinuum/ses/pkg/datatype"
 	"github.com/sagecontinuum/ses/pkg/logger"
+	yaml "gopkg.in/yaml.v2"
 	// "github.com/urfave/negroni"
 )
 
@@ -23,11 +26,12 @@ var (
 )
 
 type APIServer struct {
-	mainRouter *mux.Router
+	mainRouter    *mux.Router
+	nodeScheduler *NodeScheduler
 }
 
-func NewAPIServer() (*APIServer, error) {
-	return &APIServer{}, nil
+func NewAPIServer() *APIServer {
+	return &APIServer{}
 }
 
 func (api *APIServer) Run() {
@@ -39,8 +43,8 @@ func (api *APIServer) Run() {
 	})
 	api_route := r.PathPrefix("/api/v1").Subrouter()
 	api_route.Handle("/kb/rules", http.HandlerFunc(handlerClauses)).Methods(http.MethodGet, http.MethodPost)
-	api_route.Handle("/kb/senses", http.HandlerFunc(handlerSenses)).Methods(http.MethodGet, http.MethodPost, http.MethodDelete)
-	api_route.Handle("/goals", http.HandlerFunc(handlerGoals)).Methods(http.MethodGet, http.MethodPost, http.MethodPut)
+	api_route.Handle("/kb/senses", http.HandlerFunc(api.handlerSenses)).Methods(http.MethodGet, http.MethodPost, http.MethodDelete)
+	api_route.Handle("/goals", http.HandlerFunc(api.handlerGoals)).Methods(http.MethodGet, http.MethodPost, http.MethodPut)
 	logger.Info.Fatalln(http.ListenAndServe("0.0.0.0:8080", r))
 }
 
@@ -68,7 +72,7 @@ func handlerClauses(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerSenses(w http.ResponseWriter, r *http.Request) {
+func (api *APIServer) handlerSenses(w http.ResponseWriter, r *http.Request) {
 	if r.Method == GET {
 		memory := ""
 		respondJSON(w, http.StatusOK, memory)
@@ -78,6 +82,7 @@ func handlerSenses(w http.ResponseWriter, r *http.Request) {
 		value := r.Form.Get("value")
 		log.Printf("%s %s", subject, value)
 		// Memorize(subject, value)
+		// api.nodeScheduler.Knowledgebase.
 		respondJSON(w, http.StatusOK, subject+value)
 	} else if r.Method == "DELETE" {
 		log.Print("hit DELETE")
@@ -87,7 +92,7 @@ func handlerSenses(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handlerGoals(w http.ResponseWriter, r *http.Request) {
+func (api *APIServer) handlerGoals(w http.ResponseWriter, r *http.Request) {
 	if r.Method == GET {
 		// clauses := PrintClauses()
 		// respondJSON(w, http.StatusOK, clauses)
@@ -100,15 +105,17 @@ func handlerGoals(w http.ResponseWriter, r *http.Request) {
 		// if err != nil {
 		// 	respondJSON(w, http.StatusOK, "ERROR")
 		// }
-		// yamlFile, err := ioutil.ReadAll(r.Body)
-		// if err != nil {
-		// 	fmt.Println(err)
-		// }
-		// var goal Goal
-		// _ = yaml.Unmarshal(yamlFile, &goal)
-		// log.Printf("%v", goal)
+		yamlFile, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			fmt.Println(err)
+		}
+		var scienceGoal datatype.ScienceGoal
+		_ = yaml.Unmarshal(yamlFile, &scienceGoal)
+		logger.Debug.Printf("%v", scienceGoal)
 		// RegisterGoal(goal)
 		// chanTriggerSchedule <- "received new goal via api"
+		// scienceGoal := NewScienceGoal()
+		api.nodeScheduler.GoalManager.AddGoal(&scienceGoal)
 		respondJSON(w, http.StatusOK, "")
 	}
 }

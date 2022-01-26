@@ -23,16 +23,16 @@ type RequestToKB struct {
 
 // Knowledgebase structs an instance of knowledgebase
 type Knowledgebase struct {
-	pathToPythonKB string
-	chanToKB       chan RequestToKB
+	PathToPythonKB string
+	ChanToKB       chan RequestToKB
 	RMQHost        string
 }
 
 // NewKnowledgebase creates and returns an instance of Knowledgebase
 func NewKnowledgebase(rmqHost string) (kb *Knowledgebase, err error) {
 	kb = &Knowledgebase{
-		pathToPythonKB: "kb.py",
-		chanToKB:       make(chan RequestToKB, maxChannelBuffer),
+		PathToPythonKB: "kb.py",
+		ChanToKB:       make(chan RequestToKB, maxChannelBuffer),
 		RMQHost:        rmqHost,
 	}
 	return
@@ -88,7 +88,7 @@ func (kb *Knowledgebase) RegisterRules(scienceGoal *datatype.ScienceGoal, nodeNa
 	logger.Info.Printf("Registring science rules of science goal %s to KB", scienceGoal.Name)
 	rules := []string{scienceGoal.ID}
 	rules = append(rules, mySubGoal.Sciencerules...)
-	kb.chanToKB <- RequestToKB{
+	kb.ChanToKB <- RequestToKB{
 		Command: "rule",
 		Args:    rules,
 	}
@@ -130,7 +130,7 @@ func (kb *Knowledgebase) runIPCToKB() {
 
 // launchKB launches and manages the Python KB
 func (kb *Knowledgebase) launchKB() {
-	args := []string{kb.pathToPythonKB}
+	args := []string{kb.PathToPythonKB}
 	for {
 		logger.Info.Printf("Launching KB with RMQ host %s", kb.RMQHost)
 		cmd := exec.Command("python3", args...)

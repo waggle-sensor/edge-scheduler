@@ -61,14 +61,13 @@ type ResourceManager struct {
 }
 
 // NewResourceManager returns an instance of ResourceManager
-func NewK3SResourceManager(registry string, incluster bool, kubeconfig string, rmqManagement *RMQManagement, simulate bool) (rm *ResourceManager, err error) {
+func NewK3SResourceManager(registry string, incluster bool, kubeconfig string, simulate bool) (rm *ResourceManager, err error) {
 	if simulate {
 		return &ResourceManager{
 			Namespace:     namespace,
 			ECRRegistry:   nil,
 			Clientset:     nil,
 			MetricsClient: nil,
-			RMQManagement: rmqManagement,
 			Simulate:      simulate,
 			Plugins:       make([]*datatype.Plugin, 0),
 			reserved:      false,
@@ -91,7 +90,6 @@ func NewK3SResourceManager(registry string, incluster bool, kubeconfig string, r
 		ECRRegistry:   registryAddress,
 		Clientset:     k3sClient,
 		MetricsClient: metricsClient,
-		RMQManagement: rmqManagement,
 		Simulate:      simulate,
 	}, nil
 }

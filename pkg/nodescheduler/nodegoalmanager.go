@@ -19,23 +19,24 @@ import (
 
 // GoalManager structs a goal manager for nodescheduler
 type NodeGoalManager struct {
-	ScienceGoals             map[string]*datatype.ScienceGoal
-	cloudSchedulerBaseURL    string
-	NodeID                   string
-	Simulate                 bool
-	chanNewGoalToGoalManager chan *datatype.ScienceGoal
-	rmqHandler               *interfacing.RabbitMQHandler
-	GoalWatcher              watch.Interface
+	ScienceGoals          map[string]*datatype.ScienceGoal
+	cloudSchedulerBaseURL string
+	NodeID                string
+	Notifier              chan string
+	Simulate              bool
+	chanGoalQueue         chan *datatype.ScienceGoal
+	rmqHandler            *interfacing.RabbitMQHandler
+	GoalWatcher           watch.Interface
 }
 
 // NewGoalManager creates and returns an instance of goal manager
 func NewNodeGoalManager(cloudSchedulerURL string, nodeID string, simulate bool) (*NodeGoalManager, error) {
 	return &NodeGoalManager{
-		ScienceGoals:             make(map[string]*datatype.ScienceGoal),
-		cloudSchedulerBaseURL:    cloudSchedulerURL,
-		NodeID:                   nodeID,
-		Simulate:                 simulate,
-		chanNewGoalToGoalManager: make(chan *datatype.ScienceGoal, 100),
+		ScienceGoals:          make(map[string]*datatype.ScienceGoal),
+		cloudSchedulerBaseURL: cloudSchedulerURL,
+		NodeID:                nodeID,
+		Simulate:              simulate,
+		chanGoalQueue:         make(chan *datatype.ScienceGoal, 100),
 	}, nil
 }
 
@@ -50,6 +51,18 @@ func (ngm *NodeGoalManager) GetScienceGoal(goalID string) (*datatype.ScienceGoal
 // SetRMQHandler sets a RabbitMQ handler used for transferring goals to edge schedulers
 func (ngm *NodeGoalManager) SetRMQHandler(rmqHandler *interfacing.RabbitMQHandler) {
 	ngm.rmqHandler = rmqHandler
+}
+
+func (ngm *NodeGoalManager) DropGoal(goalID string) error {
+	if _, exist := ngm.ScienceGoals[goalID]; exist {
+		delete(ngm.ScienceGoals, goalID)
+		return nil
+	}
+	return fmt.Errorf("The goal %s does not exist", goalID)
+}
+
+func (ngm *NodeGoalManager) AddGoal(goal *datatype.ScienceGoal) {
+	ngm.chanGoalQueue <- goal
 }
 
 // RunGoalManager handles goal related events from both cloud and local
@@ -68,8 +81,8 @@ func (ngm *NodeGoalManager) Run(chanToScheduler chan datatype.Event) {
 	}
 	for {
 		select {
-		case scienceGoal := <-ngm.chanNewGoalToGoalManager:
-			logger.Info.Printf("Received a goal %q", scienceGoal.Name)
+		case scienceGoal := <-ngm.chanGoalQueue:
+			logger.Debug.Printf("Received a goal %q", scienceGoal.Name)
 			ngm.ScienceGoals[scienceGoal.Name] = scienceGoal
 			chanToScheduler <- datatype.NewEvent(datatype.EventNewGoal, scienceGoal.Name)
 		}
@@ -86,9 +99,7 @@ func (ngm *NodeGoalManager) pullGoalsFromK3S() {
 	for {
 		event := <-chanGoal
 		switch event.Type {
-		case watch.Added:
-			fallthrough
-		case watch.Modified:
+		case watch.Added, watch.Modified:
 			if updatedConfigMap, ok := event.Object.(*apiv1.ConfigMap); ok {
 				logger.Debug.Printf("%v", updatedConfigMap.Data)
 				var jobTemplate datatype.JobTemplate
@@ -100,7 +111,7 @@ func (ngm *NodeGoalManager) pullGoalsFromK3S() {
 					if err != nil {
 						logger.Error.Printf("Failed to convert into Science Goal %q", err.Error())
 					} else {
-						ngm.chanNewGoalToGoalManager <- scienceGoal
+						ngm.chanGoalQueue <- scienceGoal
 					}
 				}
 			}
