@@ -15,5 +15,6 @@ func NewEvent(eventType EventType, meta string) Event {
 type EventType string
 
 const (
-	EventNewGoal EventType = "EventNewGoal"
+	EventNewGoal            EventType = "EventNewGoal"
+	EventPluginStatusChange EventType = "EventPluginStatusChange"
 )

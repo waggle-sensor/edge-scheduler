@@ -109,13 +109,14 @@ func (api *APIServer) handlerGoals(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			fmt.Println(err)
 		}
-		var scienceGoal datatype.ScienceGoal
-		_ = yaml.Unmarshal(yamlFile, &scienceGoal)
+		var jobTemplate datatype.JobTemplate
+		_ = yaml.Unmarshal(yamlFile, &jobTemplate)
+		scienceGoal, _ := jobTemplate.ConvertJobTemplateToScienceGoal(api.nodeScheduler.NodeID)
 		logger.Debug.Printf("%v", scienceGoal)
 		// RegisterGoal(goal)
 		// chanTriggerSchedule <- "received new goal via api"
 		// scienceGoal := NewScienceGoal()
-		api.nodeScheduler.GoalManager.AddGoal(&scienceGoal)
+		api.nodeScheduler.GoalManager.AddGoal(scienceGoal)
 		respondJSON(w, http.StatusOK, "")
 	}
 }

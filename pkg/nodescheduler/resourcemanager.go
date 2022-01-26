@@ -20,6 +20,7 @@ import (
 
 	rabbithole "github.com/michaelklishin/rabbit-hole"
 	"github.com/sagecontinuum/ses/pkg/datatype"
+	"github.com/sagecontinuum/ses/pkg/interfacing"
 	"github.com/sagecontinuum/ses/pkg/logger"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -54,6 +55,7 @@ type ResourceManager struct {
 	Clientset     *kubernetes.Clientset
 	MetricsClient *metrics.Clientset
 	RMQManagement *RMQManagement
+	Notifier      *interfacing.Notifier
 	Simulate      bool
 	Plugins       []*datatype.Plugin
 	reserved      bool
@@ -794,21 +796,15 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin, chanNot
 	for {
 		event := <-chanEvent
 		switch event.Type {
-		case watch.Added:
-			fallthrough
-		case watch.Deleted:
-			fallthrough
-		case watch.Modified:
+		case watch.Added, watch.Deleted, watch.Modified:
 			job := event.Object.(*batchv1.Job)
 			if len(job.Status.Conditions) > 0 {
 				logger.Debug.Printf("%s: %s", event.Type, job.Status.Conditions[0].Type)
 				switch job.Status.Conditions[0].Type {
-				case batchv1.JobComplete:
-					fallthrough
-				case batchv1.JobFailed:
+				case batchv1.JobComplete, batchv1.JobFailed:
 					plugin.UpdatePluginSchedulingStatus(datatype.Waiting)
 					rm.UpdateReservation(false)
-					chanNotify <- fmt.Sprintf("done running %s", job.Name)
+					rm.Notifier.Notify(datatype.NewEvent(datatype.EventPluginStatusChange, plugin.Name))
 					return
 				}
 			} else {
@@ -861,22 +857,22 @@ func (rm *ResourceManager) Run(chanPluginToUpdate <-chan *datatype.Plugin) {
 		return
 	}
 	logger.Info.Println("Start collecting metrics from Kubernetes")
-	for {
-		nodeMetrics, err := rm.MetricsClient.MetricsV1beta1().NodeMetricses().List(context.TODO(), metav1.ListOptions{})
-		if err != nil {
-			logger.Error.Println("Error:", err)
-			return
-		}
-		for _, nodeMetric := range nodeMetrics.Items {
-			cpuQuantity, ok := nodeMetric.Usage.Cpu().AsInt64()
-			memQuantity, ok := nodeMetric.Usage.Memory().AsInt64()
-			if !ok {
-				return
-			}
-			msg := fmt.Sprintf("Node Name: %s \n CPU usage: %d \n Memory usage: %d", nodeMetric.Name, cpuQuantity, memQuantity)
-			logger.Debug.Println(msg)
-		}
-	}
+	// for {
+	// 	nodeMetrics, err := rm.MetricsClient.MetricsV1beta1().NodeMetricses().List(context.TODO(), metav1.ListOptions{})
+	// 	if err != nil {
+	// 		logger.Error.Println("Error:", err)
+	// 		return
+	// 	}
+	// 	for _, nodeMetric := range nodeMetrics.Items {
+	// 		cpuQuantity, ok := nodeMetric.Usage.Cpu().AsInt64()
+	// 		memQuantity, ok := nodeMetric.Usage.Memory().AsInt64()
+	// 		if !ok {
+	// 			return
+	// 		}
+	// 		msg := fmt.Sprintf("Node Name: %s \n CPU usage: %d \n Memory usage: %d", nodeMetric.Name, cpuQuantity, memQuantity)
+	// 		logger.Debug.Println(msg)
+	// 	}
+	// }
 	// podMetrics, err := rm.MetricsClient.MetricsV1beta1().PodMetricses(rm.Namespace).List(context.TODO(), metav1.ListOptions{})
 	// if err != nil {
 	// 	logger.Error.Println("Error:", err)

@@ -4,6 +4,7 @@ import (
 	"net/url"
 
 	"github.com/sagecontinuum/ses/pkg/datatype"
+	"github.com/sagecontinuum/ses/pkg/interfacing"
 	"github.com/sagecontinuum/ses/pkg/knowledgebase"
 	"github.com/sagecontinuum/ses/pkg/nodescheduler/policy"
 )
@@ -31,6 +32,7 @@ func NewRealNodeSchedulerBuilder(nodeID string) *RealNodeScheduler {
 			SchedulingPolicy:            schedulingPolicy,
 			chanContextEventToScheduler: make(chan datatype.EventPluginContext, maxChannelBuffer),
 			chanFromGoalManager:         make(chan datatype.Event, maxChannelBuffer),
+			chanFromResourceManager:     make(chan datatype.Event, maxChannelBuffer),
 			chanRunGoal:                 make(chan *datatype.ScienceGoal, maxChannelBuffer),
 			chanStopPlugin:              make(chan *datatype.Plugin, maxChannelBuffer),
 			chanPluginToResourceManager: make(chan *datatype.Plugin, maxChannelBuffer),
@@ -47,7 +49,9 @@ func (rns *RealNodeScheduler) AddGoalManager(cloudschedulerURI string) *RealNode
 		NodeID:                rns.nodeScheduler.NodeID,
 		chanGoalQueue:         make(chan *datatype.ScienceGoal, 100),
 		Simulate:              false,
+		Notifier:              interfacing.NewNotifier(),
 	}
+	rns.nodeScheduler.GoalManager.Notifier.Subscribe(rns.nodeScheduler.chanFromGoalManager)
 	return rns
 }
 
@@ -70,7 +74,9 @@ func (rns *RealNodeScheduler) AddResourceManager(registry string, incluster bool
 		Clientset:     k3sClient,
 		MetricsClient: metricsClient,
 		Simulate:      false,
+		Notifier:      interfacing.NewNotifier(),
 	}
+	rns.nodeScheduler.ResourceManager.Notifier.Subscribe(rns.nodeScheduler.chanFromResourceManager)
 	return rns
 }
 
@@ -107,6 +113,7 @@ func NewFakeNodeSchedulerBuilder(nodeID string) *FakeNodeScheduler {
 			SchedulingPolicy:            schedulingPolicy,
 			chanContextEventToScheduler: make(chan datatype.EventPluginContext, maxChannelBuffer),
 			chanFromGoalManager:         make(chan datatype.Event, maxChannelBuffer),
+			chanFromResourceManager:     make(chan datatype.Event, maxChannelBuffer),
 			chanRunGoal:                 make(chan *datatype.ScienceGoal, maxChannelBuffer),
 			chanStopPlugin:              make(chan *datatype.Plugin, maxChannelBuffer),
 			chanPluginToResourceManager: make(chan *datatype.Plugin, maxChannelBuffer),
@@ -123,7 +130,9 @@ func (fns *FakeNodeScheduler) AddGoalManager() *FakeNodeScheduler {
 		NodeID:                fns.nodeScheduler.NodeID,
 		chanGoalQueue:         make(chan *datatype.ScienceGoal, 100),
 		Simulate:              true,
+		Notifier:              interfacing.NewNotifier(),
 	}
+	fns.nodeScheduler.GoalManager.Notifier.Subscribe(fns.nodeScheduler.chanFromGoalManager)
 	return fns
 }
 
@@ -134,7 +143,9 @@ func (fns *FakeNodeScheduler) AddResourceManager() *FakeNodeScheduler {
 		Clientset:     nil,
 		MetricsClient: nil,
 		Simulate:      true,
+		Notifier:      interfacing.NewNotifier(),
 	}
+	fns.nodeScheduler.ResourceManager.Notifier.Subscribe(fns.nodeScheduler.chanFromResourceManager)
 	return fns
 }
 

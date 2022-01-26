@@ -1,6 +1,10 @@
 package datatype
 
-import "fmt"
+import (
+	"fmt"
+
+	uuid "github.com/nu7hatch/gouuid"
+)
 
 // ScienceGoal structs local goals and success criteria
 type ScienceGoal struct {
@@ -65,4 +69,28 @@ func (sg *SubGoal) GetPlugin(pluginName string) *Plugin {
 type JobTemplate struct {
 	Name    string `yaml:"name"`
 	Plugins []*PluginSpec
+}
+
+func (j *JobTemplate) ConvertJobTemplateToScienceGoal(nodeID string) (*ScienceGoal, error) {
+	u, _ := uuid.NewV4()
+	var subGoal SubGoal
+	subGoal.Node = &Node{
+		Name: nodeID,
+	}
+	for _, pluginSpec := range j.Plugins {
+		subGoal.Plugins = append(subGoal.Plugins, &Plugin{
+			Name:       pluginSpec.Name,
+			PluginSpec: pluginSpec,
+			Status: PluginStatus{
+				SchedulingStatus: Waiting,
+			},
+		})
+	}
+	return &ScienceGoal{
+		ID:   u.String(),
+		Name: j.Name,
+		SubGoals: []*SubGoal{
+			&subGoal,
+		},
+	}, nil
 }

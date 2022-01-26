@@ -22,6 +22,7 @@ type NodeScheduler struct {
 	SchedulingPolicy            *policy.SchedulingPolicy
 	chanContextEventToScheduler chan datatype.EventPluginContext
 	chanFromGoalManager         chan datatype.Event
+	chanFromResourceManager     chan datatype.Event
 	chanRunGoal                 chan *datatype.ScienceGoal
 	chanStopPlugin              chan *datatype.Plugin
 	chanPluginToResourceManager chan *datatype.Plugin
@@ -124,6 +125,9 @@ func (ns *NodeScheduler) Run() {
 			logger.Debug.Printf("Event: %q received with meta %q", event.Type, event.Meta)
 			ns.ResourceManager.CleanUp()
 			ns.chanNeedScheduling <- "new goal"
+		case event := <-ns.chanFromResourceManager:
+			logger.Debug.Printf("Event: %q received with meta %q", event.Type, event.Meta)
+			ns.chanNeedScheduling <- "plugin status changed"
 		// case scheduledScienceGoal := <-ns.chanRunGoal:
 		// 	logger.Info.Printf("Goal %s needs scheduling", scheduledScienceGoal.Name)
 		// 	subGoal := scheduledScienceGoal.GetMySubGoal(ns.GoalManager.NodeID)

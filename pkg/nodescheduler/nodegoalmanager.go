@@ -8,7 +8,6 @@ import (
 	"path"
 	"time"
 
-	uuid "github.com/nu7hatch/gouuid"
 	"github.com/sagecontinuum/ses/pkg/datatype"
 	"github.com/sagecontinuum/ses/pkg/interfacing"
 	"github.com/sagecontinuum/ses/pkg/logger"
@@ -22,7 +21,7 @@ type NodeGoalManager struct {
 	ScienceGoals          map[string]*datatype.ScienceGoal
 	cloudSchedulerBaseURL string
 	NodeID                string
-	Notifier              chan string
+	Notifier              *interfacing.Notifier
 	Simulate              bool
 	chanGoalQueue         chan *datatype.ScienceGoal
 	rmqHandler            *interfacing.RabbitMQHandler
@@ -84,7 +83,7 @@ func (ngm *NodeGoalManager) Run(chanToScheduler chan datatype.Event) {
 		case scienceGoal := <-ngm.chanGoalQueue:
 			logger.Debug.Printf("Received a goal %q", scienceGoal.Name)
 			ngm.ScienceGoals[scienceGoal.Name] = scienceGoal
-			chanToScheduler <- datatype.NewEvent(datatype.EventNewGoal, scienceGoal.Name)
+			ngm.Notifier.Notify(datatype.NewEvent(datatype.EventNewGoal, scienceGoal.Name))
 		}
 	}
 }
@@ -107,7 +106,7 @@ func (ngm *NodeGoalManager) pullGoalsFromK3S() {
 				if err != nil {
 					logger.Error.Printf("Failed to load goals from Kubernetes ConfigMap %q", err.Error())
 				} else {
-					scienceGoal, err := ngm.convertJobTemplateToScienceGoal(&jobTemplate)
+					scienceGoal, err := jobTemplate.ConvertJobTemplateToScienceGoal(ngm.NodeID)
 					if err != nil {
 						logger.Error.Printf("Failed to convert into Science Goal %q", err.Error())
 					} else {
@@ -117,30 +116,6 @@ func (ngm *NodeGoalManager) pullGoalsFromK3S() {
 			}
 		}
 	}
-}
-
-func (gm *NodeGoalManager) convertJobTemplateToScienceGoal(job *datatype.JobTemplate) (*datatype.ScienceGoal, error) {
-	u, _ := uuid.NewV4()
-	var subGoal datatype.SubGoal
-	subGoal.Node = &datatype.Node{
-		Name: gm.NodeID,
-	}
-	for _, pluginSpec := range job.Plugins {
-		subGoal.Plugins = append(subGoal.Plugins, &datatype.Plugin{
-			Name:       pluginSpec.Name,
-			PluginSpec: pluginSpec,
-			Status: datatype.PluginStatus{
-				SchedulingStatus: datatype.Waiting,
-			},
-		})
-	}
-	return &datatype.ScienceGoal{
-		ID:   u.String(),
-		Name: job.Name,
-		SubGoals: []*datatype.SubGoal{
-			&subGoal,
-		},
-	}, nil
 }
 
 // pullingGoalsFromCloudScheduler periodically pulls goals from the cloud scheduler
