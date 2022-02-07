@@ -3,12 +3,9 @@ package interfacing
 import (
 	"fmt"
 
+	"github.com/sagecontinuum/ses/pkg/datatype"
 	"github.com/sagecontinuum/ses/pkg/logger"
 	"github.com/streadway/amqp"
-)
-
-var (
-	exchange = "scheduler"
 )
 
 type RabbitMQHandler struct {
@@ -17,19 +14,21 @@ type RabbitMQHandler struct {
 	rabbitmqPassword string
 	rabbitmqConn     *amqp.Connection
 	rabbitmqChan     *amqp.Channel
+	appID            string
 }
 
-func NewRabbitMQHandler(rabbitmqURI string, rabbitmqUsername string, rabbitmqPassword string) *RabbitMQHandler {
+func NewRabbitMQHandler(rabbitmqURI string, rabbitmqUsername string, rabbitmqPassword string, appID string) *RabbitMQHandler {
 	return &RabbitMQHandler{
 		RabbitmqURI:      rabbitmqURI,
 		rabbitmqUsername: rabbitmqUsername,
 		rabbitmqPassword: rabbitmqPassword,
+		appID:            appID,
 	}
 }
 
 func (rh *RabbitMQHandler) Connect() error {
 	amqpAddress := fmt.Sprintf("amqp://%s:%s@%s", rh.rabbitmqUsername, rh.rabbitmqPassword, rh.RabbitmqURI)
-	logger.Info.Printf("Connecting to %s...", rh.RabbitmqURI)
+	logger.Debug.Printf("Connecting to %s...", rh.RabbitmqURI)
 	conn, err := amqp.Dial(amqpAddress)
 	if err != nil {
 		return err
@@ -43,7 +42,7 @@ func (rh *RabbitMQHandler) Connect() error {
 	return nil
 }
 
-func (rh *RabbitMQHandler) CreateExchange() error {
+func (rh *RabbitMQHandler) CreateExchange(exchange string) error {
 	if rh.rabbitmqConn == nil || rh.rabbitmqConn.IsClosed() {
 		err := rh.Connect()
 		if err != nil {
@@ -62,7 +61,7 @@ func (rh *RabbitMQHandler) CreateExchange() error {
 	return err
 }
 
-func (rh *RabbitMQHandler) DeclareQueueAndConnectToExchange(queueName string) (*amqp.Queue, error) {
+func (rh *RabbitMQHandler) DeclareQueueAndConnectToExchange(exchangeName string, queueName string) (*amqp.Queue, error) {
 	q, err := rh.rabbitmqChan.QueueDeclare(
 		queueName, // name
 		true,      // durable
@@ -75,9 +74,9 @@ func (rh *RabbitMQHandler) DeclareQueueAndConnectToExchange(queueName string) (*
 		return nil, err
 	}
 	err = rh.rabbitmqChan.QueueBind(
-		q.Name,   // queue name
-		q.Name,   // routing key
-		exchange, // exchange
+		q.Name,       // queue name
+		q.Name,       // routing key
+		exchangeName, // exchange
 		false,
 		nil)
 	if err != nil {
@@ -87,6 +86,7 @@ func (rh *RabbitMQHandler) DeclareQueueAndConnectToExchange(queueName string) (*
 }
 
 func (rh *RabbitMQHandler) SendYAML(routingKey string, message []byte) error {
+	exchange := "scheduler"
 	if rh.rabbitmqConn == nil || rh.rabbitmqConn.IsClosed() {
 		err := rh.Connect()
 		if err != nil {
@@ -106,6 +106,33 @@ func (rh *RabbitMQHandler) SendYAML(routingKey string, message []byte) error {
 	return err
 }
 
+// SendWaggleMessage delivers a Waggle message to Waggle data pipeline
+//
+// The message is sent to the "to-validator" exchange
+func (rh *RabbitMQHandler) SendWaggleMessage(message *datatype.WaggleMessage, scope string) error {
+	exchange := "to-validator"
+	if rh.rabbitmqConn == nil || rh.rabbitmqConn.IsClosed() {
+		err := rh.Connect()
+		if err != nil {
+			return err
+		}
+	}
+	logger.Debug.Printf("App id is %q", rh.appID)
+	err := rh.rabbitmqChan.Publish(
+		exchange,
+		scope,
+		false,
+		false,
+		amqp.Publishing{
+			Body:         datatype.Dump(message),
+			DeliveryMode: 2,
+			UserId:       rh.rabbitmqUsername,
+			AppId:        rh.appID,
+		},
+	)
+	return err
+}
+
 func (rh *RabbitMQHandler) GetReceiver(queueName string) (<-chan amqp.Delivery, error) {
 	if rh.rabbitmqConn == nil || rh.rabbitmqConn.IsClosed() {
 		err := rh.Connect()
@@ -113,17 +140,14 @@ func (rh *RabbitMQHandler) GetReceiver(queueName string) (<-chan amqp.Delivery, 
 			return nil, err
 		}
 	}
-
-	q, err := rh.DeclareQueueAndConnectToExchange(queueName)
-
 	msgs, err := rh.rabbitmqChan.Consume(
-		q.Name, // queue
-		"",     // consumer
-		true,   // auto-ack
-		false,  // exclusive
-		false,  // no-local
-		false,  // no-wait
-		nil,    // args
+		queueName, // queue
+		"",        // consumer
+		true,      // auto-ack
+		false,     // exclusive
+		false,     // no-local
+		false,     // no-wait
+		nil,       // args
 	)
 	return msgs, err
 }

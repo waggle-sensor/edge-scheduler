@@ -27,14 +27,30 @@ spec:
       serviceAccountName: wes-plugin-scheduler
       containers:
       # TODO change to the real scheduler image :)
-      - image: waggle/scheduler:0.9.1
+      - image: waggle/scheduler:0.9.2
         name: wes-plugin-scheduler
         command: ["/app/nodescheduler"]
         args:
         - -in-cluster
+        envFrom:
+        - configMapRef:
+          name: wes-identity
+        env:
+        - name: WAGGLE_APP_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.uid
+        WAGGLE_APP_ID
+        resources:
+          limits:
+            cpu: 200m
+            memory: 150Mi
+          requests:
+            cpu: 100m
+            memory: 100Mi
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+kind: ClusterRoleBinding
 metadata:
   name: wes-plugin-scheduler-view
   namespace: default

@@ -55,7 +55,7 @@ func main() {
 
 	if !noRabbitMQ {
 		logger.Info.Printf("Using RabbitMQ at %s with user %s", rabbitmqURI, rabbitmqUsername)
-		rmqHandler := interfacing.NewRabbitMQHandler(rabbitmqURI, rabbitmqUsername, rabbitmqPassword)
+		rmqHandler := interfacing.NewRabbitMQHandler(rabbitmqURI, rabbitmqUsername, rabbitmqPassword, "")
 		cs.GoalManager.SetRMQHandler(rmqHandler)
 	}
 	cs.Run(sesName, port)

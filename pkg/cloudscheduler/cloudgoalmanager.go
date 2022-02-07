@@ -25,7 +25,7 @@ func NewCloudGoalManager() (*CloudGoalManager, error) {
 // SetRMQHandler sets a RabbitMQ handler used for transferring goals to edge schedulers
 func (cgm *CloudGoalManager) SetRMQHandler(rmqHandler *interfacing.RabbitMQHandler) {
 	cgm.rmqHandler = rmqHandler
-	cgm.rmqHandler.CreateExchange()
+	cgm.rmqHandler.CreateExchange("scheduler")
 }
 
 // UpdateScienceGoal stores given science goal

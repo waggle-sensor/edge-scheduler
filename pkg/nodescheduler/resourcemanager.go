@@ -766,28 +766,29 @@ func (rm *ResourceManager) WillItFit(plugin *datatype.Plugin) bool {
 	}
 }
 
-func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin, chanNotify chan<- string) {
+func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 	logger.Debug.Printf("Running plugin %q...", plugin.Name)
-	rm.UpdateReservation(true)
 	job, err := rm.CreateJob(plugin)
 	if err != nil {
 		logger.Error.Printf("Failed to create Kubernetes Job for %q: %q", plugin.Name, err.Error())
-		chanNotify <- err.Error()
+		rm.Notifier.Notify(datatype.NewSimpleEvent(datatype.EventFailure, err.Error()))
 		return
 	}
 	_, err = rm.RunPlugin(job)
 	if err != nil {
 		logger.Error.Printf("Failed to run %q: %q", job.Name, err.Error())
-		chanNotify <- err.Error()
+		rm.Notifier.Notify(datatype.NewSimpleEvent(datatype.EventFailure, err.Error()))
 		return
 	}
 	logger.Info.Printf("Plugin %q deployed", job.Name)
-	plugin.UpdatePluginSchedulingStatus(datatype.Running)
+	rm.UpdateReservation(true)
+	rm.Notifier.Notify(datatype.NewSimpleEvent(datatype.EventPluginStatusLaunched, plugin.Name))
 	watcher, err := rm.WatchJob(job.Name, rm.Namespace, 3)
 	if err != nil {
 		logger.Error.Printf("Failed to watch %q. Abort the execution", job.Name)
 		rm.TerminateJob(job.Name)
-		chanNotify <- err.Error()
+		rm.UpdateReservation(false)
+		rm.Notifier.Notify(datatype.NewSimpleEvent(datatype.EventFailure, err.Error()))
 		return
 	}
 	chanEvent := watcher.ResultChan()
@@ -799,10 +800,21 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin, chanNot
 			if len(job.Status.Conditions) > 0 {
 				logger.Debug.Printf("Plugin %s status %s: %s", job.Name, event.Type, job.Status.Conditions[0].Type)
 				switch job.Status.Conditions[0].Type {
-				case batchv1.JobComplete, batchv1.JobFailed:
-					plugin.UpdatePluginSchedulingStatus(datatype.Waiting)
+				case batchv1.JobComplete:
 					rm.UpdateReservation(false)
-					rm.Notifier.Notify(datatype.NewEvent(datatype.EventPluginStatusChange, plugin.Name))
+					rm.Notifier.Notify(
+						datatype.NewSimpleEvent(
+							datatype.EventPluginStatusComplete,
+							plugin.Name,
+						))
+					return
+				case batchv1.JobFailed:
+					rm.UpdateReservation(false)
+					rm.Notifier.Notify(
+						datatype.NewSimpleEvent(
+							datatype.EventPluginStatusFailed,
+							plugin.Name,
+						))
 					return
 				}
 			} else {
@@ -811,7 +823,8 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin, chanNot
 		case watch.Deleted:
 			logger.Debug.Printf("Plugin got deleted. Returning resource and notify")
 			rm.UpdateReservation(false)
-			rm.Notifier.Notify(datatype.NewEvent(datatype.EventPluginStatusChange, plugin.Name))
+			rm.Notifier.Notify(datatype.NewSimpleEvent(datatype.EventFailure, plugin.Name))
+			return
 		}
 	}
 }

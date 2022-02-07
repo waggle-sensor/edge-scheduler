@@ -42,8 +42,8 @@ func main() {
 	flag.StringVar(&registry, "registry", "waggle/", "Path to ECR registry")
 	flag.BoolVar(&noRabbitMQ, "no-rabbitmq", false, "No RabbitMQ to talk to the cloud scheduler")
 	flag.StringVar(&rabbitmqURI, "rabbitmq-uri", getenv("RABBITMQ_URI", "rabbitmq:5672"), "RabbitMQ management uri")
-	flag.StringVar(&rabbitmqUsername, "rabbitmq-username", getenv("RABBITMQ_USERNAME", "guest"), "RabbitMQ management username")
-	flag.StringVar(&rabbitmqPassword, "rabbitmq-password", getenv("RABBITMQ_PASSWORD", "guest"), "RabbitMQ management password")
+	flag.StringVar(&rabbitmqUsername, "rabbitmq-username", getenv("RABBITMQ_USERNAME", "admin"), "RabbitMQ management username")
+	flag.StringVar(&rabbitmqPassword, "rabbitmq-password", getenv("RABBITMQ_PASSWORD", "admin"), "RabbitMQ management password")
 	flag.StringVar(&cloudschedulerURI, "cloudscheduler-uri", "http://localhost:9770", "cloudscheduler URI")
 	flag.Parse()
 	logger.Info.Println("Nodescheduler starts...")
@@ -62,11 +62,12 @@ func main() {
 			AddGoalManager(cloudschedulerURI).
 			AddResourceManager(registry, incluster, kubeconfig).
 			AddAPIServer().
+			AddLoggerToBeehive(rabbitmqURI, rabbitmqUsername, rabbitmqPassword, getenv("WAGGLE_APP_ID", "")).
 			Build()
 	}
 	if !noRabbitMQ {
 		logger.Info.Printf("Using RabbitMQ at %s with user %s", rabbitmqURI, rabbitmqUsername)
-		rmqHandler := interfacing.NewRabbitMQHandler(rabbitmqURI, rabbitmqUsername, rabbitmqPassword)
+		rmqHandler := interfacing.NewRabbitMQHandler(rabbitmqURI, rabbitmqUsername, rabbitmqPassword, getenv("WAGGLE_APP_ID", ""))
 		ns.GoalManager.SetRMQHandler(rmqHandler)
 	}
 	ns.Configure()

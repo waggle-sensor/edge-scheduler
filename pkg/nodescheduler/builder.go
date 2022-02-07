@@ -36,7 +36,7 @@ func NewRealNodeSchedulerBuilder(nodeID string) *RealNodeScheduler {
 			chanRunGoal:                 make(chan *datatype.ScienceGoal, maxChannelBuffer),
 			chanStopPlugin:              make(chan *datatype.Plugin, maxChannelBuffer),
 			chanPluginToResourceManager: make(chan *datatype.Plugin, maxChannelBuffer),
-			chanNeedScheduling:          make(chan string, maxChannelBuffer),
+			chanNeedScheduling:          make(chan datatype.Event, maxChannelBuffer),
 			chanAPIServerToGoalManager:  make(chan *datatype.ScienceGoal, maxChannelBuffer),
 		},
 	}
@@ -96,6 +96,11 @@ func (rns *RealNodeScheduler) AddAPIServer() *RealNodeScheduler {
 	return rns
 }
 
+func (rns *RealNodeScheduler) AddLoggerToBeehive(rabbitmqURI string, rabbitmqUsername string, rabbitmqPassword string, appID string) *RealNodeScheduler {
+	rns.nodeScheduler.LogToBeehive = interfacing.NewRabbitMQHandler(rabbitmqURI, rabbitmqUsername, rabbitmqPassword, appID)
+	return rns
+}
+
 func (rns *RealNodeScheduler) Build() *NodeScheduler {
 	return rns.nodeScheduler
 }
@@ -117,7 +122,7 @@ func NewFakeNodeSchedulerBuilder(nodeID string) *FakeNodeScheduler {
 			chanRunGoal:                 make(chan *datatype.ScienceGoal, maxChannelBuffer),
 			chanStopPlugin:              make(chan *datatype.Plugin, maxChannelBuffer),
 			chanPluginToResourceManager: make(chan *datatype.Plugin, maxChannelBuffer),
-			chanNeedScheduling:          make(chan string, maxChannelBuffer),
+			chanNeedScheduling:          make(chan datatype.Event, maxChannelBuffer),
 			chanAPIServerToGoalManager:  make(chan *datatype.ScienceGoal, maxChannelBuffer),
 		},
 	}

@@ -39,12 +39,12 @@ func NewNodeGoalManager(cloudSchedulerURL string, nodeID string, simulate bool) 
 	}, nil
 }
 
-// GetScienceGoal returns the goal of given goal_id
-func (ngm *NodeGoalManager) GetScienceGoal(goalID string) (*datatype.ScienceGoal, error) {
-	if goal, exist := ngm.ScienceGoals[goalID]; exist {
+// GetScienceGoal returns the goal of given goal name
+func (ngm *NodeGoalManager) GetScienceGoal(goalName string) (*datatype.ScienceGoal, error) {
+	if goal, exist := ngm.ScienceGoals[goalName]; exist {
 		return goal, nil
 	}
-	return nil, fmt.Errorf("The goal %s does not exist", goalID)
+	return nil, fmt.Errorf("The goal %s does not exist", goalName)
 }
 
 // SetRMQHandler sets a RabbitMQ handler used for transferring goals to edge schedulers
@@ -52,12 +52,13 @@ func (ngm *NodeGoalManager) SetRMQHandler(rmqHandler *interfacing.RabbitMQHandle
 	ngm.rmqHandler = rmqHandler
 }
 
-func (ngm *NodeGoalManager) DropGoal(goalID string) error {
-	if _, exist := ngm.ScienceGoals[goalID]; exist {
-		delete(ngm.ScienceGoals, goalID)
+// DropGoal drops given goal from the list
+func (ngm *NodeGoalManager) DropGoal(goalName string) error {
+	if _, exist := ngm.ScienceGoals[goalName]; exist {
+		delete(ngm.ScienceGoals, goalName)
 		return nil
 	}
-	return fmt.Errorf("The goal %s does not exist", goalID)
+	return fmt.Errorf("The goal %s does not exist", goalName)
 }
 
 func (ngm *NodeGoalManager) AddGoal(goal *datatype.ScienceGoal) {
@@ -88,11 +89,11 @@ func (ngm *NodeGoalManager) Run(chanToScheduler chan datatype.Event) {
 				} else {
 					logger.Debug.Printf("The newly submitted goal %s exists and has changed its content. Need scheduling", scienceGoal.Name)
 					ngm.ScienceGoals[scienceGoal.Name] = scienceGoal
-					ngm.Notifier.Notify(datatype.NewEvent(datatype.EventNewGoal, scienceGoal.Name))
+					ngm.Notifier.Notify(datatype.NewSimpleEvent(datatype.EventNewGoal, scienceGoal.Name))
 				}
 			} else {
 				ngm.ScienceGoals[scienceGoal.Name] = scienceGoal
-				ngm.Notifier.Notify(datatype.NewEvent(datatype.EventNewGoal, scienceGoal.Name))
+				ngm.Notifier.Notify(datatype.NewSimpleEvent(datatype.EventNewGoal, scienceGoal.Name))
 			}
 
 		}
@@ -134,6 +135,7 @@ func (gm *NodeGoalManager) pullGoalsFromCloudScheduler(useRabbitMQ bool) {
 	if useRabbitMQ {
 		for {
 			logger.Info.Printf("SES endpoint: %s", gm.rmqHandler.RabbitmqURI)
+			gm.rmqHandler.DeclareQueueAndConnectToExchange("scheduler", gm.NodeID)
 			msgs, err := gm.rmqHandler.GetReceiver(gm.NodeID)
 			if err != nil {
 				logger.Error.Printf("%s", err)
