@@ -26,8 +26,7 @@ spec:
       priorityClassName: wes-high-priority
       serviceAccountName: wes-plugin-scheduler
       containers:
-      # TODO change to the real scheduler image :)
-      - image: waggle/scheduler:0.9.2
+      - image: waggle/scheduler:0.9.3
         name: wes-plugin-scheduler
         command: ["/app/nodescheduler"]
         args:
