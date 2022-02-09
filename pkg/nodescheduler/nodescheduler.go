@@ -154,8 +154,9 @@ func (ns *NodeScheduler) Run() {
 						go ns.LogToBeehive.SendWaggleMessage(event.ToWaggleMessage(), "all")
 					}
 				}
+				ns.chanNeedScheduling <- event
 			}
-			ns.chanNeedScheduling <- event
+
 		// case scheduledScienceGoal := <-ns.chanRunGoal:
 		// 	logger.Info.Printf("Goal %s needs scheduling", scheduledScienceGoal.Name)
 		// 	subGoal := scheduledScienceGoal.GetMySubGoal(ns.GoalManager.NodeID)
