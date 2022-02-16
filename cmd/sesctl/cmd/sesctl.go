@@ -9,8 +9,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const (
-	version = "0.8.3"
+var (
+	Version = "0.0.0"
 )
 
 var (
@@ -40,7 +40,7 @@ var rootCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("SAGE edge scheduler client version: %s\n", version)
+		fmt.Printf("SAGE edge scheduler client version: %s\n", Version)
 		fmt.Printf("sesctl --help for more information\n")
 	},
 	// ValidArgs: []string{"deploy", "logs"},

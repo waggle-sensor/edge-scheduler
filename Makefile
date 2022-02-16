@@ -4,13 +4,15 @@ cli-all-arch: cli-amd64 cli-arm64
 cli-arm64:
 	GOOS=linux GOARCH=arm64 go build -o ./out/runplugin-arm64 ./cmd/runplugin
 	GOOS=linux GOARCH=arm64 go build -o ./out/pluginctl-arm64 -ldflags "-X main.Version=${VERSION}" ./cmd/pluginctl
+	GOOS=linux GOARCH=arm64 go build -o ./out/sesctl-arm64 -ldflags "-X main.Version=${VERSION}" ./cmd/sesctl
 
 cli-amd64:
 	GOOS=linux GOARCH=amd64 go build -o ./out/runplugin-amd64 ./cmd/runplugin
 	GOOS=linux GOARCH=amd64 go build -o ./out/pluginctl-amd64 -ldflags "-X main.Version=${VERSION}" ./cmd/pluginctl
+	GOOS=linux GOARCH=amd64 go build -o ./out/sesctl-amd64 -ldflags "-X main.Version=${VERSION}" ./cmd/sesctl
 
 cli:
-	go build -o bin/sesctl cmd/cli/main.go
+	go build -o ./out/sesctl -ldflags "-X main.Version=${VERSION}" ./cmd/sesctl
 
 scheduler-all-arch: scheduler-amd64 scheduler-arm64
 

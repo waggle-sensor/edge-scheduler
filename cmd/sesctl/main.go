@@ -4,6 +4,8 @@ import (
 	"github.com/sagecontinuum/ses/cmd/sesctl/cmd"
 )
 
+var Version = "0.0.0"
+
 // exec "k8s.io/kubectl/pkg/cmd/exec"
 // "k8s.io/kubectl/pkg/cmd/util"
 
@@ -12,6 +14,7 @@ import (
 // kubectl "k8s.io/kubectl/pkg/cmd"
 
 func main() {
+	cmd.Version = Version
 	// k := kubectl.NewDefaultKubectlCommand()
 	// err := k.Execute()
 	// f := util.NewFactory(genericclioptions.NewConfigFlags(true).WithDeprecatedPasswordFlag())
