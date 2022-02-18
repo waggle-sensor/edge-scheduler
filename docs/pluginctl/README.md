@@ -1,8 +1,8 @@
-# pluginctl - A CLI tool for running plugins
+# pluginctl - A CLI tool for running edge plugins
 
-pluginctl is a CLI tool for running edge apps for development and testing.
+pluginctl is a CLI tool for running edge plugins for development and testing.
 
-To support the most common use case of doing remote app development on a Sage node, pluginctl _comes preinstalled on Sage nodes. In this case, please continue to the [usage](#Usage) section._
+To support the most common use case of doing remote plugin development on a Sage node, pluginctl _comes preinstalled on Sage nodes. In this case, please continue to the [usage](#Usage) section._
 
 ## Installation (Advanced)
 
