@@ -45,7 +45,7 @@ const (
 var (
 	hostPathDirectoryOrCreate       = apiv1.HostPathDirectoryOrCreate
 	backOffLimit              int32 = 0
-	ttlSecondsAfterFinished   int32 = 600
+	ttlSecondsAfterFinished   int32 = 60
 )
 
 // ResourceManager structs a resource manager talking to a local computing cluster to schedule plugins
@@ -782,7 +782,7 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 	}
 	logger.Info.Printf("Plugin %q deployed", job.Name)
 	rm.UpdateReservation(true)
-	rm.Notifier.Notify(datatype.NewSimpleEvent(datatype.EventPluginStatusLaunched, plugin.Name))
+	rm.Notifier.Notify(datatype.NewSimpleEvent(datatype.EventPluginStatusLaunched, job.Name))
 	watcher, err := rm.WatchJob(job.Name, rm.Namespace, 3)
 	if err != nil {
 		logger.Error.Printf("Failed to watch %q. Abort the execution", job.Name)
@@ -792,11 +792,12 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 		return
 	}
 	chanEvent := watcher.ResultChan()
+	defer watcher.Stop()
 	for {
 		event := <-chanEvent
+		job := event.Object.(*batchv1.Job)
 		switch event.Type {
 		case watch.Added, watch.Modified:
-			job := event.Object.(*batchv1.Job)
 			if len(job.Status.Conditions) > 0 {
 				logger.Debug.Printf("Plugin %s status %s: %s", job.Name, event.Type, job.Status.Conditions[0].Type)
 				switch job.Status.Conditions[0].Type {
@@ -805,7 +806,7 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 					rm.Notifier.Notify(
 						datatype.NewSimpleEvent(
 							datatype.EventPluginStatusComplete,
-							plugin.Name,
+							job.Name,
 						))
 					return
 				case batchv1.JobFailed:
@@ -813,7 +814,7 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 					rm.Notifier.Notify(
 						datatype.NewSimpleEvent(
 							datatype.EventPluginStatusFailed,
-							plugin.Name,
+							job.Name,
 						))
 					return
 				}
@@ -823,7 +824,13 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 		case watch.Deleted:
 			logger.Debug.Printf("Plugin got deleted. Returning resource and notify")
 			rm.UpdateReservation(false)
-			rm.Notifier.Notify(datatype.NewSimpleEvent(datatype.EventFailure, plugin.Name))
+			rm.Notifier.Notify(datatype.NewSimpleEvent(datatype.EventFailure, job.Name))
+			return
+		case watch.Error:
+			logger.Debug.Printf("Error on watcher. Returning resource and notify")
+			rm.TerminateJob(job.Name)
+			rm.UpdateReservation(false)
+			rm.Notifier.Notify(datatype.NewSimpleEvent(datatype.EventFailure, job.Name))
 			return
 		}
 	}

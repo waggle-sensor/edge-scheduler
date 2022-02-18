@@ -1,6 +1,11 @@
 package datatype
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+
+	"github.com/sagecontinuum/ses/pkg/logger"
+)
 
 type Event struct {
 	Type      EventType
@@ -27,19 +32,43 @@ func NewSimpleEvent(eventType EventType, body string) Event {
 	}
 }
 
+// ToWaggleMessage converts an Event into a Waggle message that can be sent through Waggle infrastructure.
+//
+// A few points to make in this conversion is,
+//
+// - Topic name "sys.scheduler" will be used in converted Waggle message
+//
+// - Event.Type, Event.Body, and Event.Meta will be encoded into a JSON blob and be used as a Value in Waggle message
 func (e *Event) ToWaggleMessage() *WaggleMessage {
+	encodedBody, err := e.encodeToJson()
+	if err != nil {
+		logger.Debug.Printf("Failed to convert to Waggle message: %q", err.Error())
+		return nil
+	}
 	return NewMessage(
 		string(e.Type),
-		e.Body,
+		encodedBody,
 		e.Timestamp,
-		e.Meta,
+		map[string]string{},
 	)
+}
+
+func (e *Event) encodeToJson() ([]byte, error) {
+	body := map[string]interface{}{
+		"event": string(e.Type),
+		"value": e.Body,
+		"meta":  e.Meta,
+	}
+	return json.Marshal(body)
 }
 
 type EventType string
 
 const (
-	EventNewGoal              EventType = "sys.scheduler.newgoal"
+	EventSchedulingDecision   EventType = "sys.scheduler.decision"
+	EventGoalStatusNew        EventType = "sys.scheduler.status.goal.new"
+	EventGoalStatusUpdated    EventType = "sys.scheduler.status.goal.update"
+	EventGoalStatusDeleted    EventType = "sys.scheduler.status.goal.deleted"
 	EventPluginStatusLaunched EventType = "sys.scheduler.status.plugin.launched"
 	EventPluginStatusComplete EventType = "sys.scheduler.status.plugin.complete"
 	EventPluginStatusFailed   EventType = "sys.scheduler.status.plugin.failed"

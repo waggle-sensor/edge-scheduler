@@ -89,11 +89,11 @@ func (ngm *NodeGoalManager) Run(chanToScheduler chan datatype.Event) {
 				} else {
 					logger.Debug.Printf("The newly submitted goal %s exists and has changed its content. Need scheduling", scienceGoal.Name)
 					ngm.ScienceGoals[scienceGoal.Name] = scienceGoal
-					ngm.Notifier.Notify(datatype.NewSimpleEvent(datatype.EventNewGoal, scienceGoal.Name))
+					ngm.Notifier.Notify(datatype.NewSimpleEvent(datatype.EventGoalStatusNew, scienceGoal.Name))
 				}
 			} else {
 				ngm.ScienceGoals[scienceGoal.Name] = scienceGoal
-				ngm.Notifier.Notify(datatype.NewSimpleEvent(datatype.EventNewGoal, scienceGoal.Name))
+				ngm.Notifier.Notify(datatype.NewSimpleEvent(datatype.EventGoalStatusNew, scienceGoal.Name))
 			}
 
 		}

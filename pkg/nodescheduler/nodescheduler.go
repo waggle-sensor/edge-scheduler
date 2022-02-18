@@ -125,9 +125,17 @@ func (ns *NodeScheduler) Run() {
 		case event := <-ns.chanFromGoalManager:
 			// ns.Knowledgebase.RegisterRules(scienceGoal, ns.GoalManager.NodeID)
 			logger.Debug.Printf("Event: %q received with meta %q", event.Type, event.Body)
-			ns.ResourceManager.CleanUp()
-			currentGoalID = event.Body
-			ns.chanNeedScheduling <- event
+			switch event.Type {
+			case datatype.EventGoalStatusNew, datatype.EventGoalStatusUpdated:
+				ns.ResourceManager.CleanUp()
+				currentGoalID = event.Body
+				ns.chanNeedScheduling <- event
+				go ns.LogToBeehive.SendWaggleMessage(event.ToWaggleMessage(), "all")
+			case datatype.EventGoalStatusDeleted:
+				ns.ResourceManager.CleanUp()
+				currentGoalID = ""
+				go ns.LogToBeehive.SendWaggleMessage(event.ToWaggleMessage(), "all")
+			}
 		case event := <-ns.chanFromResourceManager:
 			logger.Debug.Printf("Event: %q received with meta %q", event.Type, event.Body)
 			pluginName := event.Body
@@ -154,6 +162,9 @@ func (ns *NodeScheduler) Run() {
 						go ns.LogToBeehive.SendWaggleMessage(event.ToWaggleMessage(), "all")
 					}
 				}
+				ns.chanNeedScheduling <- event
+			case datatype.EventFailure:
+				logger.Debug.Printf("Error reported from resource manager: %q", event.Body)
 				ns.chanNeedScheduling <- event
 			}
 
