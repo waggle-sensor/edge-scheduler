@@ -19,7 +19,7 @@ chmod +x /usr/bin/pluginctl
 
 ## Usage
 
-The following usage tutorials show how to use `pluginctl` on Waggle / Sage nodes to test, debug, and finalize plugin development.
+The following tutorials show how to use `pluginctl` on Waggle / Sage nodes to test, debug, and finalize plugin development.
 
 1. [Hello World](tutorial_helloworld.md) shows how to create and run a Docker container
 
