@@ -1,6 +1,8 @@
 package nodescheduler
 
 import (
+	"time"
+
 	"github.com/sagecontinuum/ses/pkg/datatype"
 	"github.com/sagecontinuum/ses/pkg/interfacing"
 	"github.com/sagecontinuum/ses/pkg/knowledgebase"
@@ -82,11 +84,14 @@ func (ns *NodeScheduler) Configure() (err error) {
 	if err != nil {
 		return
 	}
-	watcher, err := ns.ResourceManager.WatchConfigMap(configMapNameForGoals, "default")
-	if err != nil {
-		return
+	for i := 0; i < 3; i++ {
+		watcher, err := ns.ResourceManager.WatchConfigMap(configMapNameForGoals, "default")
+		if err == nil {
+			ns.GoalManager.GoalWatcher = watcher
+			break
+		}
+		time.Sleep(2 * time.Second)
 	}
-	ns.GoalManager.GoalWatcher = watcher
 	return nil
 }
 
