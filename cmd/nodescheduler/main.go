@@ -70,6 +70,9 @@ func main() {
 		rmqHandler := interfacing.NewRabbitMQHandler(rabbitmqURI, rabbitmqUsername, rabbitmqPassword, getenv("WAGGLE_APP_ID", ""))
 		ns.GoalManager.SetRMQHandler(rmqHandler)
 	}
-	ns.Configure()
+	err := ns.Configure()
+	if err != nil {
+		panic(err)
+	}
 	ns.Run()
 }
