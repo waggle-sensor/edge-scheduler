@@ -1,4 +1,4 @@
-# pluginctl - A CLI Tool for running plugins
+# pluginctl - A CLI tool for running plugins
 
 pluginctl is a CLI tool for running edge apps for development and testing.
 
