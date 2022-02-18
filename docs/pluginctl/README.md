@@ -1,23 +1,25 @@
-# Command-line Tool For Running Plugin
-Pluginctl is a command-line tool to run edge applications (i.e., plugins) for development and testing. The tool requires a kubeconfig for cluster access (by default use `${USER}/.kube/config`).
+# pluginctl - A CLI Tool for running plugins
+
+pluginctl is a CLI tool for running edge apps for development and testing.
+
+To support the most common use case of doing remote app development on a Sage node, pluginctl _comes preinstalled on Sage nodes. In this case, please continue to the [usage](#Usage) section._
+
+## Installation (Advanced)
+
+pluginctl uses a Kubernetes cluster to run jobs. Before proceeding, please ensure you have `kubectl` access to a cluster.
+
+Visit the [latest release page](https://github.com/sagecontinuum/ses/releases/latest), download the `pluginctl` executable appropriate for your architecture as `/usr/bin/pluginctl` and mark this executable.
+
+For example, if the latest is 0.9.3 and you are on arm64, you would run:
 
 ```bash
-$ pluginctl --kubeconfig /PATH/TO/KUBECONFIG
-SAGE edge scheduler client version: 0.8.3
-pluginctl --help for more information
-```
-
-# Installation and Set up
-Pluginctl supports for amd64 and arm64 architecture. Please check [Releases](https://github.com/sagecontinuum/ses/releases) to download the binary for Waggle/Sage node or talk to the system manager to get the tool installed. The tool may not work properly if Kubernetes does not have [Waggle edge stack](https://github.com/waggle-sensor/waggle-edge-stack) (WES) installed and running. Sage/Waggle nodes already have WES running at the system level.
-
-```bash
-# For arm64 architecture
-wget -O /usr/bin/pluginctl https://github.com/sagecontinuum/ses/releases/download/0.8.3/pluginctl-arm64
+wget https://github.com/sagecontinuum/ses/releases/download/0.9.3/pluginctl-arm64 -O /usr/bin/pluginctl
 chmod +x /usr/bin/pluginctl
 ```
 
-# Tutorials
-The tutorials show how to use `pluginctl` on Waggle/Sage nodes to test, debug, and finalize plugin development.
+## Usage
+
+The following usage tutorials show how to use `pluginctl` on Waggle / Sage nodes to test, debug, and finalize plugin development.
 
 1. [Hello World](tutorial_helloworld.md) shows how to create and run a Docker container
 
