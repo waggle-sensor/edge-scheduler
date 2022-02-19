@@ -109,14 +109,22 @@ func (api *APIServer) handlerGoals(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			fmt.Println(err)
 		}
-		var jobTemplate datatype.JobTemplate
-		_ = yaml.Unmarshal(yamlFile, &jobTemplate)
-		scienceGoal, _ := jobTemplate.ConvertJobTemplateToScienceGoal(api.nodeScheduler.NodeID)
-		logger.Debug.Printf("%v", scienceGoal)
-		// RegisterGoal(goal)
-		// chanTriggerSchedule <- "received new goal via api"
-		// scienceGoal := NewScienceGoal()
-		api.nodeScheduler.GoalManager.AddGoal(scienceGoal)
+		var jobTemplates []datatype.JobTemplate
+		_ = yaml.Unmarshal(yamlFile, &jobTemplates)
+		for _, j := range jobTemplates {
+			scienceGoal := j.ConvertJobTemplateToScienceGoal(api.nodeScheduler.NodeID)
+			if scienceGoal != nil {
+				logger.Debug.Printf("%v", scienceGoal)
+				// RegisterGoal(goal)
+				// chanTriggerSchedule <- "received new goal via api"
+				// scienceGoal := NewScienceGoal()
+				api.nodeScheduler.GoalManager.AddGoal(scienceGoal)
+			} else {
+				logger.Debug.Printf("Could not convert %q into a science goal", j.Name)
+			}
+
+		}
+
 		respondJSON(w, http.StatusOK, "")
 	}
 }

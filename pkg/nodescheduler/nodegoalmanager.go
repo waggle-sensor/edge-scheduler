@@ -40,11 +40,20 @@ func NewNodeGoalManager(cloudSchedulerURL string, nodeID string, simulate bool) 
 }
 
 // GetScienceGoal returns the goal of given goal name
-func (ngm *NodeGoalManager) GetScienceGoal(goalName string) (*datatype.ScienceGoal, error) {
-	if goal, exist := ngm.ScienceGoals[goalName]; exist {
+func (ngm *NodeGoalManager) GetScienceGoalByName(goalName string) (*datatype.ScienceGoal, error) {
+	for _, goal := range ngm.ScienceGoals {
+		if goal.Name == goalName {
+			return goal, nil
+		}
+	}
+	return nil, fmt.Errorf("The goal name %s does not exist", goalName)
+}
+
+func (ngm *NodeGoalManager) GetScienceGoalByID(goalID string) (*datatype.ScienceGoal, error) {
+	if goal, exist := ngm.ScienceGoals[goalID]; exist {
 		return goal, nil
 	}
-	return nil, fmt.Errorf("The goal %s does not exist", goalName)
+	return nil, fmt.Errorf("The goal ID %s does not exist", goalID)
 }
 
 // SetRMQHandler sets a RabbitMQ handler used for transferring goals to edge schedulers
@@ -83,19 +92,19 @@ func (ngm *NodeGoalManager) Run(chanToScheduler chan datatype.Event) {
 		select {
 		case scienceGoal := <-ngm.chanGoalQueue:
 			logger.Debug.Printf("Received a goal %q", scienceGoal.Name)
-			if goal, exist := ngm.ScienceGoals[scienceGoal.Name]; exist {
-				if goal.GetMySubGoal(ngm.NodeID) == scienceGoal.GetMySubGoal(ngm.NodeID) {
+			if goal, exist := ngm.ScienceGoals[scienceGoal.ID]; exist {
+				// if goal.GetMySubGoal(ngm.NodeID) == scienceGoal.GetMySubGoal(ngm.NodeID) {
+				if goal.GetMySubGoal(ngm.NodeID).CompareChecksum(scienceGoal.GetMySubGoal(ngm.NodeID)) {
 					logger.Debug.Printf("The newly submitted goal %s exists and no changes in the goal. Skipping adding the goal", scienceGoal.Name)
 				} else {
 					logger.Debug.Printf("The newly submitted goal %s exists and has changed its content. Need scheduling", scienceGoal.Name)
-					ngm.ScienceGoals[scienceGoal.Name] = scienceGoal
-					ngm.Notifier.Notify(datatype.NewSimpleEvent(datatype.EventNewGoal, scienceGoal.Name))
+					ngm.ScienceGoals[scienceGoal.ID] = scienceGoal
+					ngm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventGoalStatusUpdated).AddGoal(scienceGoal).Build())
 				}
 			} else {
-				ngm.ScienceGoals[scienceGoal.Name] = scienceGoal
-				ngm.Notifier.Notify(datatype.NewSimpleEvent(datatype.EventNewGoal, scienceGoal.Name))
+				ngm.ScienceGoals[scienceGoal.ID] = scienceGoal
+				ngm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventGoalStatusNew).AddGoal(scienceGoal).Build())
 			}
-
 		}
 	}
 }
@@ -113,17 +122,20 @@ func (ngm *NodeGoalManager) pullGoalsFromK3S() {
 		case watch.Added, watch.Modified:
 			if updatedConfigMap, ok := event.Object.(*apiv1.ConfigMap); ok {
 				logger.Debug.Printf("%v", updatedConfigMap.Data)
-				var jobTemplate datatype.JobTemplate
-				err := yaml.Unmarshal([]byte(updatedConfigMap.Data["goals"]), &jobTemplate)
+				var jobTemplates []datatype.JobTemplate
+				err := yaml.Unmarshal([]byte(updatedConfigMap.Data["goals"]), &jobTemplates)
 				if err != nil {
 					logger.Error.Printf("Failed to load goals from Kubernetes ConfigMap %q", err.Error())
 				} else {
-					scienceGoal, err := jobTemplate.ConvertJobTemplateToScienceGoal(ngm.NodeID)
-					if err != nil {
-						logger.Error.Printf("Failed to convert into Science Goal %q", err.Error())
-					} else {
-						ngm.chanGoalQueue <- scienceGoal
+					for _, t := range jobTemplates {
+						scienceGoal := t.ConvertJobTemplateToScienceGoal(ngm.NodeID)
+						if scienceGoal == nil {
+							logger.Error.Printf("Failed to convert into Science Goal %q", t.Name)
+						} else {
+							ngm.chanGoalQueue <- scienceGoal
+						}
 					}
+
 				}
 			}
 		}

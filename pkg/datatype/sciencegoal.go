@@ -1,10 +1,59 @@
 package datatype
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 
 	uuid "github.com/nu7hatch/gouuid"
 )
+
+type ScienceGoalBuilder struct {
+	sg ScienceGoal
+}
+
+func NewScienceGoalBuilder(goalName string) *ScienceGoalBuilder {
+	id, _ := uuid.NewV4()
+	return &ScienceGoalBuilder{
+		sg: ScienceGoal{
+			ID:   id.String(),
+			Name: goalName,
+		},
+	}
+}
+
+func (sgb *ScienceGoalBuilder) AddSubGoal(nodeID string, pluginSpecs []*PluginSpec, scienceRules []string) *ScienceGoalBuilder {
+	var subGoal SubGoal
+	subGoal.Node = &Node{
+		Name: nodeID,
+	}
+	subGoal.ScienceRules = scienceRules
+	for _, pluginSpec := range pluginSpecs {
+		subGoal.Plugins = append(subGoal.Plugins, &Plugin{
+			Name:       pluginSpec.Name,
+			PluginSpec: pluginSpec,
+			Status: PluginStatus{
+				SchedulingStatus: Waiting,
+			},
+			GoalID: sgb.sg.ID,
+		})
+	}
+	specjson, err := json.Marshal(subGoal)
+	if err != nil {
+		// We cannot proceed anymore
+		return nil
+	}
+	sum := sha256.Sum256(specjson)
+	// instance := hex.EncodeToString(sum[:])[:8]
+	subGoal.checksum = hex.EncodeToString(sum[:])
+	sgb.sg.SubGoals = append(sgb.sg.SubGoals, &subGoal)
+	return sgb
+}
+
+func (sgb *ScienceGoalBuilder) Build() *ScienceGoal {
+	return &sgb.sg
+}
 
 // ScienceGoal structs local goals and success criteria
 type ScienceGoal struct {
@@ -29,7 +78,40 @@ type SubGoal struct {
 	Name         string    `yaml:"name,omitempty"`
 	Node         *Node     `yaml:"node,omitempty"`
 	Plugins      []*Plugin `yaml:"plugins,omitempty"`
-	Sciencerules []string  `yaml:"sciencerules,omitempty"`
+	ScienceRules []string  `yaml:"sciencerules,omitempty"`
+	checksum     string
+}
+
+func NewSubGoal(goalID string, nodeID string, plugins []*PluginSpec) *SubGoal {
+	var subGoal SubGoal
+	subGoal.Node = &Node{
+		Name: nodeID,
+	}
+	for _, pluginSpec := range plugins {
+		subGoal.Plugins = append(subGoal.Plugins, &Plugin{
+			Name:       pluginSpec.Name,
+			PluginSpec: pluginSpec,
+			Status: PluginStatus{
+				SchedulingStatus: Waiting,
+			},
+		})
+	}
+	specjson, err := json.Marshal(subGoal)
+	if err != nil {
+		return nil
+	}
+	sum := sha256.Sum256(specjson)
+	// instance := hex.EncodeToString(sum[:])[:8]
+	subGoal.checksum = hex.EncodeToString(sum[:])
+	return &subGoal
+}
+
+func (sg *SubGoal) CompareChecksum(otherSubGoal *SubGoal) bool {
+	if sg.checksum == otherSubGoal.checksum {
+		return true
+	} else {
+		return false
+	}
 }
 
 // UpdatePluginContext updates plugin's context event within the subgoal
@@ -67,30 +149,13 @@ func (sg *SubGoal) GetPlugin(pluginName string) *Plugin {
 }
 
 type JobTemplate struct {
-	Name    string `yaml:"name"`
-	Plugins []*PluginSpec
+	Name         string `yaml:"name"`
+	Plugins      []*PluginSpec
+	ScienceRules []string `yaml:"science_rules"`
 }
 
-func (j *JobTemplate) ConvertJobTemplateToScienceGoal(nodeID string) (*ScienceGoal, error) {
-	u, _ := uuid.NewV4()
-	var subGoal SubGoal
-	subGoal.Node = &Node{
-		Name: nodeID,
-	}
-	for _, pluginSpec := range j.Plugins {
-		subGoal.Plugins = append(subGoal.Plugins, &Plugin{
-			Name:       pluginSpec.Name,
-			PluginSpec: pluginSpec,
-			Status: PluginStatus{
-				SchedulingStatus: Waiting,
-			},
-		})
-	}
-	return &ScienceGoal{
-		ID:   u.String(),
-		Name: j.Name,
-		SubGoals: []*SubGoal{
-			&subGoal,
-		},
-	}, nil
+func (j *JobTemplate) ConvertJobTemplateToScienceGoal(nodeID string) *ScienceGoal {
+	return NewScienceGoalBuilder(j.Name).
+		AddSubGoal(nodeID, j.Plugins, j.ScienceRules).
+		Build()
 }

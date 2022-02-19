@@ -1,6 +1,8 @@
 package nodescheduler
 
 import (
+	"time"
+
 	"github.com/sagecontinuum/ses/pkg/datatype"
 	"github.com/sagecontinuum/ses/pkg/interfacing"
 	"github.com/sagecontinuum/ses/pkg/knowledgebase"
@@ -82,11 +84,14 @@ func (ns *NodeScheduler) Configure() (err error) {
 	if err != nil {
 		return
 	}
-	watcher, err := ns.ResourceManager.WatchConfigMap(configMapNameForGoals, "default")
-	if err != nil {
-		return
+	for i := 0; i < 3; i++ {
+		watcher, err := ns.ResourceManager.WatchConfigMap(configMapNameForGoals, "default")
+		if err == nil {
+			ns.GoalManager.GoalWatcher = watcher
+			break
+		}
+		time.Sleep(2 * time.Second)
 	}
-	ns.GoalManager.GoalWatcher = watcher
 	return nil
 }
 
@@ -101,7 +106,6 @@ func (ns *NodeScheduler) Run() {
 	//       via k3s server --kube-control-manager-arg feature-gates=TTL...=true
 	go ns.ResourceManager.RunGabageCollector()
 	go ns.APIServer.Run()
-	var currentGoalID string = ""
 	for {
 		select {
 		// case contextEvent := <-ns.chanContextEventToScheduler:
@@ -124,19 +128,25 @@ func (ns *NodeScheduler) Run() {
 		// 	}
 		case event := <-ns.chanFromGoalManager:
 			// ns.Knowledgebase.RegisterRules(scienceGoal, ns.GoalManager.NodeID)
-			logger.Debug.Printf("Event: %q received with meta %q", event.Type, event.Body)
-			ns.ResourceManager.CleanUp()
-			currentGoalID = event.Body
-			ns.chanNeedScheduling <- event
+			logger.Debug.Printf("%s: %q", event.ToString(), event.GetGoalName())
+			switch event.Type {
+			case datatype.EventGoalStatusNew, datatype.EventGoalStatusUpdated:
+				ns.ResourceManager.CleanUp()
+				ns.chanNeedScheduling <- event
+				go ns.LogToBeehive.SendWaggleMessage(event.ToWaggleMessage(), "all")
+			case datatype.EventGoalStatusDeleted:
+				// ns.ResourceManager.CleanUp()
+				go ns.LogToBeehive.SendWaggleMessage(event.ToWaggleMessage(), "all")
+			}
 		case event := <-ns.chanFromResourceManager:
-			logger.Debug.Printf("Event: %q received with meta %q", event.Type, event.Body)
-			pluginName := event.Body
+			logger.Debug.Printf("%s: %q", event.ToString(), event.GetPluginName())
 			switch event.Type {
 			case datatype.EventPluginStatusLaunched:
-				scienceGoal, err := ns.GoalManager.GetScienceGoal(currentGoalID)
+				scienceGoal, err := ns.GoalManager.GetScienceGoalByID(event.GetGoalID())
 				if err != nil {
 					logger.Error.Printf("Could not get goal to update plugin status: %q", err.Error())
 				} else {
+					pluginName := event.GetPluginName()
 					plugin := scienceGoal.GetMySubGoal(ns.NodeID).GetPlugin(pluginName)
 					if plugin != nil {
 						plugin.UpdatePluginSchedulingStatus(datatype.Running)
@@ -144,10 +154,11 @@ func (ns *NodeScheduler) Run() {
 					}
 				}
 			case datatype.EventPluginStatusComplete, datatype.EventPluginStatusFailed:
-				scienceGoal, err := ns.GoalManager.GetScienceGoal(currentGoalID)
+				scienceGoal, err := ns.GoalManager.GetScienceGoalByID(event.GetGoalID())
 				if err != nil {
 					logger.Error.Printf("Could not get goal to update plugin status: %q", err.Error())
 				} else {
+					pluginName := event.GetPluginName()
 					plugin := scienceGoal.GetMySubGoal(ns.NodeID).GetPlugin(pluginName)
 					if plugin != nil {
 						plugin.UpdatePluginSchedulingStatus(datatype.Waiting)
@@ -155,8 +166,10 @@ func (ns *NodeScheduler) Run() {
 					}
 				}
 				ns.chanNeedScheduling <- event
+			case datatype.EventFailure:
+				logger.Debug.Printf("Error reported from resource manager: %q", event.GetReason())
+				ns.chanNeedScheduling <- event
 			}
-
 		// case scheduledScienceGoal := <-ns.chanRunGoal:
 		// 	logger.Info.Printf("Goal %s needs scheduling", scheduledScienceGoal.Name)
 		// 	subGoal := scheduledScienceGoal.GetMySubGoal(ns.GoalManager.NodeID)
@@ -193,10 +206,14 @@ func (ns *NodeScheduler) Run() {
 			logger.Debug.Printf("Reason for (re)scheduling %q", event.Type)
 			// Main logic: round robin + FIFO
 			// Promote any waiting plugins
-			for name, goal := range ns.GoalManager.ScienceGoals {
-				logger.Debug.Printf("Checking Goal %q", name)
+			for id, goal := range ns.GoalManager.ScienceGoals {
+				logger.Debug.Printf("Checking Goal %q (%s)", goal.Name, id)
 				subGoal := goal.GetMySubGoal(ns.GoalManager.NodeID)
-				ns.SchedulingPolicy.SimpleScheduler.PromotePlugins(subGoal)
+				events := ns.SchedulingPolicy.SimpleScheduler.PromotePlugins(subGoal)
+				for _, e := range events {
+					logger.Debug.Printf("%s: %q", e.ToString(), e.GetPluginName())
+					go ns.LogToBeehive.SendWaggleMessage(e.ToWaggleMessage(), "all")
+				}
 			}
 			// Selecte best task
 			plugin, err := ns.SchedulingPolicy.SimpleScheduler.SelectBestTask(
@@ -213,8 +230,9 @@ func (ns *NodeScheduler) Run() {
 			} else {
 				if plugin != nil {
 					if ns.ResourceManager.WillItFit(plugin) {
-						logger.Debug.Printf("Send %q to Resource Manager", plugin.Name)
-						plugin.UpdatePluginSchedulingStatus(datatype.Ready)
+						e := datatype.NewEventBuilder(datatype.EventPluginStatusScheduled).AddReason("Fits to resource").AddPluginMeta(plugin).Build()
+						logger.Debug.Printf("%s: %q (%q)", e.ToString(), e.GetPluginName(), e.GetReason())
+						go ns.LogToBeehive.SendWaggleMessage(e.ToWaggleMessage(), "all")
 						go ns.ResourceManager.LaunchAndWatchPlugin(plugin)
 					} else {
 						logger.Debug.Printf("Resource is not availble for plugin %q", plugin.Name)

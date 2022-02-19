@@ -15,6 +15,7 @@ type Plugin struct {
 	Architecture []string     `yaml:"architecture,omitempty"`
 	DataShims    []*DataShim  `yaml:"datashims,omitempty"`
 	Profile      []Profile    `yaml:"profile,omitempty"`
+	GoalID       string
 }
 
 type PluginSpec struct {
@@ -94,6 +95,18 @@ func (p *Plugin) UpdatePluginSchedulingStatus(status SchedulingStatus) error {
 	p.Status.Since = time.Now()
 	return nil
 }
+
+// GetMetaInformation returns a dictionary of plugin information.
+// func (p *Plugin) GetMetaInformation() map[string]string {
+// 	meta := make(map[string]string)
+// 	meta["Name"] = p.Name
+// 	meta["Image"] = p.PluginSpec.Image
+// 	meta["Status"] = string(p.Status.SchedulingStatus)
+// 	meta["Task"] = p.PluginSpec.Job
+// 	meta["Args"] = strings.Join(p.PluginSpec.Args, " ")
+// 	meta["Selector"] = fmt.Sprint(p.PluginSpec.Selector)
+// 	return meta
+// }
 
 // UpdatePluginContext updates contextual status of the plugin
 func (p *Plugin) UpdatePluginContext(status ContextStatus) error {

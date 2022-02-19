@@ -34,10 +34,12 @@ func (ss *SimpleSchedulingPolicy) SelectBestTask(scienceGoals map[string]*dataty
 	return selectedPlugin, nil
 }
 
-func (ss *SimpleSchedulingPolicy) PromotePlugins(subGoal *datatype.SubGoal) {
+func (ss *SimpleSchedulingPolicy) PromotePlugins(subGoal *datatype.SubGoal) (events []datatype.Event) {
 	for _, plugin := range subGoal.Plugins {
 		if plugin.Status.SchedulingStatus == datatype.Waiting {
 			plugin.UpdatePluginSchedulingStatus(datatype.Ready)
+			events = append(events, datatype.NewEventBuilder(datatype.EventPluginStatusPromoted).AddPluginMeta(plugin).Build())
 		}
 	}
+	return
 }
