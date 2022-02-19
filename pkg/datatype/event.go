@@ -2,34 +2,94 @@ package datatype
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/sagecontinuum/ses/pkg/logger"
+	batchv1 "k8s.io/api/batch/v1"
 )
+
+type EventBuilder struct {
+	e Event
+}
 
 type Event struct {
 	Type      EventType
-	Body      string
 	Timestamp int64
 	Meta      map[string]string
 }
 
-func NewEvent(eventType EventType, body string, meta map[string]string) Event {
-	return Event{
-		Type:      eventType,
-		Body:      body,
-		Timestamp: time.Now().UnixNano(),
-		Meta:      meta,
+func NewEventBuilder(eventType EventType) *EventBuilder {
+	return &EventBuilder{
+		e: Event{
+			Type:      eventType,
+			Timestamp: time.Now().UnixNano(),
+			Meta:      map[string]string{},
+		},
 	}
 }
 
-func NewSimpleEvent(eventType EventType, body string) Event {
-	return Event{
-		Type:      eventType,
-		Body:      body,
-		Timestamp: time.Now().UnixNano(),
-		Meta:      map[string]string{},
+func (eb *EventBuilder) AddReason(reason string) *EventBuilder {
+	eb.e.Meta["Reason"] = reason
+	return eb
+}
+
+func (eb *EventBuilder) AddGoal(goal *ScienceGoal) *EventBuilder {
+	eb.e.Meta["GoalName"] = goal.Name
+	eb.e.Meta["GoalID"] = goal.ID
+	return eb
+}
+
+func (eb *EventBuilder) AddPluginMeta(plugin *Plugin) *EventBuilder {
+	eb.e.Meta["PluginName"] = plugin.Name
+	eb.e.Meta["PluginImage"] = plugin.PluginSpec.Image
+	eb.e.Meta["PluginStatus"] = string(plugin.Status.SchedulingStatus)
+	eb.e.Meta["PluginTask"] = plugin.PluginSpec.Job
+	eb.e.Meta["PluginArgs"] = strings.Join(plugin.PluginSpec.Args, " ")
+	eb.e.Meta["PluginSelector"] = fmt.Sprint(plugin.PluginSpec.Selector)
+	eb.e.Meta["GoalID"] = plugin.GoalID
+	return eb
+}
+
+func (eb *EventBuilder) AddJobMeta(job *batchv1.Job) *EventBuilder {
+	eb.e.Meta["JobName"] = job.Name
+	if len(job.Status.Conditions) > 0 {
+		eb.e.Meta["JobStatus"] = string(job.Status.Conditions[0].Type)
 	}
+	return eb
+}
+
+func (eb *EventBuilder) Build() Event {
+	return eb.e
+}
+
+func (e *Event) get(name string) string {
+	if value, ok := e.Meta[name]; ok {
+		return value
+	} else {
+		return ""
+	}
+}
+
+func (e *Event) GetGoalName() string {
+	return e.get("GoalName")
+}
+
+func (e *Event) GetGoalID() string {
+	return e.get("GoalID")
+}
+
+func (e *Event) GetPluginName() string {
+	return e.get("PluginName")
+}
+
+func (e *Event) GetReason() string {
+	return e.get("Reason")
+}
+
+func (e *Event) ToString() string {
+	return string(e.Type)
 }
 
 // ToWaggleMessage converts an Event into a Waggle message that can be sent through Waggle infrastructure.
@@ -55,9 +115,8 @@ func (e *Event) ToWaggleMessage() *WaggleMessage {
 
 func (e *Event) encodeToJson() ([]byte, error) {
 	body := map[string]interface{}{
-		"event": string(e.Type),
-		"value": e.Body,
-		"meta":  e.Meta,
+		"Event": string(e.Type),
+		"Meta":  e.Meta,
 	}
 	return json.Marshal(body)
 }
@@ -65,14 +124,16 @@ func (e *Event) encodeToJson() ([]byte, error) {
 type EventType string
 
 const (
-	EventSchedulingDecision   EventType = "sys.scheduler.decision"
-	EventGoalStatusNew        EventType = "sys.scheduler.status.goal.new"
-	EventGoalStatusUpdated    EventType = "sys.scheduler.status.goal.update"
-	EventGoalStatusDeleted    EventType = "sys.scheduler.status.goal.deleted"
-	EventPluginStatusLaunched EventType = "sys.scheduler.status.plugin.launched"
-	EventPluginStatusComplete EventType = "sys.scheduler.status.plugin.complete"
-	EventPluginStatusFailed   EventType = "sys.scheduler.status.plugin.failed"
-	EventFailure              EventType = "sys.scheduler.failure"
+	EventSchedulingDecisionScheduled EventType = "sys.scheduler.decision.scheduled"
+	EventGoalStatusNew               EventType = "sys.scheduler.status.goal.new"
+	EventGoalStatusUpdated           EventType = "sys.scheduler.status.goal.updated"
+	EventGoalStatusDeleted           EventType = "sys.scheduler.status.goal.deleted"
+	EventPluginStatusPromoted        EventType = "sys.scheduler.status.plugin.promoted"
+	EventPluginStatusScheduled       EventType = "sys.scheduler.status.plugin.scheduled"
+	EventPluginStatusLaunched        EventType = "sys.scheduler.status.plugin.launched"
+	EventPluginStatusComplete        EventType = "sys.scheduler.status.plugin.complete"
+	EventPluginStatusFailed          EventType = "sys.scheduler.status.plugin.failed"
+	EventFailure                     EventType = "sys.scheduler.failure"
 )
 
 // type EventErrorCode string
