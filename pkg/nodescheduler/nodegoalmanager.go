@@ -135,7 +135,6 @@ func (ngm *NodeGoalManager) pullGoalsFromK3S() {
 							ngm.chanGoalQueue <- scienceGoal
 						}
 					}
-
 				}
 			}
 		}
