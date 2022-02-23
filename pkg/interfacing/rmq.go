@@ -117,7 +117,6 @@ func (rh *RabbitMQHandler) SendWaggleMessage(message *datatype.WaggleMessage, sc
 			return err
 		}
 	}
-	logger.Debug.Printf("App id is %q", rh.appID)
 	err := rh.rabbitmqChan.Publish(
 		exchange,
 		scope,

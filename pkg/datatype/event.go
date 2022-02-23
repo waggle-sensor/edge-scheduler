@@ -100,6 +100,8 @@ func (e *Event) ToString() string {
 //
 // - Event.Type, Event.Body, and Event.Meta will be encoded into a JSON blob and be used as a Value in Waggle message
 func (e *Event) ToWaggleMessage() *WaggleMessage {
+	// TODO: beehive-influxdb does not handle bytes so body is always string.
+	//       This should be lifted once it accepts bytes.
 	encodedBody, err := e.encodeToJson()
 	if err != nil {
 		logger.Debug.Printf("Failed to convert to Waggle message: %q", err.Error())
@@ -107,7 +109,7 @@ func (e *Event) ToWaggleMessage() *WaggleMessage {
 	}
 	return NewMessage(
 		string(e.Type),
-		encodedBody,
+		string(encodedBody),
 		e.Timestamp,
 		map[string]string{},
 	)
