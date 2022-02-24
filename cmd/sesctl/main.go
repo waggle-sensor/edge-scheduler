@@ -11,7 +11,10 @@ import (
 
 // kubectl "k8s.io/kubectl/pkg/cmd"
 
+var Version = "0.0.0"
+
 func main() {
+	cmd.Version = Version
 	// k := kubectl.NewDefaultKubectlCommand()
 	// err := k.Execute()
 	// f := util.NewFactory(genericclioptions.NewConfigFlags(true).WithDeprecatedPasswordFlag())

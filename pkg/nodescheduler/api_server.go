@@ -26,6 +26,8 @@ var (
 )
 
 type APIServer struct {
+	version       string
+	port          int
 	mainRouter    *mux.Router
 	nodeScheduler *NodeScheduler
 }
@@ -35,17 +37,18 @@ func NewAPIServer() *APIServer {
 }
 
 func (api *APIServer) Run() {
-	log.Printf("initializing...")
+	api_address_port := "0.0.0.0:8080"
+	logger.Info.Printf("API server starts at %q...", api_address_port)
 	api.mainRouter = mux.NewRouter()
 	r := api.mainRouter
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, `{"id": "Node scheduler", "version": "0.0.5"}`)
+		fmt.Fprintln(w, `{"id": "Node Scheduler (`+api.nodeScheduler.NodeID+`)", "version":"`+api.version+`"}`)
 	})
 	api_route := r.PathPrefix("/api/v1").Subrouter()
 	api_route.Handle("/kb/rules", http.HandlerFunc(handlerClauses)).Methods(http.MethodGet, http.MethodPost)
 	api_route.Handle("/kb/senses", http.HandlerFunc(api.handlerSenses)).Methods(http.MethodGet, http.MethodPost, http.MethodDelete)
 	api_route.Handle("/goals", http.HandlerFunc(api.handlerGoals)).Methods(http.MethodGet, http.MethodPost, http.MethodPut)
-	logger.Info.Fatalln(http.ListenAndServe("0.0.0.0:8080", r))
+	logger.Info.Fatalln(http.ListenAndServe(api_address_port, r))
 }
 
 func respondJSON(w http.ResponseWriter, statusCode int, data interface{}) {

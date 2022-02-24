@@ -110,6 +110,7 @@ func (rh *RabbitMQHandler) SendYAML(routingKey string, message []byte) error {
 //
 // The message is sent to the "to-validator" exchange
 func (rh *RabbitMQHandler) SendWaggleMessage(message *datatype.WaggleMessage, scope string) error {
+	logger.Debug.Println(string(datatype.Dump(message)))
 	exchange := "to-validator"
 	if rh.rabbitmqConn == nil || rh.rabbitmqConn.IsClosed() {
 		err := rh.Connect()

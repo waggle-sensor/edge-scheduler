@@ -9,11 +9,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const (
-	version = "0.8.3"
-)
-
 var (
+	Version     string
 	debug       bool
 	name        string
 	node        string
@@ -28,7 +25,8 @@ var (
 
 func init() {
 	// To prevent printing the usage when commands end with an error
-	rootCmd.SilenceUsage = true
+	// rootCmd.SilenceUsage = true
+	rootCmd.SilenceErrors = true
 	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "flag to debug")
 }
 
@@ -40,7 +38,7 @@ var rootCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("SAGE edge scheduler client version: %s\n", version)
+		fmt.Printf("SAGE edge scheduler client version: %s\n", Version)
 		fmt.Printf("sesctl --help for more information\n")
 	},
 	// ValidArgs: []string{"deploy", "logs"},

@@ -18,6 +18,8 @@ func getenv(key string, def string) string {
 	return def
 }
 
+var Version = "0.0.0"
+
 func main() {
 	var (
 		simulate          bool
@@ -46,19 +48,18 @@ func main() {
 	flag.StringVar(&rabbitmqPassword, "rabbitmq-password", getenv("RABBITMQ_PASSWORD", "service"), "RabbitMQ management password")
 	flag.StringVar(&cloudschedulerURI, "cloudscheduler-uri", "http://localhost:9770", "cloudscheduler URI")
 	flag.Parse()
-	logger.Info.Println("Nodescheduler starts...")
-	logger.Info.Printf("My Node ID is %s", nodeID)
+	logger.Info.Printf("Node scheduler (%q) starts...", nodeID)
 	var ns *nodescheduler.NodeScheduler
 	if simulate {
 		logger.Debug.Println("Creating scheduler for simulation...")
-		ns = nodescheduler.NewFakeNodeSchedulerBuilder(nodeID).
+		ns = nodescheduler.NewFakeNodeSchedulerBuilder(nodeID, Version).
 			AddGoalManager().
 			AddResourceManager().
 			AddAPIServer().
 			Build()
 	} else {
 		logger.Debug.Println("Creating scheduler for real...")
-		ns = nodescheduler.NewRealNodeSchedulerBuilder(nodeID).
+		ns = nodescheduler.NewRealNodeSchedulerBuilder(nodeID, Version).
 			AddGoalManager(cloudschedulerURI).
 			AddResourceManager(registry, incluster, kubeconfig).
 			AddAPIServer().
