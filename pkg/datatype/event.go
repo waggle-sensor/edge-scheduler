@@ -2,12 +2,12 @@ package datatype
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 	"time"
 
 	"github.com/sagecontinuum/ses/pkg/logger"
 	batchv1 "k8s.io/api/batch/v1"
+	apiv1 "k8s.io/api/core/v1"
 )
 
 type EventBuilder struct {
@@ -31,32 +31,49 @@ func NewEventBuilder(eventType EventType) *EventBuilder {
 }
 
 func (eb *EventBuilder) AddReason(reason string) *EventBuilder {
-	eb.e.Meta["Reason"] = reason
+	eb.e.Meta["reason"] = reason
 	return eb
 }
 
 func (eb *EventBuilder) AddGoal(goal *ScienceGoal) *EventBuilder {
-	eb.e.Meta["GoalName"] = goal.Name
-	eb.e.Meta["GoalID"] = goal.ID
+	eb.e.Meta["goal_name"] = goal.Name
+	eb.e.Meta["goal_id"] = goal.ID
 	return eb
 }
 
 func (eb *EventBuilder) AddPluginMeta(plugin *Plugin) *EventBuilder {
-	eb.e.Meta["PluginName"] = plugin.Name
-	eb.e.Meta["PluginImage"] = plugin.PluginSpec.Image
-	eb.e.Meta["PluginStatus"] = string(plugin.Status.SchedulingStatus)
-	eb.e.Meta["PluginTask"] = plugin.PluginSpec.Job
-	eb.e.Meta["PluginArgs"] = strings.Join(plugin.PluginSpec.Args, " ")
-	eb.e.Meta["PluginSelector"] = fmt.Sprint(plugin.PluginSpec.Selector)
-	eb.e.Meta["GoalID"] = plugin.GoalID
+	eb.e.Meta["plugin_name"] = plugin.Name
+	eb.e.Meta["plugin_image"] = plugin.PluginSpec.Image
+	eb.e.Meta["plugin_status_by_scheduler"] = string(plugin.Status.SchedulingStatus)
+	eb.e.Meta["plugin_task"] = plugin.PluginSpec.Job
+	eb.e.Meta["plugin_args"] = strings.Join(plugin.PluginSpec.Args, " ")
+	selectors, err := json.Marshal(plugin.PluginSpec.Selector)
+	if err == nil {
+		eb.e.Meta["plugin_selector"] = string(selectors)
+	}
+	eb.e.Meta["goal_id"] = plugin.GoalID
 	return eb
 }
 
 func (eb *EventBuilder) AddJobMeta(job *batchv1.Job) *EventBuilder {
-	eb.e.Meta["JobName"] = job.Name
-	if len(job.Status.Conditions) > 0 {
-		eb.e.Meta["JobStatus"] = string(job.Status.Conditions[0].Type)
+	if job == nil {
+		return eb
 	}
+	eb.e.Meta["k3s_job_name"] = job.Name
+	if len(job.Status.Conditions) > 0 {
+		eb.e.Meta["k3s_job_status"] = string(job.Status.Conditions[0].Type)
+		// job.Status.Conditions[0].
+	}
+	return eb
+}
+
+func (eb *EventBuilder) AddPodMeta(pod *apiv1.Pod) *EventBuilder {
+	if pod == nil {
+		return eb
+	}
+	eb.e.Meta["k3s_pod_name"] = pod.Name
+	eb.e.Meta["k3s_pod_status"] = string(pod.Status.Phase)
+	eb.e.Meta["k3s_pod_node_name"] = pod.Spec.NodeName
 	return eb
 }
 
@@ -73,19 +90,19 @@ func (e *Event) get(name string) string {
 }
 
 func (e *Event) GetGoalName() string {
-	return e.get("GoalName")
+	return e.get("goal_name")
 }
 
 func (e *Event) GetGoalID() string {
-	return e.get("GoalID")
+	return e.get("goal_id")
 }
 
 func (e *Event) GetPluginName() string {
-	return e.get("PluginName")
+	return e.get("plugin_name")
 }
 
 func (e *Event) GetReason() string {
-	return e.get("Reason")
+	return e.get("reason")
 }
 
 func (e *Event) ToString() string {
@@ -102,7 +119,7 @@ func (e *Event) ToString() string {
 func (e *Event) ToWaggleMessage() *WaggleMessage {
 	// TODO: beehive-influxdb does not handle bytes so body is always string.
 	//       This should be lifted once it accepts bytes.
-	encodedBody, err := e.encodeToJson()
+	encodedBody, err := e.encodeMetaToJson()
 	if err != nil {
 		logger.Debug.Printf("Failed to convert to Waggle message: %q", err.Error())
 		return nil
@@ -115,27 +132,23 @@ func (e *Event) ToWaggleMessage() *WaggleMessage {
 	)
 }
 
-func (e *Event) encodeToJson() ([]byte, error) {
-	body := map[string]interface{}{
-		"Event": string(e.Type),
-		"Meta":  e.Meta,
-	}
-	return json.Marshal(body)
+func (e *Event) encodeMetaToJson() ([]byte, error) {
+	return json.Marshal(e.Meta)
 }
 
 type EventType string
 
 const (
-	EventSchedulingDecisionScheduled EventType = "sys.scheduler.decision.scheduled"
-	EventGoalStatusNew               EventType = "sys.scheduler.status.goal.new"
-	EventGoalStatusUpdated           EventType = "sys.scheduler.status.goal.updated"
-	EventGoalStatusDeleted           EventType = "sys.scheduler.status.goal.deleted"
-	EventPluginStatusPromoted        EventType = "sys.scheduler.status.plugin.promoted"
-	EventPluginStatusScheduled       EventType = "sys.scheduler.status.plugin.scheduled"
-	EventPluginStatusLaunched        EventType = "sys.scheduler.status.plugin.launched"
-	EventPluginStatusComplete        EventType = "sys.scheduler.status.plugin.complete"
-	EventPluginStatusFailed          EventType = "sys.scheduler.status.plugin.failed"
-	EventFailure                     EventType = "sys.scheduler.failure"
+	// EventSchedulingDecisionScheduled EventType = "sys.scheduler.decision.scheduled"
+	EventGoalStatusNew         EventType = "sys.scheduler.status.goal.new"
+	EventGoalStatusUpdated     EventType = "sys.scheduler.status.goal.updated"
+	EventGoalStatusDeleted     EventType = "sys.scheduler.status.goal.deleted"
+	EventPluginStatusPromoted  EventType = "sys.scheduler.status.plugin.promoted"
+	EventPluginStatusScheduled EventType = "sys.scheduler.status.plugin.scheduled"
+	EventPluginStatusLaunched  EventType = "sys.scheduler.status.plugin.launched"
+	EventPluginStatusComplete  EventType = "sys.scheduler.status.plugin.complete"
+	EventPluginStatusFailed    EventType = "sys.scheduler.status.plugin.failed"
+	EventFailure               EventType = "sys.scheduler.failure"
 )
 
 // type EventErrorCode string

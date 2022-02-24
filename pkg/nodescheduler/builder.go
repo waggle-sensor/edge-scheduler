@@ -23,10 +23,11 @@ type RealNodeScheduler struct {
 	nodeScheduler *NodeScheduler
 }
 
-func NewRealNodeSchedulerBuilder(nodeID string) *RealNodeScheduler {
+func NewRealNodeSchedulerBuilder(nodeID string, version string) *RealNodeScheduler {
 	schedulingPolicy := policy.NewSimpleSchedulingPolicy()
 	return &RealNodeScheduler{
 		nodeScheduler: &NodeScheduler{
+			Version:                     version,
 			NodeID:                      nodeID,
 			Simulate:                    false,
 			SchedulingPolicy:            schedulingPolicy,
@@ -91,6 +92,7 @@ func (rns *RealNodeScheduler) AddKnowledgebase(rabbitMQURI string) *RealNodeSche
 
 func (rns *RealNodeScheduler) AddAPIServer() *RealNodeScheduler {
 	rns.nodeScheduler.APIServer = &APIServer{
+		version:       rns.nodeScheduler.Version,
 		nodeScheduler: rns.nodeScheduler,
 	}
 	return rns
@@ -109,10 +111,11 @@ type FakeNodeScheduler struct {
 	nodeScheduler *NodeScheduler
 }
 
-func NewFakeNodeSchedulerBuilder(nodeID string) *FakeNodeScheduler {
+func NewFakeNodeSchedulerBuilder(nodeID string, version string) *FakeNodeScheduler {
 	schedulingPolicy := policy.NewSimpleSchedulingPolicy()
 	return &FakeNodeScheduler{
 		nodeScheduler: &NodeScheduler{
+			Version:                     version,
 			NodeID:                      nodeID,
 			Simulate:                    true,
 			SchedulingPolicy:            schedulingPolicy,
@@ -165,6 +168,7 @@ func (fns *FakeNodeScheduler) AddKnowledgebase(rabbitMQURI string) *FakeNodeSche
 
 func (fns *FakeNodeScheduler) AddAPIServer() *FakeNodeScheduler {
 	fns.nodeScheduler.APIServer = &APIServer{
+		version:       fns.nodeScheduler.Version,
 		nodeScheduler: fns.nodeScheduler,
 	}
 	return fns

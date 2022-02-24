@@ -13,13 +13,7 @@ import (
 type CloudGoalManager struct {
 	scienceGoals map[string]*datatype.ScienceGoal
 	rmqHandler   *interfacing.RabbitMQHandler
-}
-
-// NewCloudGoalManager returns an instance of cloud goal manager
-func NewCloudGoalManager() (*CloudGoalManager, error) {
-	return &CloudGoalManager{
-		scienceGoals: make(map[string]*datatype.ScienceGoal),
-	}, nil
+	Notifier     *interfacing.Notifier
 }
 
 // SetRMQHandler sets a RabbitMQ handler used for transferring goals to edge schedulers

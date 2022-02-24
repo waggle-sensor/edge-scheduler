@@ -16,6 +16,7 @@ const (
 )
 
 type NodeScheduler struct {
+	Version                     string
 	NodeID                      string
 	ResourceManager             *ResourceManager
 	Knowledgebase               *knowledgebase.Knowledgebase
@@ -168,6 +169,7 @@ func (ns *NodeScheduler) Run() {
 				ns.chanNeedScheduling <- event
 			case datatype.EventFailure:
 				logger.Debug.Printf("Error reported from resource manager: %q", event.GetReason())
+				go ns.LogToBeehive.SendWaggleMessage(event.ToWaggleMessage(), "all")
 				ns.chanNeedScheduling <- event
 			}
 		// case scheduledScienceGoal := <-ns.chanRunGoal:

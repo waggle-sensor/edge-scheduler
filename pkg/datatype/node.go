@@ -11,7 +11,7 @@ type Node struct {
 
 // GetPluginArchitectureSupportedDevices returns a device list that supports
 // plugin architecture
-func (n *Node) GetPluginArchitectureSupportedDevices(plugin Plugin) (result bool, supportedDevices []Device) {
+func (n *Node) GetPluginArchitectureSupportedDevices(plugin *Plugin) (result bool, supportedDevices []Device) {
 	for _, nodeDevice := range n.Devices {
 		for _, pluginArch := range plugin.Architecture {
 			if pluginArch == nodeDevice.Architecture {
@@ -29,7 +29,7 @@ func (n *Node) GetPluginArchitectureSupportedDevices(plugin Plugin) (result bool
 
 // GetPluginHardwareUnsupportedList returns a list of hardware that are not
 // supported by the node
-func (n *Node) GetPluginHardwareUnsupportedList(plugin Plugin) (result bool, notSupported []string) {
+func (n *Node) GetPluginHardwareUnsupportedList(plugin *Plugin) (result bool, notSupported []string) {
 	for _, requiredHardware := range plugin.Hardware {
 		supported := false
 		for _, hardware := range n.Hardware {
@@ -59,7 +59,7 @@ type Device struct {
 
 // GetUnsupportedPluginProfiles returns available profiles that are
 // supported by the node device
-func (d *Device) GetUnsupportedPluginProfiles(plugin Plugin) (result bool, unsupportedProfiles []Profile) {
+func (d *Device) GetUnsupportedPluginProfiles(plugin *Plugin) (result bool, unsupportedProfiles []Profile) {
 	result = false
 	for _, profile := range plugin.Profile {
 		if profile.Require.CPU > d.Resource.CPU ||

@@ -10,16 +10,12 @@ import (
 type JobValidator struct {
 }
 
-func NewJobValidator() (*JobValidator, error) {
-	return &JobValidator{}, nil
-}
-
 // ValidateJobAndCreateScienceGoal validates user job and returns a science goals
 // created from the job. It also returns a list of errors in validation if any
 func (jv *JobValidator) ValidateJobAndCreateScienceGoal(job *datatype.Job, meta *MetaHandler) (scienceGoal *datatype.ScienceGoal, errorList []error) {
 	logger.Info.Printf("Validating %s", job.Name)
 	scienceGoal = new(datatype.ScienceGoal)
-	scienceGoal.ID = job.ID
+	// scienceGoal.ID = job.ID
 	scienceGoal.Name = job.Name
 
 	for _, n := range job.Nodes {
@@ -66,13 +62,13 @@ func (jv *JobValidator) ValidateJobAndCreateScienceGoal(job *datatype.Job, meta 
 					}
 				}
 			}
-			subGoal.Plugins = append(subGoal.Plugins, &plugin)
+			subGoal.Plugins = append(subGoal.Plugins, plugin)
 		}
 		// Check 4: conditions of job are valid
 
 		// Check 5: valiables are valid
 		if len(subGoal.Plugins) > 0 {
-			subGoal.Node = &node
+			subGoal.Node = node
 			subGoal.ScienceRules = job.ScienceRules
 			scienceGoal.SubGoals = append(scienceGoal.SubGoals, &subGoal)
 		}

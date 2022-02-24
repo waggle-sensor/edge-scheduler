@@ -680,38 +680,37 @@ func (rm *ResourceManager) GetPluginStatus(jobName string) (apiv1.PodPhase, erro
 	}
 }
 
-func (rm *ResourceManager) GetPodName(jobName string) (name string, err error) {
+func (rm *ResourceManager) GetPod(jobName string) (*apiv1.Pod, error) {
 	// TODO: Later we use pod name as we run plugins in one-shot?
 	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Second)
 	defer cancel()
 	job, err := rm.Clientset.BatchV1().Jobs(rm.Namespace).Get(ctx, jobName, metav1.GetOptions{})
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	selector := job.Spec.Selector
 	labels, err := metav1.LabelSelectorAsSelector(selector)
 	pods, err := rm.Clientset.CoreV1().Pods(rm.Namespace).List(ctx, metav1.ListOptions{LabelSelector: labels.String()})
 	if err != nil {
+		return nil, err
+	}
+	return &pods.Items[0], nil
+}
+
+func (rm *ResourceManager) GetPodName(jobName string) (string, error) {
+	pod, err := rm.GetPod(jobName)
+	if err != nil {
 		return "", err
 	}
-	return pods.Items[0].Name, nil
+	return pod.Name, nil
 }
 
 func (rm *ResourceManager) GetPluginLog(jobName string, follow bool) (io.ReadCloser, error) {
-	// TODO: Later we use pod name as we run plugins in one-shot?
-	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Second)
-	defer cancel()
-	job, err := rm.Clientset.BatchV1().Jobs(rm.Namespace).Get(ctx, jobName, metav1.GetOptions{})
+	pod, err := rm.GetPod(jobName)
 	if err != nil {
 		return nil, err
 	}
-	selector := job.Spec.Selector
-	labels, err := metav1.LabelSelectorAsSelector(selector)
-	pods, err := rm.Clientset.CoreV1().Pods(rm.Namespace).List(ctx, metav1.ListOptions{LabelSelector: labels.String()})
-	if err != nil {
-		return nil, err
-	}
-	switch pods.Items[0].Status.Phase {
+	switch pod.Status.Phase {
 	case apiv1.PodPending:
 		return nil, fmt.Errorf("The plugin is in pending state")
 	case apiv1.PodRunning:
@@ -719,10 +718,10 @@ func (rm *ResourceManager) GetPluginLog(jobName string, follow bool) (io.ReadClo
 	case apiv1.PodSucceeded:
 		fallthrough
 	case apiv1.PodFailed:
-		req := rm.Clientset.CoreV1().Pods(rm.Namespace).GetLogs(pods.Items[0].Name, &apiv1.PodLogOptions{Follow: follow})
+		req := rm.Clientset.CoreV1().Pods(rm.Namespace).GetLogs(pod.Name, &apiv1.PodLogOptions{Follow: follow})
 		return req.Stream(context.TODO())
 	}
-	return nil, fmt.Errorf("The plugin (pod) is in %q state", string(pods.Items[0].Status.Phase))
+	return nil, fmt.Errorf("The plugin (pod) is in %q state", string(pod.Status.Phase))
 	// podWatcher, err = rm.Clientset.CoreV1().Pods(rm.Namespace).Watch(ctx, metav1.ListOptions{LabelSelector: selector.String()})
 }
 
@@ -783,7 +782,6 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 	logger.Info.Printf("Plugin %q deployed", job.Name)
 	plugin.PluginSpec.Job = job.Name
 	rm.UpdateReservation(true)
-	rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusLaunched).AddJobMeta(job).AddPluginMeta(plugin).Build())
 	watcher, err := rm.WatchJob(job.Name, rm.Namespace, 3)
 	if err != nil {
 		logger.Error.Printf("Failed to watch %q. Abort the execution", job.Name)
@@ -798,17 +796,21 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 		event := <-chanEvent
 		job := event.Object.(*batchv1.Job)
 		switch event.Type {
-		case watch.Added, watch.Modified:
+		case watch.Added:
+			pod, _ := rm.GetPod(job.Name)
+			rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusLaunched).AddJobMeta(job).AddPodMeta(pod).AddPluginMeta(plugin).Build())
+		case watch.Modified:
 			if len(job.Status.Conditions) > 0 {
+				pod, _ := rm.GetPod(job.Name)
 				logger.Debug.Printf("Plugin %s status %s: %s", job.Name, event.Type, job.Status.Conditions[0].Type)
 				switch job.Status.Conditions[0].Type {
 				case batchv1.JobComplete:
 					rm.UpdateReservation(false)
-					rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusComplete).AddJobMeta(job).AddPluginMeta(plugin).Build())
+					rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusComplete).AddJobMeta(job).AddPodMeta(pod).AddPluginMeta(plugin).Build())
 					return
 				case batchv1.JobFailed:
 					rm.UpdateReservation(false)
-					rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddJobMeta(job).AddPluginMeta(plugin).Build())
+					rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddJobMeta(job).AddPodMeta(pod).AddPluginMeta(plugin).Build())
 					return
 				}
 			} else {
