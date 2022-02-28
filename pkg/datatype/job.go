@@ -1,33 +1,28 @@
 package datatype
 
+import (
+	"bytes"
+	"encoding/json"
+)
+
 // Job structs user request for jobs
 type Job struct {
-	Name               string    `yaml:"name,omitempty"`
-	PluginTags         []string  `yaml:"plugintags,omitempty"`
-	Plugins            []*Plugin `yaml:"plugins,omitempty"`
-	NodeTags           []string  `yaml:"nodetags,omitempty"`
-	Nodes              []*Node   `yaml:"nodes,omitempty"`
-	MinimumPerformance []string  `yaml:"minimumperformance,omitempty"`
-	ScienceRules       []string  `yaml:"sciencerules,omitempty"`
+	Name               string   `json:"name,omitempty"`
+	PluginTags         []string `json:"plugin_tags,omitempty"`
+	Plugins            []string `json:"plugins,omitempty"`
+	NodeTags           []string `json:"node_tags,omitempty"`
+	Nodes              []string `json:"nodes,omitempty"`
+	MinimumPerformance []string `json:"minimum_performance,omitempty"`
+	ScienceRules       []string `json:"science_rules,omitempty"`
+	SuccessCriteria    []string `json:"success_criteria,omitempty"`
 }
 
-// TODO: This prohibits running same plugins. Is this appropriate?
-// AddPlugin adds given plugin to the job
-func (j *Job) AddPlugin(plugin *Plugin) {
-	for _, p := range j.Plugins {
-		if p.Name == plugin.Name && p.PluginSpec.Version == plugin.PluginSpec.Version {
-			return
-		}
-	}
-	j.Plugins = append(j.Plugins, plugin)
-}
-
-// AddNode adds given node to the job
-func (j *Job) AddNode(node *Node) {
-	for _, n := range j.Nodes {
-		if n.Name == node.Name {
-			return
-		}
-	}
-	j.Nodes = append(j.Nodes, node)
+// EncodeToJson returns encoded json of the job.
+func (j *Job) EncodeToJson() ([]byte, error) {
+	bf := bytes.NewBuffer([]byte{})
+	encoder := json.NewEncoder(bf)
+	encoder.SetEscapeHTML(false)
+	encoder.SetIndent("", " ")
+	err := encoder.Encode(j)
+	return bf.Bytes(), err
 }

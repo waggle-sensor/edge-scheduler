@@ -22,6 +22,15 @@ func (cgm *CloudGoalManager) SetRMQHandler(rmqHandler *interfacing.RabbitMQHandl
 	cgm.rmqHandler.CreateExchange("scheduler")
 }
 
+func (cgm *CloudGoalManager) AddJob(job *datatype.Job) error {
+	if _, exist := cgm.scienceGoals[job.Name]; exist {
+		return fmt.Errorf("Job already exists: %s", job.Name)
+	}
+
+	// cgm.scienceGoals
+	return nil
+}
+
 // UpdateScienceGoal stores given science goal
 func (cgm *CloudGoalManager) UpdateScienceGoal(scienceGoal *datatype.ScienceGoal) error {
 	// TODO: This operation may need a mutex?

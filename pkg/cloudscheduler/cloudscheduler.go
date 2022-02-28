@@ -19,6 +19,7 @@ type CloudScheduler struct {
 }
 
 func (cs *CloudScheduler) Run() {
+	go cs.APIServer.Run()
 	logger.Info.Printf("Cloud Scheduler %s starts...", cs.Name)
 	for {
 		select {
