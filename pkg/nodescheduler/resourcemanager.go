@@ -45,7 +45,7 @@ const (
 var (
 	hostPathDirectoryOrCreate       = apiv1.HostPathDirectoryOrCreate
 	backOffLimit              int32 = 0
-	ttlSecondsAfterFinished   int32 = 60
+	ttlSecondsAfterFinished   int32 = 3600
 )
 
 // ResourceManager structs a resource manager talking to a local computing cluster to schedule plugins
