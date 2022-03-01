@@ -101,6 +101,7 @@ func (ns *NodeScheduler) pullGoalsFromK3S(configMapName string) {
 			continue
 		}
 		for event := range watcher.ResultChan() {
+			logger.Debug.Printf("%q", event.Type)
 			switch event.Type {
 			case watch.Added, watch.Modified:
 				if updatedConfigMap, ok := event.Object.(*apiv1.ConfigMap); ok {

@@ -38,21 +38,21 @@ func NewNodeGoalManager(cloudSchedulerURL string, nodeID string, simulate bool) 
 	}, nil
 }
 
-// GetScienceGoal returns the goal of given goal name
-func (ngm *NodeGoalManager) GetScienceGoalByName(goalName string) (*datatype.ScienceGoal, error) {
+// GetScienceGoalByID returns the goal of given goal name
+func (ngm *NodeGoalManager) GetScienceGoalByID(goalID string) (*datatype.ScienceGoal, error) {
 	for _, goal := range ngm.ScienceGoals {
-		if goal.Name == goalName {
+		if goal.ID == goalID {
 			return goal, nil
 		}
 	}
-	return nil, fmt.Errorf("The goal name %s does not exist", goalName)
+	return nil, fmt.Errorf("The goal name %s does not exist", goalID)
 }
 
-func (ngm *NodeGoalManager) GetScienceGoalByID(goalID string) (*datatype.ScienceGoal, error) {
-	if goal, exist := ngm.ScienceGoals[goalID]; exist {
+func (ngm *NodeGoalManager) GetScienceGoalByName(goalName string) (*datatype.ScienceGoal, error) {
+	if goal, exist := ngm.ScienceGoals[goalName]; exist {
 		return goal, nil
 	}
-	return nil, fmt.Errorf("The goal ID %s does not exist", goalID)
+	return nil, fmt.Errorf("The goal ID %s does not exist", goalName)
 }
 
 // SetRMQHandler sets a RabbitMQ handler used for transferring goals to edge schedulers
@@ -90,17 +90,17 @@ func (ngm *NodeGoalManager) Run(chanToScheduler chan datatype.Event) {
 		select {
 		case scienceGoal := <-ngm.chanGoalQueue:
 			logger.Debug.Printf("Received a goal %q", scienceGoal.Name)
-			if goal, exist := ngm.ScienceGoals[scienceGoal.ID]; exist {
+			if goal, exist := ngm.ScienceGoals[scienceGoal.Name]; exist {
 				// if goal.GetMySubGoal(ngm.NodeID) == scienceGoal.GetMySubGoal(ngm.NodeID) {
 				if goal.GetMySubGoal(ngm.NodeID).CompareChecksum(scienceGoal.GetMySubGoal(ngm.NodeID)) {
 					logger.Debug.Printf("The newly submitted goal %s exists and no changes in the goal. Skipping adding the goal", scienceGoal.Name)
 				} else {
 					logger.Debug.Printf("The newly submitted goal %s exists and has changed its content. Need scheduling", scienceGoal.Name)
-					ngm.ScienceGoals[scienceGoal.ID] = scienceGoal
+					ngm.ScienceGoals[scienceGoal.Name] = scienceGoal
 					ngm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventGoalStatusUpdated).AddGoal(scienceGoal).Build())
 				}
 			} else {
-				ngm.ScienceGoals[scienceGoal.ID] = scienceGoal
+				ngm.ScienceGoals[scienceGoal.Name] = scienceGoal
 				ngm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventGoalStatusNew).AddGoal(scienceGoal).Build())
 			}
 		}
