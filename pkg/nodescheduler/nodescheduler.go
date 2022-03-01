@@ -8,6 +8,9 @@ import (
 	"github.com/sagecontinuum/ses/pkg/knowledgebase"
 	"github.com/sagecontinuum/ses/pkg/logger"
 	"github.com/sagecontinuum/ses/pkg/nodescheduler/policy"
+	yaml "gopkg.in/yaml.v2"
+	apiv1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/watch"
 )
 
 const (
@@ -85,20 +88,52 @@ func (ns *NodeScheduler) Configure() (err error) {
 	if err != nil {
 		return
 	}
-	for i := 0; i < 3; i++ {
-		watcher, err := ns.ResourceManager.WatchConfigMap(configMapNameForGoals, "default")
-		if err == nil {
-			ns.GoalManager.GoalWatcher = watcher
-			break
-		}
-		time.Sleep(2 * time.Second)
-	}
 	return nil
+}
+
+func (ns *NodeScheduler) pullGoalsFromK3S(configMapName string) {
+	logger.Info.Printf("Pull goals from k3s configmap %s", configMapName)
+	for {
+		watcher, err := ns.ResourceManager.WatchConfigMap(configMapName, "default")
+		if err != nil {
+			logger.Error.Printf("Failed to watch %q. Retrying in 60 seconds...", configMapName)
+			time.Sleep(60 * time.Second)
+			continue
+		}
+		for event := range watcher.ResultChan() {
+			switch event.Type {
+			case watch.Added, watch.Modified:
+				if updatedConfigMap, ok := event.Object.(*apiv1.ConfigMap); ok {
+					logger.Debug.Printf("%v", updatedConfigMap.Data)
+					var jobTemplates []datatype.JobTemplate
+					err := yaml.Unmarshal([]byte(updatedConfigMap.Data["goals"]), &jobTemplates)
+					if err != nil {
+						logger.Error.Printf("Failed to load goals from Kubernetes ConfigMap %q", err.Error())
+					} else {
+						for _, t := range jobTemplates {
+							scienceGoal := t.ConvertJobTemplateToScienceGoal(ns.NodeID)
+							if scienceGoal == nil {
+								logger.Error.Printf("Failed to convert into Science Goal %q", t.Name)
+							} else {
+								ns.GoalManager.AddGoal(scienceGoal)
+							}
+						}
+					}
+				}
+			case watch.Deleted, watch.Error:
+				logger.Error.Printf("Failed on %q k3s watcher", configMapName)
+				break
+			}
+		}
+		logger.Info.Printf("Watcher %q has closed. Reopening in 60 seconds...", configMapName)
+		time.Sleep(60 * time.Second)
+	}
 }
 
 // Run handles communications between components for scheduling
 func (ns *NodeScheduler) Run() {
 	go ns.GoalManager.Run(ns.chanFromGoalManager)
+	go ns.pullGoalsFromK3S(configMapNameForGoals)
 	// go ns.Knowledgebase.Run(ns.chanContextEventToScheduler)
 	go ns.ResourceManager.Run(ns.chanPluginToResourceManager)
 	// NOTE: The garbage collector runs to clean up completed/failed jobs

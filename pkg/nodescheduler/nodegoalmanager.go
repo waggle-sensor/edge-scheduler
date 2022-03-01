@@ -12,7 +12,6 @@ import (
 	"github.com/sagecontinuum/ses/pkg/interfacing"
 	"github.com/sagecontinuum/ses/pkg/logger"
 	yaml "gopkg.in/yaml.v2"
-	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/watch"
 )
 
@@ -86,7 +85,6 @@ func (ngm *NodeGoalManager) Run(chanToScheduler chan datatype.Event) {
 	// }
 	if !ngm.Simulate {
 		// go ngm.pullGoalsFromCloudScheduler(useRabbitMQ)
-		go ngm.pullGoalsFromK3S()
 	}
 	for {
 		select {
@@ -104,38 +102,6 @@ func (ngm *NodeGoalManager) Run(chanToScheduler chan datatype.Event) {
 			} else {
 				ngm.ScienceGoals[scienceGoal.ID] = scienceGoal
 				ngm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventGoalStatusNew).AddGoal(scienceGoal).Build())
-			}
-		}
-	}
-}
-
-func (ngm *NodeGoalManager) pullGoalsFromK3S() {
-	logger.Info.Printf("Pull goals from k3s configmap %s", configMapNameForGoals)
-	if ngm.GoalWatcher == nil {
-		logger.Error.Printf("No Goal watcher is set. Cannot pull goals from k3s configmap %s", configMapNameForGoals)
-		return
-	}
-	chanGoal := ngm.GoalWatcher.ResultChan()
-	for {
-		event := <-chanGoal
-		switch event.Type {
-		case watch.Added, watch.Modified:
-			if updatedConfigMap, ok := event.Object.(*apiv1.ConfigMap); ok {
-				logger.Debug.Printf("%v", updatedConfigMap.Data)
-				var jobTemplates []datatype.JobTemplate
-				err := yaml.Unmarshal([]byte(updatedConfigMap.Data["goals"]), &jobTemplates)
-				if err != nil {
-					logger.Error.Printf("Failed to load goals from Kubernetes ConfigMap %q", err.Error())
-				} else {
-					for _, t := range jobTemplates {
-						scienceGoal := t.ConvertJobTemplateToScienceGoal(ngm.NodeID)
-						if scienceGoal == nil {
-							logger.Error.Printf("Failed to convert into Science Goal %q", t.Name)
-						} else {
-							ngm.chanGoalQueue <- scienceGoal
-						}
-					}
-				}
 			}
 		}
 	}
