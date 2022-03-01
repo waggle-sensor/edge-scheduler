@@ -12,7 +12,6 @@ import (
 	"github.com/sagecontinuum/ses/pkg/interfacing"
 	"github.com/sagecontinuum/ses/pkg/logger"
 	yaml "gopkg.in/yaml.v2"
-	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/watch"
 )
 
@@ -39,21 +38,21 @@ func NewNodeGoalManager(cloudSchedulerURL string, nodeID string, simulate bool) 
 	}, nil
 }
 
-// GetScienceGoal returns the goal of given goal name
-func (ngm *NodeGoalManager) GetScienceGoalByName(goalName string) (*datatype.ScienceGoal, error) {
+// GetScienceGoalByID returns the goal of given goal name
+func (ngm *NodeGoalManager) GetScienceGoalByID(goalID string) (*datatype.ScienceGoal, error) {
 	for _, goal := range ngm.ScienceGoals {
-		if goal.Name == goalName {
+		if goal.ID == goalID {
 			return goal, nil
 		}
 	}
-	return nil, fmt.Errorf("The goal name %s does not exist", goalName)
+	return nil, fmt.Errorf("The goal name %s does not exist", goalID)
 }
 
-func (ngm *NodeGoalManager) GetScienceGoalByID(goalID string) (*datatype.ScienceGoal, error) {
-	if goal, exist := ngm.ScienceGoals[goalID]; exist {
+func (ngm *NodeGoalManager) GetScienceGoalByName(goalName string) (*datatype.ScienceGoal, error) {
+	if goal, exist := ngm.ScienceGoals[goalName]; exist {
 		return goal, nil
 	}
-	return nil, fmt.Errorf("The goal ID %s does not exist", goalID)
+	return nil, fmt.Errorf("The goal ID %s does not exist", goalName)
 }
 
 // SetRMQHandler sets a RabbitMQ handler used for transferring goals to edge schedulers
@@ -86,56 +85,23 @@ func (ngm *NodeGoalManager) Run(chanToScheduler chan datatype.Event) {
 	// }
 	if !ngm.Simulate {
 		// go ngm.pullGoalsFromCloudScheduler(useRabbitMQ)
-		go ngm.pullGoalsFromK3S()
 	}
 	for {
 		select {
 		case scienceGoal := <-ngm.chanGoalQueue:
 			logger.Debug.Printf("Received a goal %q", scienceGoal.Name)
-			if goal, exist := ngm.ScienceGoals[scienceGoal.ID]; exist {
+			if goal, exist := ngm.ScienceGoals[scienceGoal.Name]; exist {
 				// if goal.GetMySubGoal(ngm.NodeID) == scienceGoal.GetMySubGoal(ngm.NodeID) {
 				if goal.GetMySubGoal(ngm.NodeID).CompareChecksum(scienceGoal.GetMySubGoal(ngm.NodeID)) {
 					logger.Debug.Printf("The newly submitted goal %s exists and no changes in the goal. Skipping adding the goal", scienceGoal.Name)
 				} else {
 					logger.Debug.Printf("The newly submitted goal %s exists and has changed its content. Need scheduling", scienceGoal.Name)
-					ngm.ScienceGoals[scienceGoal.ID] = scienceGoal
+					ngm.ScienceGoals[scienceGoal.Name] = scienceGoal
 					ngm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventGoalStatusUpdated).AddGoal(scienceGoal).Build())
 				}
 			} else {
-				ngm.ScienceGoals[scienceGoal.ID] = scienceGoal
+				ngm.ScienceGoals[scienceGoal.Name] = scienceGoal
 				ngm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventGoalStatusNew).AddGoal(scienceGoal).Build())
-			}
-		}
-	}
-}
-
-func (ngm *NodeGoalManager) pullGoalsFromK3S() {
-	logger.Info.Printf("Pull goals from k3s configmap %s", configMapNameForGoals)
-	if ngm.GoalWatcher == nil {
-		logger.Error.Printf("No Goal watcher is set. Cannot pull goals from k3s configmap %s", configMapNameForGoals)
-		return
-	}
-	chanGoal := ngm.GoalWatcher.ResultChan()
-	for {
-		event := <-chanGoal
-		switch event.Type {
-		case watch.Added, watch.Modified:
-			if updatedConfigMap, ok := event.Object.(*apiv1.ConfigMap); ok {
-				logger.Debug.Printf("%v", updatedConfigMap.Data)
-				var jobTemplates []datatype.JobTemplate
-				err := yaml.Unmarshal([]byte(updatedConfigMap.Data["goals"]), &jobTemplates)
-				if err != nil {
-					logger.Error.Printf("Failed to load goals from Kubernetes ConfigMap %q", err.Error())
-				} else {
-					for _, t := range jobTemplates {
-						scienceGoal := t.ConvertJobTemplateToScienceGoal(ngm.NodeID)
-						if scienceGoal == nil {
-							logger.Error.Printf("Failed to convert into Science Goal %q", t.Name)
-						} else {
-							ngm.chanGoalQueue <- scienceGoal
-						}
-					}
-				}
 			}
 		}
 	}
