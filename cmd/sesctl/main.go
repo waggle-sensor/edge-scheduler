@@ -4,13 +4,6 @@ import (
 	"github.com/sagecontinuum/ses/cmd/sesctl/cmd"
 )
 
-// exec "k8s.io/kubectl/pkg/cmd/exec"
-// "k8s.io/kubectl/pkg/cmd/util"
-
-// import "github.com/sagecontinuum/ses/cmd/pluginctl/cmd"
-
-// kubectl "k8s.io/kubectl/pkg/cmd"
-
 var Version = "0.0.0"
 
 func main() {

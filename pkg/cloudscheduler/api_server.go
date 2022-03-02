@@ -36,12 +36,23 @@ func (api *APIServer) Run() {
 		fmt.Fprintln(w, `{"id": "Cloud Scheduler (`+api.cloudScheduler.Name+`)", "version":"`+api.version+`"}`)
 	})
 	api_route := r.PathPrefix("/api/v1").Subrouter()
+	api_route.Handle("/create", http.HandlerFunc(api.handlerCreateJob)).Methods(http.MethodGet)
 	api_route.Handle("/submit", http.HandlerFunc(api.handlerSubmitJobs)).Methods(http.MethodPost, http.MethodPut)
 	api_route.Handle("/jobs", http.HandlerFunc(api.handlerJobs)).Methods(http.MethodGet)
 	api_route.Handle("/jobs/{name}/status", http.HandlerFunc(api.handlerJobStatus)).Methods(http.MethodGet)
 	// api.Handle("/goals", http.HandlerFunc(cs.handlerGoals)).Methods(http.MethodGet, http.MethodPost, http.MethodPut)
 	// api.Handle("/goals/{nodeName}", http.HandlerFunc(cs.handlerGoalForNode)).Methods(http.MethodGet
 	logger.Info.Fatalln(http.ListenAndServe(api_address_port, api.mainRouter))
+}
+
+func (api *APIServer) handlerCreateJob(w http.ResponseWriter, r *http.Request) {
+	queries := r.URL.Query()
+	if _, exist := queries["name"]; !exist {
+		respondJSON(w, http.StatusBadRequest, `{"Message": "name is required"}`)
+	} else {
+		api.
+			respondJSON(w, http.StatusOK, "")
+	}
 }
 
 func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) {

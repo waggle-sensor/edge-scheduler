@@ -2,9 +2,7 @@ package cmd
 
 import (
 	"fmt"
-	"io/ioutil"
-	"os"
-	"path/filepath"
+	"strings"
 
 	"github.com/sagecontinuum/ses/pkg/datatype"
 	"github.com/spf13/cobra"
@@ -29,24 +27,22 @@ func init() {
 			}
 			job := &datatype.Job{
 				Name:            name,
-				Plugins:         plugins,
 				NodeTags:        nodeSelector,
 				Nodes:           nodeVSN,
 				ScienceRules:    []string{"#Please specify science rules"},
-				SuccessCriteria: []string{"WallClockDays(7)"},
+				SuccessCriteria: []string{"WallClock(7d)"},
 			}
-			jsonblob, _ := job.EncodeToJson()
-			if len(output) > 0 {
-				err := os.MkdirAll(output, os.ModePerm)
-				if err != nil {
-					return err
-				}
-				err = ioutil.WriteFile(filepath.Join(output, fmt.Sprintf("%s.json", name)), jsonblob, 0644)
-				if err != nil {
-					return err
-				}
-			} else {
-				fmt.Printf("%s", string(jsonblob))
+			switch strings.ToLower(output) {
+			case "yaml":
+				blob, _ := job.EncodeToYaml()
+				fmt.Printf("%s", string(blob))
+				break
+			case "json":
+				blob, _ := job.EncodeToJson()
+				fmt.Printf("%s", string(blob))
+				break
+			default:
+				return fmt.Errorf("Unrecognized output: %q", output)
 			}
 			return nil
 		},
@@ -55,6 +51,6 @@ func init() {
 	flags.StringSliceVarP(&plugins, "plugin", "p", []string{}, "Plugin Docker image and version")
 	flags.StringSliceVarP(&nodeSelector, "node-selector", "s", []string{}, "Query string to select nodes")
 	flags.StringSliceVarP(&nodeVSN, "vsn", "n", []string{}, "Node VSN name")
-	flags.StringVarP(&output, "output", "o", "", "Output path of the job")
+	flags.StringVarP(&output, "output", "o", "yaml", "Output type either of yaml or json")
 	rootCmd.AddCommand(cmdCreate)
 }
