@@ -1,9 +1,7 @@
 package cloudscheduler
 
 import (
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 
@@ -12,12 +10,6 @@ import (
 	"github.com/sagecontinuum/ses/pkg/logger"
 	yaml "gopkg.in/yaml.v2"
 	// "github.com/urfave/negroni"
-)
-
-const (
-	GET  = "GET"
-	POST = "POST"
-	PUT  = "PUT"
 )
 
 type APIServer struct {
@@ -36,7 +28,8 @@ func (api *APIServer) Run() {
 		fmt.Fprintln(w, `{"id": "Cloud Scheduler (`+api.cloudScheduler.Name+`)", "version":"`+api.version+`"}`)
 	})
 	api_route := r.PathPrefix("/api/v1").Subrouter()
-	api_route.Handle("/create", http.HandlerFunc(api.handlerCreateJob)).Methods(http.MethodGet)
+	api_route.Handle("/create", http.HandlerFunc(api.handlerCreateJob)).Methods(http.MethodGet, http.MethodPost)
+	api_route.Handle("/edit", http.HandlerFunc(api.handlerEditJob)).Methods(http.MethodGet)
 	api_route.Handle("/submit", http.HandlerFunc(api.handlerSubmitJobs)).Methods(http.MethodPost, http.MethodPut)
 	api_route.Handle("/jobs", http.HandlerFunc(api.handlerJobs)).Methods(http.MethodGet)
 	api_route.Handle("/jobs/{name}/status", http.HandlerFunc(api.handlerJobStatus)).Methods(http.MethodGet)
@@ -46,37 +39,57 @@ func (api *APIServer) Run() {
 }
 
 func (api *APIServer) handlerCreateJob(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		queries := r.URL.Query()
+		if _, exist := queries["name"]; !exist {
+			response := datatype.NewAPIMessageBuilder().AddError("name field is required").Build()
+			respondJSON(w, http.StatusBadRequest, response.ToJson())
+		} else {
+			name := queries.Get("name")
+			newJob := &datatype.Job{
+				Name: name,
+			}
+			api.cloudScheduler.GoalManager.AddJob(newJob)
+			response := datatype.NewAPIMessageBuilder().AddEntity("job_name", name).Build()
+			respondJSON(w, http.StatusOK, response.ToJson())
+		}
+	case http.MethodPost:
+		// The query includes a full job description
+	}
+}
+
+func (api *APIServer) handlerEditJob(w http.ResponseWriter, r *http.Request) {
 	queries := r.URL.Query()
 	if _, exist := queries["name"]; !exist {
-		respondJSON(w, http.StatusBadRequest, `{"Message": "name is required"}`)
+		respondJSON(w, http.StatusBadRequest, []byte{})
 	} else {
-		api.
-			respondJSON(w, http.StatusOK, "")
+		respondJSON(w, http.StatusOK, []byte{})
 	}
 }
 
 func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case PUT, POST:
-		data, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-			respondJSON(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		var job datatype.Job
-		err = json.Unmarshal(data, &job)
-		if err != nil {
-			respondJSON(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		err = api.cloudScheduler.GoalManager.AddJob(&job)
-		if err != nil {
-			respondJSON(w, http.StatusBadRequest, err.Error())
-		}
-		respondJSON(w, http.StatusOK, `{"response": "success"}`)
-		return
-	}
-	respondJSON(w, http.StatusOK, "")
+	// switch r.Method {
+	// case PUT, POST:
+	// 	data, err := ioutil.ReadAll(r.Body)
+	// 	if err != nil {
+	// 		respondJSON(w, http.StatusBadRequest, err.Error())
+	// 		return
+	// 	}
+	// 	var job datatype.Job
+	// 	err = json.Unmarshal(data, &job)
+	// 	if err != nil {
+	// 		respondJSON(w, http.StatusBadRequest, err.Error())
+	// 		return
+	// 	}
+	// 	err = api.cloudScheduler.GoalManager.AddJob(&job)
+	// 	if err != nil {
+	// 		respondJSON(w, http.StatusBadRequest, err.Error())
+	// 	}
+	// 	respondJSON(w, http.StatusOK, `{"response": "success"}`)
+	// 	return
+	// }
+	respondJSON(w, http.StatusOK, []byte{})
 	// if r.Method == POST {
 	// 	log.Printf("hit POST")
 	// 	// yamlFile, err := ioutil.ReadAll(r.Body)
@@ -164,16 +177,19 @@ func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) 
 }
 
 func (api *APIServer) handlerJobs(w http.ResponseWriter, r *http.Request) {
-	if r.Method == GET {
-		log.Printf("hit GET")
-
-		respondJSON(w, http.StatusOK, "")
+	if r.Method == http.MethodGet {
+		jobs := api.cloudScheduler.GoalManager.GetJobs()
+		response := datatype.NewAPIMessageBuilder()
+		for jobName, job := range jobs {
+			response.AddEntity(jobName, job)
+		}
+		respondJSON(w, http.StatusOK, response.Build().ToJson())
 	}
 }
 
 func (api *APIServer) handlerJobStatus(w http.ResponseWriter, r *http.Request) {
 	// vars := mux.Vars(r)
-	if r.Method == GET {
+	if r.Method == http.MethodGet {
 		log.Printf("hit GET")
 		// logger.Info.Printf("Job status of %s", vars["id"])
 		// if goal, err := cs.GoalManager.GetScienceGoal(vars["id"]); err == nil {
@@ -181,18 +197,19 @@ func (api *APIServer) handlerJobStatus(w http.ResponseWriter, r *http.Request) {
 		// } else {
 		// 	respondJSON(w, http.StatusOK, "")
 		// }
-		respondJSON(w, http.StatusOK, "")
+		api.cloudScheduler.GoalManager.GetJobs()
+		respondJSON(w, http.StatusOK, []byte{})
 	}
 }
 
 func (api *APIServer) handlerGoals(w http.ResponseWriter, r *http.Request) {
-	if r.Method == GET {
+	if r.Method == http.MethodGet {
 
-	} else if r.Method == POST {
+	} else if r.Method == http.MethodPost {
 		log.Printf("hit POST")
 
-		respondJSON(w, http.StatusOK, "")
-	} else if r.Method == PUT {
+		respondJSON(w, http.StatusOK, []byte{})
+	} else if r.Method == http.MethodPut {
 		log.Printf("hit PUT")
 		// mReader, err := r.MultipartReader()
 		// if err != nil {
@@ -207,31 +224,32 @@ func (api *APIServer) handlerGoals(w http.ResponseWriter, r *http.Request) {
 		// log.Printf("%v", goal)
 		// RegisterGoal(goal)
 		// chanTriggerScheduler <- "api server"
-		respondJSON(w, http.StatusOK, "")
+		respondJSON(w, http.StatusOK, []byte{})
 	}
 }
 
 func (api *APIServer) handlerGoalForNode(w http.ResponseWriter, r *http.Request) {
 	// vars := mux.Vars(r)
-	if r.Method == GET {
+	if r.Method == http.MethodGet {
 		// nodeName := vars["nodeName"]
 		// goals := cs.GoalManager.GetScienceGoalsForNode(nodeName)
 		// dat, _ := yaml.Marshal(goals)
 		// respondYAML(w, http.StatusOK, goals)
 		// respondYAML(w, http.StatusOK, `[{"response": "No goals found"}]`)
-		respondJSON(w, http.StatusOK, "")
+		respondJSON(w, http.StatusOK, []byte{})
 	}
 }
 
-func respondJSON(w http.ResponseWriter, statusCode int, data interface{}) {
+func respondJSON(w http.ResponseWriter, statusCode int, data []byte) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-
+	w.Write(data)
+	// fmt.Fprintln(w, data)
 	// json.NewEncoder(w).Encode(data)
-	s, err := json.MarshalIndent(data, "", "  ")
-	if err == nil {
-		w.Write(s)
-	}
+	// s, err := json.MarshalIndent(data, "", "  ")
+	// if err == nil {
+	// 	w.Write(s)
+	// }
 }
 
 func respondYAML(w http.ResponseWriter, statusCode int, data interface{}) {

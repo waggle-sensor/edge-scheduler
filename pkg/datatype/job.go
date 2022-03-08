@@ -16,6 +16,7 @@ type Job struct {
 	Nodes           []string     `json:"nodes,omitempty" yaml:"nodes,omitempty"`
 	ScienceRules    []string     `json:"science_rules,omitempty" yaml:"science_rules,omitempty"`
 	SuccessCriteria []string     `json:"success_criteria,omitempty" yaml:"success_criteria,omitempty"`
+	ScienceGoal     *ScienceGoal
 }
 
 // EncodeToJson returns encoded json of the job.

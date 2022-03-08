@@ -24,6 +24,7 @@ func (rcs *RealCloudScheduler) AddGoalManager() *RealCloudScheduler {
 	rcs.cloudScheduler.GoalManager = &CloudGoalManager{
 		scienceGoals: make(map[string]*datatype.ScienceGoal),
 		Notifier:     interfacing.NewNotifier(),
+		jobs:         make(map[string]*datatype.Job),
 	}
 	rcs.cloudScheduler.GoalManager.Notifier.Subscribe(rcs.cloudScheduler.chanFromGoalManager)
 	return rcs

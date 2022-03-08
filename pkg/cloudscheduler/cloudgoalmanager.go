@@ -14,6 +14,7 @@ type CloudGoalManager struct {
 	scienceGoals map[string]*datatype.ScienceGoal
 	rmqHandler   *interfacing.RabbitMQHandler
 	Notifier     *interfacing.Notifier
+	jobs         map[string]*datatype.Job
 }
 
 // SetRMQHandler sets a RabbitMQ handler used for transferring goals to edge schedulers
@@ -23,12 +24,15 @@ func (cgm *CloudGoalManager) SetRMQHandler(rmqHandler *interfacing.RabbitMQHandl
 }
 
 func (cgm *CloudGoalManager) AddJob(job *datatype.Job) error {
-	if _, exist := cgm.scienceGoals[job.Name]; exist {
+	if _, exist := cgm.jobs[job.Name]; exist {
 		return fmt.Errorf("Job already exists: %s", job.Name)
 	}
-
-	// cgm.scienceGoals
+	cgm.jobs[job.Name] = job
 	return nil
+}
+
+func (cgm *CloudGoalManager) GetJobs() map[string]*datatype.Job {
+	return cgm.jobs
 }
 
 // UpdateScienceGoal stores given science goal
