@@ -27,6 +27,7 @@ ARG VERSION
 ENV VERSION=${VERSION}
 RUN export PATH=$PATH:/usr/local/go/bin:/usr/bin/pkg-config \
   && make scheduler-${TARGETARCH} cli-${TARGETARCH} \
+  && mkdir -p /app \
   && cp ./out/* /app/ \
   && cp pkg/knowledgebase/kb.py /app/ \
   && cp -r pkg/knowledgebase/util /app/
@@ -37,7 +38,11 @@ RUN pip3 install -r /app/requirements.txt
 
 COPY --from=builder /app/ /app/
 
-RUN chmod +x /app/pluginctl-${TARGETARCH} \
+RUN chmod +x /app/cloudscheduler-${TARGETARCH} \
+  && ln -s /app/cloudscheduler-${TARGETARCH} /usr/bin/cloudscheduler \
+  && chmod +x /app/nodescheduler-${TARGETARCH} \
+  && ln -s /app/nodescheduler-${TARGETARCH} /usr/bin/nodescheduler \
+  && chmod +x /app/pluginctl-${TARGETARCH} \
   && ln -s /app/pluginctl-${TARGETARCH} /usr/bin/pluginctl \
   && chmod +x /app/runplugin-${TARGETARCH} \
   && ln -s /app/runplugin-${TARGETARCH} /usr/bin/runplugin
