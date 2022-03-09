@@ -12,6 +12,7 @@ cli-amd64:
 	GOOS=linux GOARCH=amd64 go build -o ./out/sesctl-amd64 -ldflags "-X main.Version=${VERSION}" ./cmd/sesctl
 
 cli:
+	go build -o ./out/pluginctl -ldflags "-X main.Version=${VERSION}" ./cmd/pluginctl
 	go build -o ./out/sesctl -ldflags "-X main.Version=${VERSION}" ./cmd/sesctl
 
 scheduler-all-arch: scheduler-amd64 scheduler-arm64

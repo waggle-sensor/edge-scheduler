@@ -309,42 +309,49 @@ func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, err
 	if err != nil {
 		return nil, err
 	}
+	envs := []apiv1.EnvVar{
+		{
+			Name:  "PULSE_SERVER",
+			Value: "tcp:wes-audio-server:4713",
+		},
+		{
+			Name:  "WAGGLE_PLUGIN_HOST",
+			Value: "wes-rabbitmq",
+		},
+		{
+			Name:  "WAGGLE_PLUGIN_PORT",
+			Value: "5672",
+		},
+		{
+			Name:  "WAGGLE_PLUGIN_USERNAME",
+			Value: "plugin",
+		},
+		{
+			Name:  "WAGGLE_PLUGIN_PASSWORD",
+			Value: "plugin",
+		},
+		// NOTE WAGGLE_APP_ID is used to bind plugin <-> Pod identities.
+		{
+			Name: "WAGGLE_APP_ID",
+			ValueFrom: &apiv1.EnvVarSource{
+				FieldRef: &apiv1.ObjectFieldSelector{
+					FieldPath: "metadata.uid",
+				},
+			},
+		},
+	}
+	for k, v := range plugin.PluginSpec.Env {
+		envs = append(envs, apiv1.EnvVar{
+			Name:  k,
+			Value: v,
+		})
+	}
 	container := apiv1.Container{
 		SecurityContext: securityContextForConfig(plugin.PluginSpec),
 		Name:            plugin.Name,
 		Image:           plugin.PluginSpec.Image,
 		Args:            plugin.PluginSpec.Args,
-		Env: []apiv1.EnvVar{
-			{
-				Name:  "PULSE_SERVER",
-				Value: "tcp:wes-audio-server:4713",
-			},
-			{
-				Name:  "WAGGLE_PLUGIN_HOST",
-				Value: "wes-rabbitmq",
-			},
-			{
-				Name:  "WAGGLE_PLUGIN_PORT",
-				Value: "5672",
-			},
-			{
-				Name:  "WAGGLE_PLUGIN_USERNAME",
-				Value: "plugin",
-			},
-			{
-				Name:  "WAGGLE_PLUGIN_PASSWORD",
-				Value: "plugin",
-			},
-			// NOTE WAGGLE_APP_ID is used to bind plugin <-> Pod identities.
-			{
-				Name: "WAGGLE_APP_ID",
-				ValueFrom: &apiv1.EnvVarSource{
-					FieldRef: &apiv1.ObjectFieldSelector{
-						FieldPath: "metadata.uid",
-					},
-				},
-			},
-		},
+		Env:             envs,
 		Resources: apiv1.ResourceRequirements{
 			Limits:   apiv1.ResourceList{},
 			Requests: apiv1.ResourceList{},

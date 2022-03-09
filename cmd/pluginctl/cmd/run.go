@@ -19,10 +19,10 @@ func init() {
 	flags := cmdRun.Flags()
 	flags.StringVarP(&deployment.Name, "name", "n", "", "Specify plugin name")
 	flags.StringVar(&deployment.Node, "node", "", "run plugin on node")
-	// flags.StringVarP(&job, "job", "j", "sage", "Specify job name")
 	flags.StringVar(&deployment.SelectorString, "selector", "", "Specify where plugin can run")
 	flags.StringVar(&deployment.Entrypoint, "entrypoint", "", "Specify command to run inside plugin")
 	flags.BoolVarP(&deployment.Privileged, "privileged", "p", false, "Deploy as privileged plugin")
+	flags.StringSliceVarP(&deployment.EnvVarString, "env", "e", []string{}, "Set environment variables")
 	flags.BoolVar(&deployment.DevelopMode, "develop", false, "Enable the following development time features: access to wan network")
 	rootCmd.AddCommand(cmdRun)
 }

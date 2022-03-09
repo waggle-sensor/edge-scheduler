@@ -28,6 +28,7 @@ type PluginSpec struct {
 	Name        string            `json:"name"`
 	Selector    map[string]string `json:"selector"`
 	Entrypoint  string            `json:"entrypoint"`
+	Env         map[string]string `json:"env"`
 	DevelopMode bool              `json:"develop"`
 }
 
