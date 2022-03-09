@@ -34,6 +34,7 @@ type Deployment struct {
 	Privileged     bool
 	PluginImage    string
 	PluginArgs     []string
+	EnvVarString   []string
 	DevelopMode    bool
 }
 
@@ -89,10 +90,31 @@ func generateJobNameForSpec(spec *datatype.PluginSpec) (string, error) {
 	return strings.Join([]string{parts[0], strings.ReplaceAll(parts[1], ".", "-"), instance}, "-"), nil
 }
 
+func parseEnv(envs []string) (map[string]string, error) {
+	items := map[string]string{}
+	for _, s := range envs {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return items, nil
+		}
+		k, v, err := parseSelectorTerm(s)
+		if err != nil {
+			return items, err
+		}
+		items[k] = v
+	}
+	return items, nil
+}
+
 func (p *PluginCtl) Deploy(dep *Deployment) (string, error) {
 	selector, err := ParseSelector(dep.SelectorString)
 	if err != nil {
 		return "", fmt.Errorf("Failed to parse selector %q", err.Error())
+	}
+
+	envs, err := parseEnv(dep.EnvVarString)
+	if err != nil {
+		return "", fmt.Errorf("Failed to parse env %q", err.Error())
 	}
 
 	// split name:version from image string
@@ -111,6 +133,7 @@ func (p *PluginCtl) Deploy(dep *Deployment) (string, error) {
 		Job:         pluginctlJob,
 		Selector:    selector,
 		Entrypoint:  dep.Entrypoint,
+		Env:         envs,
 		DevelopMode: dep.DevelopMode,
 	}
 	pluginName, err := pluginNameForSpec(&pluginSpec)

@@ -6,9 +6,9 @@ RUN apt-get update \
   pkg-config \
   # build-base \
   wget \
-  libzmq3-dev \
+  # libzmq3-dev \
 #  zeromq-dev \
-  libczmq-dev \
+  # libczmq-dev \
 #  czmq-dev \
   && rm -rf /var/lib/apt/lists/*
 # libczmq-dev
@@ -23,11 +23,11 @@ RUN wget https://golang.org/dl/go1.17.6.linux-${TARGETARCH}.tar.gz \
 FROM base as builder
 WORKDIR $GOPATH/src/github.com/sagecontinuum/ses
 COPY . .
+ARG VERSION
+ENV VERSION=${VERSION}
 RUN export PATH=$PATH:/usr/local/go/bin:/usr/bin/pkg-config \
-  && go build -o /app/cloudscheduler cmd/cloudscheduler/main.go \
-  && go build -o /app/nodescheduler cmd/nodescheduler/main.go \
-  && go build -o /app/runplugin-${TARGETARCH} ./cmd/runplugin \
-  && go build -o /app/pluginctl-${TARGETARCH} ./cmd/pluginctl \
+  && make scheduler-${TARGETARCH} cli-${TARGETARCH} \
+  && cp ./out/* /app/ \
   && cp pkg/knowledgebase/kb.py /app/ \
   && cp -r pkg/knowledgebase/util /app/
 

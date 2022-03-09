@@ -1,33 +1,34 @@
 package datatype
 
+import (
+	"bytes"
+	"encoding/json"
+
+	"gopkg.in/yaml.v2"
+)
+
 // Job structs user request for jobs
 type Job struct {
-	Name               string    `yaml:"name,omitempty"`
-	PluginTags         []string  `yaml:"plugintags,omitempty"`
-	Plugins            []*Plugin `yaml:"plugins,omitempty"`
-	NodeTags           []string  `yaml:"nodetags,omitempty"`
-	Nodes              []*Node   `yaml:"nodes,omitempty"`
-	MinimumPerformance []string  `yaml:"minimumperformance,omitempty"`
-	ScienceRules       []string  `yaml:"sciencerules,omitempty"`
+	Name            string       `json:"name,omitempty" yaml:"name,omitempty"`
+	PluginTags      []string     `json:"plugin_tags,omitempty" yaml:"plugin_tags,omitempty"`
+	Plugins         []PluginSpec `json:"plugins,omitempty" yaml:"plugins,omitempty"`
+	NodeTags        []string     `json:"node_tags,omitempty" yaml:"node_tags,omitempty"`
+	Nodes           []string     `json:"nodes,omitempty" yaml:"nodes,omitempty"`
+	ScienceRules    []string     `json:"science_rules,omitempty" yaml:"science_rules,omitempty"`
+	SuccessCriteria []string     `json:"success_criteria,omitempty" yaml:"success_criteria,omitempty"`
+	ScienceGoal     *ScienceGoal
 }
 
-// TODO: This prohibits running same plugins. Is this appropriate?
-// AddPlugin adds given plugin to the job
-func (j *Job) AddPlugin(plugin *Plugin) {
-	for _, p := range j.Plugins {
-		if p.Name == plugin.Name && p.PluginSpec.Version == plugin.PluginSpec.Version {
-			return
-		}
-	}
-	j.Plugins = append(j.Plugins, plugin)
+// EncodeToJson returns encoded json of the job.
+func (j *Job) EncodeToJson() ([]byte, error) {
+	bf := bytes.NewBuffer([]byte{})
+	encoder := json.NewEncoder(bf)
+	encoder.SetEscapeHTML(false)
+	encoder.SetIndent("", " ")
+	err := encoder.Encode(j)
+	return bf.Bytes(), err
 }
 
-// AddNode adds given node to the job
-func (j *Job) AddNode(node *Node) {
-	for _, n := range j.Nodes {
-		if n.Name == node.Name {
-			return
-		}
-	}
-	j.Nodes = append(j.Nodes, node)
+func (j *Job) EncodeToYaml() ([]byte, error) {
+	return yaml.Marshal(j)
 }
