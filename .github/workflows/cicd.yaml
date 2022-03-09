@@ -25,12 +25,12 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
-            runplugin-amd64
-            runplugin-arm64
-            pluginctl-amd64
-            pluginctl-arm64
-            sesctl-amd64
-            sesctl-arm64
+            ./out/runplugin-amd64
+            ./out/runplugin-arm64
+            ./out/pluginctl-amd64
+            ./out/pluginctl-arm64
+            ./out/sesctl-amd64
+            ./out/sesctl-arm64
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   push_to_registry:
