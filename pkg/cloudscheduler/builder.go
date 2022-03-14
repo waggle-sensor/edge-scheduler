@@ -14,7 +14,7 @@ func NewRealCloudSchedulerBuilder(name string, version string) *RealCloudSchedul
 		cloudScheduler: &CloudScheduler{
 			Name:                name,
 			Version:             version,
-			Validator:           &JobValidator{},
+			Validator:           NewJobValidator(),
 			chanFromGoalManager: make(chan datatype.Event, maxChannelBuffer),
 		},
 	}

@@ -53,5 +53,9 @@ func main() {
 		rmqHandler := interfacing.NewRabbitMQHandler(rabbitmqURI, rabbitmqUsername, rabbitmqPassword, "")
 		cs.GoalManager.SetRMQHandler(rmqHandler)
 	}
+	err := cs.Validator.LoadDatabase(dataDir)
+	if err != nil {
+		panic(err)
+	}
 	cs.Run()
 }

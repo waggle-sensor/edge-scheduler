@@ -13,7 +13,6 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -105,20 +104,20 @@ func generatePassword() string {
 	return hex.EncodeToString(b)
 }
 
-func labelsForConfig(pluginSpec *datatype.PluginSpec) map[string]string {
+func labelsForConfig(plugin *datatype.Plugin) map[string]string {
 	labels := map[string]string{
-		"app":                           pluginSpec.Name,
+		"app":                           plugin.Name,
 		"role":                          "plugin", // TODO drop in place of sagecontinuum.org/role
 		"sagecontinuum.org/role":        "plugin",
-		"sagecontinuum.org/plugin-job":  pluginSpec.Job,
-		"sagecontinuum.org/plugin-task": pluginSpec.Name,
+		"sagecontinuum.org/plugin-job":  plugin.PluginSpec.Job,
+		"sagecontinuum.org/plugin-task": plugin.Name,
 	}
 
 	// in develop mode, we omit the role labels to opt out of network traffic filtering
 	// this is intended to do things like:
 	// * allow developers to initially pull from github and add packages
 	// * allow interfacing with devices in wan subnet until we add site specific exceptions
-	if pluginSpec.DevelopMode {
+	if plugin.PluginSpec.DevelopMode {
 		delete(labels, "role")
 		delete(labels, "sagecontinuum.org/role")
 	}
@@ -149,7 +148,7 @@ func (rm *ResourceManager) CreatePluginCredential(plugin *datatype.Plugin) (data
 	// TODO: We will need to add instance of plugin as a aprt of Username
 	// username should follow "plugin.NAME:VERSION" format to publish messages via WES
 	credential := datatype.PluginCredential{
-		Username: fmt.Sprint("plugin.", strings.ToLower(plugin.Name), ":", plugin.PluginSpec.Version),
+		Username: fmt.Sprint("plugin.", strings.ToLower(plugin.Name), ":", plugin.PluginSpec.GetImageVersion()),
 		Password: generatePassword(),
 	}
 	return credential, nil
@@ -305,9 +304,12 @@ func (rm *ResourceManager) WatchJobs(namespace string) (watch.Interface, error) 
 
 // CreateK3SJob creates and returns a Kubernetes job object of the pllugin
 func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, error) {
-	jobName, err := pluginNameForSpec(plugin.PluginSpec)
-	if err != nil {
-		return nil, err
+	if plugin.Name == "" {
+		name, err := pluginNameForSpec(plugin.PluginSpec)
+		if err != nil {
+			return nil, err
+		}
+		plugin.Name = name
 	}
 	envs := []apiv1.EnvVar{
 		{
@@ -378,13 +380,13 @@ func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, err
 	}
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      jobName,
+			Name:      plugin.Name,
 			Namespace: rm.Namespace,
 		},
 		Spec: batchv1.JobSpec{
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: labelsForConfig(plugin.PluginSpec),
+					Labels: labelsForConfig(plugin),
 				},
 				Spec: apiv1.PodSpec{
 					NodeSelector:  nodeSelectorForConfig(plugin.PluginSpec),
@@ -395,7 +397,7 @@ func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, err
 							Name: "uploads",
 							VolumeSource: apiv1.VolumeSource{
 								HostPath: &apiv1.HostPathVolumeSource{
-									Path: path.Join("/media/plugin-data/uploads", plugin.Name, plugin.PluginSpec.Version),
+									Path: path.Join("/media/plugin-data/uploads", plugin.Name, plugin.PluginSpec.GetImageVersion()),
 									Type: &hostPathDirectoryOrCreate,
 								},
 							},
@@ -442,7 +444,7 @@ func (rm *ResourceManager) CreateDeployment(plugin *datatype.Plugin, credential 
 			Name: "uploads",
 			VolumeSource: apiv1.VolumeSource{
 				HostPath: &apiv1.HostPathVolumeSource{
-					Path: path.Join("/media/plugin-data/uploads", pluginNameInLowcase, plugin.PluginSpec.Version),
+					Path: path.Join("/media/plugin-data/uploads", pluginNameInLowcase, plugin.PluginSpec.GetImageVersion()),
 					Type: &hostPathDirectoryOrCreate,
 				},
 			},
@@ -514,11 +516,11 @@ func (rm *ResourceManager) CreateDeployment(plugin *datatype.Plugin, credential 
 							Env: []apiv1.EnvVar{
 								{
 									Name:  "WAGGLE_PLUGIN_NAME",
-									Value: strings.Join([]string{plugin.Name, plugin.PluginSpec.Version}, ":"),
+									Value: strings.Join([]string{plugin.Name, plugin.PluginSpec.GetImageVersion()}, ":"),
 								},
 								{
 									Name:  "WAGGLE_PLUGIN_VERSION",
-									Value: plugin.PluginSpec.Version,
+									Value: plugin.PluginSpec.GetImageVersion(),
 								},
 								{
 									Name:  "WAGGLE_PLUGIN_USERNAME",
@@ -1036,13 +1038,13 @@ func pluginNameForSpec(spec *datatype.PluginSpec) (string, error) {
 	//       the same domain, only one deployment will be applied to the cluster
 	// NOTE2: To comply with RFC 1123 for Kubernetes object name, only lower alphanumeric
 	//        characters with '-' is allowed
-	if spec.Name != "" {
-		jobName := strings.Join([]string{spec.Name, strconv.FormatInt(time.Now().Unix(), 10)}, "-")
-		if !validNamePattern.MatchString(jobName) {
-			return "", fmt.Errorf("plugin name must consist of alphanumeric characters with '-' RFC1123")
-		}
-		return jobName, nil
-	}
+	// if spec.Name != "" {
+	// 	jobName := strings.Join([]string{spec.Name, strconv.FormatInt(time.Now().Unix(), 10)}, "-")
+	// 	if !validNamePattern.MatchString(jobName) {
+	// 		return "", fmt.Errorf("plugin name must consist of alphanumeric characters with '-' RFC1123")
+	// 	}
+	// 	return jobName, nil
+	// }
 	return generateJobNameForSpec(spec)
 }
 

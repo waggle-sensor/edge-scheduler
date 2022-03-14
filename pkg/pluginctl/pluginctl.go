@@ -1,15 +1,9 @@
 package pluginctl
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
-	"path"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -47,49 +41,6 @@ func NewPluginCtl(kubeconfig string) (*PluginCtl, error) {
 	return &PluginCtl{ResourceManager: resourceManager}, nil
 }
 
-var validNamePattern = regexp.MustCompile("^[a-z0-9-]+$")
-
-func pluginNameForSpec(spec *datatype.PluginSpec) (string, error) {
-	// if no given name for the plugin, use PLUGIN-VERSION-INSTANCE format for name
-	// INSTANCE is calculated as Sha256("DOMAIN/PLUGIN:VERSION&ARGUMENTS") and
-	// take the first 8 hex letters.
-	// NOTE: if multiple plugins with the same version and arguments are given for
-	//       the same domain, only one deployment will be applied to the cluster
-	// NOTE2: To comply with RFC 1123 for Kubernetes object name, only lower alphanumeric
-	//        characters with '-' is allowed
-	if spec.Name != "" {
-		jobName := strings.Join([]string{spec.Name, strconv.FormatInt(time.Now().Unix(), 10)}, "-")
-		if !validNamePattern.MatchString(jobName) {
-			return "", fmt.Errorf("plugin name must consist of alphanumeric characters with '-' RFC1123")
-		}
-		return jobName, nil
-	}
-	return generateJobNameForSpec(spec)
-}
-
-// generateJobNameForSpec generates a consistent name for a Spec.
-//
-// Very important note from: https://pkg.go.dev/encoding/json#Marshal
-//
-// Map values encode as JSON objects. The map's key type must either be a string, an integer type,
-// or implement encoding.TextMarshaler. The map keys are sorted and used as JSON object keys by applying
-// the following rules, subject to the UTF-8 coercion described for string values above:
-//
-// The "map keys are sorted" bit is important for us as it allows us to ensure the hash is consistent.
-func generateJobNameForSpec(spec *datatype.PluginSpec) (string, error) {
-	specjson, err := json.Marshal(spec)
-	if err != nil {
-		return "", err
-	}
-	sum := sha256.Sum256(specjson)
-	instance := hex.EncodeToString(sum[:])[:8]
-	parts := strings.Split(path.Base(spec.Image), ":")
-	if len(parts) != 2 {
-		return "", fmt.Errorf("invalid plugin name %q", spec.Image)
-	}
-	return strings.Join([]string{parts[0], strings.ReplaceAll(parts[1], ".", "-"), instance}, "-"), nil
-}
-
 func parseEnv(envs []string) (map[string]string, error) {
 	items := map[string]string{}
 	for _, s := range envs {
@@ -116,34 +67,19 @@ func (p *PluginCtl) Deploy(dep *Deployment) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("Failed to parse env %q", err.Error())
 	}
-
-	// split name:version from image string
-	parts := strings.Split(path.Base(dep.PluginImage), ":")
-	if len(parts) != 2 {
-		return "", fmt.Errorf("Invalid plugin image (plugin:version) %q", dep.PluginImage)
-	}
-
-	pluginSpec := datatype.PluginSpec{
-		Privileged:  dep.Privileged,
-		Node:        dep.Node,
-		Image:       dep.PluginImage,
-		Version:     parts[1],
-		Args:        dep.PluginArgs,
-		Name:        dep.Name,
-		Job:         pluginctlJob,
-		Selector:    selector,
-		Entrypoint:  dep.Entrypoint,
-		Env:         envs,
-		DevelopMode: dep.DevelopMode,
-	}
-	pluginName, err := pluginNameForSpec(&pluginSpec)
-	if err != nil {
-		return "", err
-	}
-	pluginSpec.Name = pluginName
 	plugin := datatype.Plugin{
-		Name:       pluginName,
-		PluginSpec: &pluginSpec,
+		Name: dep.Name,
+		PluginSpec: &datatype.PluginSpec{
+			Privileged:  dep.Privileged,
+			Node:        dep.Node,
+			Image:       dep.PluginImage,
+			Args:        dep.PluginArgs,
+			Job:         pluginctlJob,
+			Selector:    selector,
+			Entrypoint:  dep.Entrypoint,
+			Env:         envs,
+			DevelopMode: dep.DevelopMode,
+		},
 	}
 	job, err := p.ResourceManager.CreateJob(&plugin)
 	if err != nil {

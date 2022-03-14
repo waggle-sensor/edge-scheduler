@@ -1,7 +1,11 @@
 package cmd
 
 import (
-	"github.com/sagecontinuum/ses/pkg/logger"
+	"encoding/json"
+	"fmt"
+	"net/url"
+
+	"github.com/sagecontinuum/ses/pkg/interfacing"
 	"github.com/spf13/cobra"
 )
 
@@ -14,41 +18,42 @@ func init() {
 		Short:            "Create a job for submission",
 		TraverseChildren: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			name := args[0]
+			r := interfacing.NewHTTPRequest(serverHostString)
 			if filePath != "" {
-				// job := &datatype.Job{
-				// 	Name:            name,
-				// 	NodeTags:        nodeSelector,
-				// 	Nodes:           nodeVSN,
-				// 	ScienceRules:    []string{"#Please specify science rules"},
-				// 	SuccessCriteria: []string{"WallClock(7d)"},
-				// }
-				// switch strings.ToLower(output) {
-				// case "yaml":
-				// 	blob, _ := job.EncodeToYaml()
-				// 	fmt.Printf("%s", string(blob))
-				// 	break
-				// case "json":
-				// 	blob, _ := job.EncodeToJson()
-				// 	fmt.Printf("%s", string(blob))
-				// 	break
-				// }
+				resp, err := r.RequestPostFromFile("api/v1/create", filePath)
+				if err != nil {
+					return err
+				}
+				body, err := r.ParseJSONHTTPResponse(resp)
+				if err != nil {
+					return err
+				}
+				blob, _ := json.MarshalIndent(body, "", " ")
+				fmt.Printf("%s\n", string(blob))
 			} else {
-				resp, err := RequestHTTP("http://localhost:9770/api/v1/create?name=" + name)
+				if len(args) < 1 {
+					return fmt.Errorf("Please specify job name")
+				}
+				name := args[0]
+				q, err := url.ParseQuery("name=" + name)
 				if err != nil {
 					return err
 				}
-				body, err := ParseJSONHTTPResponse(resp)
+				resp, err := r.RequestGet("api/v1/create", q)
 				if err != nil {
 					return err
 				}
-				logger.Debug.Printf("%v", body)
+				body, err := r.ParseJSONHTTPResponse(resp)
+				if err != nil {
+					return err
+				}
+				fmt.Printf("%v", body)
 				// logger.Debug.Printf("%s", body["name"])
 			}
 			return nil
 		},
 	}
 	flags := cmdCreate.Flags()
-	flags.StringVarP(&filePath, "filepath", "f", "", "Path to job file")
+	flags.StringVarP(&filePath, "file-path", "f", "", "Path to job file")
 	rootCmd.AddCommand(cmdCreate)
 }

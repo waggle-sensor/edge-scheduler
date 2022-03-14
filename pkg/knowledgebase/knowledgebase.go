@@ -81,9 +81,9 @@ func (kb *Knowledgebase) Run(chanContextEventToScheduler chan<- datatype.EventPl
 // RegisterRules registers rules of a goal to the KB engine
 func (kb *Knowledgebase) RegisterRules(scienceGoal *datatype.ScienceGoal, nodeName string) {
 	mySubGoal := scienceGoal.GetMySubGoal(nodeName)
-	for _, g := range scienceGoal.SubGoals {
-		logger.Debug.Printf("%s", g.Node.Name)
-	}
+	// for _, g := range scienceGoal.SubGoals {
+	// 	logger.Debug.Printf("%s", g.Node.Name)
+	// }
 	logger.Debug.Printf("%+v", mySubGoal.ScienceRules)
 	logger.Info.Printf("Registring science rules of science goal %s to KB", scienceGoal.Name)
 	rules := []string{scienceGoal.ID}

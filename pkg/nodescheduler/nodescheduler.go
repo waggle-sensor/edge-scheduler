@@ -257,9 +257,9 @@ func (ns *NodeScheduler) Run() {
 			plugin, err := ns.SchedulingPolicy.SimpleScheduler.SelectBestTask(
 				ns.GoalManager.ScienceGoals,
 				datatype.Resource{
-					CPU:       999999,
-					Memory:    999999,
-					GPUMemory: 999999,
+					CPU:       "999000m",
+					Memory:    "999999Gi",
+					GPUMemory: "999999Gi",
 				},
 				ns.GoalManager.NodeID,
 			)

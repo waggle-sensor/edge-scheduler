@@ -1,56 +1,42 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
-	"strings"
 
-	"github.com/sagecontinuum/ses/pkg/datatype"
+	"github.com/sagecontinuum/ses/pkg/interfacing"
 	"github.com/spf13/cobra"
 )
 
 func init() {
+	// TODO: edit does not yet support inline editing of jobs like "kubectl edit"
 	var (
-		plugins      []string
-		nodeSelector []string
-		nodeVSN      []string
-		output       string
+		filePath string
 	)
 	cmdEdit := &cobra.Command{
-		Use:              "create [FLAGS] JOB_NAME",
-		Short:            "Create a job template for submission",
+		Use:              "edit [FLAGS]",
+		Short:            "Modify a job",
 		TraverseChildren: true,
-		Args:             cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			name := args[0]
-			if len(plugins) < 1 {
-				return fmt.Errorf("No plugin is selected. Please specify at least one plugin.")
-			}
-			job := &datatype.Job{
-				Name:            name,
-				NodeTags:        nodeSelector,
-				Nodes:           nodeVSN,
-				ScienceRules:    []string{"#Please specify science rules"},
-				SuccessCriteria: []string{"WallClock(7d)"},
-			}
-			switch strings.ToLower(output) {
-			case "yaml":
-				blob, _ := job.EncodeToYaml()
-				fmt.Printf("%s", string(blob))
-				break
-			case "json":
-				blob, _ := job.EncodeToJson()
-				fmt.Printf("%s", string(blob))
-				break
-			default:
-				return fmt.Errorf("Unrecognized output: %q", output)
+			r := interfacing.NewHTTPRequest(serverHostString)
+			if filePath != "" {
+				resp, err := r.RequestPostFromFile("api/v1/edit", filePath)
+				if err != nil {
+					return err
+				}
+				body, err := r.ParseJSONHTTPResponse(resp)
+				if err != nil {
+					return err
+				}
+				blob, _ := json.MarshalIndent(body, "", " ")
+				fmt.Printf("%s\n", string(blob))
+			} else {
+				return fmt.Errorf("Interactive job editing is not supported.")
 			}
 			return nil
 		},
 	}
 	flags := cmdEdit.Flags()
-	flags.StringSliceVarP(&plugins, "plugin", "p", []string{}, "Plugin Docker image and version")
-	flags.StringSliceVarP(&nodeSelector, "node-selector", "s", []string{}, "Query string to select nodes")
-	flags.StringSliceVarP(&nodeVSN, "vsn", "n", []string{}, "Node VSN name")
-	flags.StringVarP(&output, "output", "o", "yaml", "Output type either of yaml or json")
+	flags.StringVarP(&filePath, "file-path", "f", "", "Path to the job file")
 	rootCmd.AddCommand(cmdEdit)
 }

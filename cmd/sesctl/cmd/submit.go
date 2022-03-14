@@ -1,51 +1,39 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
-	"os"
+	"net/url"
 
+	"github.com/sagecontinuum/ses/pkg/interfacing"
 	"github.com/spf13/cobra"
 )
 
 func init() {
 	cmdSubmit := &cobra.Command{
-		Use:              "submit JOB_FILE",
+		Use:              "submit JOB_NAME",
 		Short:            "submit a job to cloud scheduler",
 		TraverseChildren: true,
 		Args:             cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			job_filepath := args[0]
-			if _, err := os.Stat(job_filepath); os.IsNotExist(err) {
-				return fmt.Errorf("%s not exist", job_filepath)
+			jobName := args[0]
+			q, err := url.ParseQuery("name=" + jobName)
+			if err != nil {
+				return err
 			}
-			// job := &datatype.Job{
-			// 	Name:            name,
-			// 	Plugins:         plugins,
-			// 	NodeTags:        nodeSelector,
-			// 	Nodes:           nodeVSN,
-			// 	ScienceRules:    []string{"#Please specify science rules"},
-			// 	SuccessCriteria: []string{"WallClockDays(7)"},
-			// }
-			// jsonblob, _ := job.EncodeToJson()
-			// if len(output) > 0 {
-			// 	err := os.MkdirAll(output, os.ModePerm)
-			// 	if err != nil {
-			// 		return err
-			// 	}
-			// 	err = ioutil.WriteFile(filepath.Join(output, fmt.Sprintf("%s.json", name)), jsonblob, 0644)
-			// 	if err != nil {
-			// 		return err
-			// 	}
-			// } else {
-			// 	fmt.Printf("%s", string(jsonblob))
-			// }
+			r := interfacing.NewHTTPRequest(serverHostString)
+			resp, err := r.RequestGet("api/v1/submit", q)
+			if err != nil {
+				return err
+			}
+			body, err := r.ParseJSONHTTPResponse(resp)
+			if err != nil {
+				return err
+			}
+			blob, _ := json.MarshalIndent(body, "", " ")
+			fmt.Printf("%s\n", string(blob))
 			return nil
 		},
 	}
-	// flags := cmdSubmit.Flags()
-	// flags.StringSliceVarP(&plugins, "plugin", "p", []string{}, "Plugin Docker image and version")
-	// flags.StringSliceVarP(&nodeSelector, "node-selector", "s", []string{}, "Query string to select nodes")
-	// flags.StringSliceVarP(&nodeVSN, "vsn", "n", []string{}, "Node VSN name")
-	// flags.StringVarP(&output, "output", "o", "", "Output path of the job")
 	rootCmd.AddCommand(cmdSubmit)
 }

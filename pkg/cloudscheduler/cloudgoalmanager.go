@@ -27,12 +27,21 @@ func (cgm *CloudGoalManager) AddJob(job *datatype.Job) error {
 	if _, exist := cgm.jobs[job.Name]; exist {
 		return fmt.Errorf("Job already exists: %s", job.Name)
 	}
+	job.UpdateStatus(datatype.JobCreated)
 	cgm.jobs[job.Name] = job
 	return nil
 }
 
 func (cgm *CloudGoalManager) GetJobs() map[string]*datatype.Job {
 	return cgm.jobs
+}
+
+func (cgm *CloudGoalManager) GetJob(jobName string) (*datatype.Job, error) {
+	if job, exist := cgm.jobs[jobName]; exist {
+		return job, nil
+	} else {
+		return nil, fmt.Errorf("Job %q does not exist", jobName)
+	}
 }
 
 // UpdateScienceGoal stores given science goal
@@ -51,7 +60,7 @@ func (cgm *CloudGoalManager) UpdateScienceGoal(scienceGoal *datatype.ScienceGoal
 				continue
 			}
 			logger.Debug.Printf("%+v", string(message))
-			cgm.rmqHandler.SendYAML(subGoal.Node.Name, message)
+			cgm.rmqHandler.SendYAML(subGoal.Name, message)
 		}
 	}
 
@@ -71,7 +80,7 @@ func (cgm *CloudGoalManager) GetScienceGoal(goalID string) (*datatype.ScienceGoa
 func (cgm *CloudGoalManager) GetScienceGoalsForNode(nodeName string) (goals []*datatype.ScienceGoal) {
 	for _, scienceGoal := range cgm.scienceGoals {
 		for _, subGoal := range scienceGoal.SubGoals {
-			if subGoal.Node.Name == nodeName {
+			if subGoal.Name == nodeName {
 				goals = append(goals, scienceGoal)
 			}
 		}

@@ -2,6 +2,7 @@ package cloudscheduler
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 
@@ -29,8 +30,8 @@ func (api *APIServer) Run() {
 	})
 	api_route := r.PathPrefix("/api/v1").Subrouter()
 	api_route.Handle("/create", http.HandlerFunc(api.handlerCreateJob)).Methods(http.MethodGet, http.MethodPost)
-	api_route.Handle("/edit", http.HandlerFunc(api.handlerEditJob)).Methods(http.MethodGet)
-	api_route.Handle("/submit", http.HandlerFunc(api.handlerSubmitJobs)).Methods(http.MethodPost, http.MethodPut)
+	api_route.Handle("/edit", http.HandlerFunc(api.handlerEditJob)).Methods(http.MethodPost)
+	api_route.Handle("/submit", http.HandlerFunc(api.handlerSubmitJobs)).Methods(http.MethodGet)
 	api_route.Handle("/jobs", http.HandlerFunc(api.handlerJobs)).Methods(http.MethodGet)
 	api_route.Handle("/jobs/{name}/status", http.HandlerFunc(api.handlerJobStatus)).Methods(http.MethodGet)
 	// api.Handle("/goals", http.HandlerFunc(cs.handlerGoals)).Methods(http.MethodGet, http.MethodPost, http.MethodPut)
@@ -56,6 +57,29 @@ func (api *APIServer) handlerCreateJob(w http.ResponseWriter, r *http.Request) {
 		}
 	case http.MethodPost:
 		// The query includes a full job description
+		blob, err := io.ReadAll(r.Body)
+		if err != nil {
+			response := datatype.NewAPIMessageBuilder().AddError(err.Error()).Build()
+			respondJSON(w, http.StatusBadRequest, response.ToJson())
+		} else {
+			var newJob datatype.Job
+			err = yaml.Unmarshal(blob, &newJob)
+			if err != nil {
+				response := datatype.NewAPIMessageBuilder().AddError(err.Error()).Build()
+				respondJSON(w, http.StatusBadRequest, response.ToJson())
+			} else {
+				err = api.cloudScheduler.GoalManager.AddJob(&newJob)
+				if err != nil {
+					response := datatype.NewAPIMessageBuilder().AddError(err.Error()).Build()
+					respondJSON(w, http.StatusBadRequest, response.ToJson())
+				} else {
+					response := datatype.NewAPIMessageBuilder().AddEntity("name", newJob.Name).
+						AddEntity("status", datatype.JobCreated).Build()
+					respondJSON(w, http.StatusOK, response.ToJson())
+				}
+
+			}
+		}
 	}
 }
 
@@ -69,6 +93,21 @@ func (api *APIServer) handlerEditJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) {
+	queries := r.URL.Query()
+	if _, exist := queries["name"]; exist {
+		errorList := api.cloudScheduler.ValidateJobAndCreateScienceGoal(queries.Get("name"))
+		if len(errorList) > 0 {
+			response := datatype.NewAPIMessageBuilder().AddError(fmt.Sprintf("%v", errorList)).Build()
+			respondJSON(w, http.StatusBadRequest, response.ToJson())
+		} else {
+			response := datatype.NewAPIMessageBuilder().AddEntity("name", queries.Get("name")).
+				AddEntity("status", datatype.JobSubmitted).Build()
+			respondJSON(w, http.StatusOK, response.ToJson())
+		}
+	} else {
+		response := datatype.NewAPIMessageBuilder().AddError("name field is required").Build()
+		respondJSON(w, http.StatusBadRequest, response.ToJson())
+	}
 	// switch r.Method {
 	// case PUT, POST:
 	// 	data, err := ioutil.ReadAll(r.Body)
@@ -188,17 +227,23 @@ func (api *APIServer) handlerJobs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api *APIServer) handlerJobStatus(w http.ResponseWriter, r *http.Request) {
-	// vars := mux.Vars(r)
+	vars := mux.Vars(r)
 	if r.Method == http.MethodGet {
 		log.Printf("hit GET")
-		// logger.Info.Printf("Job status of %s", vars["id"])
+		logger.Debug.Printf("API call on Job status of %s", vars["name"])
 		// if goal, err := cs.GoalManager.GetScienceGoal(vars["id"]); err == nil {
 		// 	respondJSON(w, http.StatusOK, goal)
 		// } else {
 		// 	respondJSON(w, http.StatusOK, "")
 		// }
-		api.cloudScheduler.GoalManager.GetJobs()
-		respondJSON(w, http.StatusOK, []byte{})
+		job, err := api.cloudScheduler.GoalManager.GetJob(vars["name"])
+		response := datatype.NewAPIMessageBuilder()
+		if err != nil {
+			response.AddError(err.Error())
+		} else {
+			response.AddEntity(vars["name"], job)
+		}
+		respondJSON(w, http.StatusOK, response.Build().ToJson())
 	}
 }
 

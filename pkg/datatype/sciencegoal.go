@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 
 	uuid "github.com/nu7hatch/gouuid"
 )
@@ -23,22 +22,13 @@ func NewScienceGoalBuilder(goalName string) *ScienceGoalBuilder {
 	}
 }
 
-func (sgb *ScienceGoalBuilder) AddSubGoal(nodeID string, pluginSpecs []*PluginSpec, scienceRules []string) *ScienceGoalBuilder {
-	var subGoal SubGoal
-	subGoal.Node = &Node{
-		Name: nodeID,
+func (sgb *ScienceGoalBuilder) AddSubGoal(nodeID string, plugins []*Plugin, scienceRules []string) *ScienceGoalBuilder {
+	subGoal := &SubGoal{
+		Name:         nodeID,
+		Plugins:      plugins,
+		ScienceRules: scienceRules,
 	}
-	subGoal.ScienceRules = scienceRules
-	for _, pluginSpec := range pluginSpecs {
-		subGoal.Plugins = append(subGoal.Plugins, &Plugin{
-			Name:       pluginSpec.Name,
-			PluginSpec: pluginSpec,
-			Status: PluginStatus{
-				SchedulingStatus: Waiting,
-			},
-			GoalID: sgb.sg.ID,
-		})
-	}
+	subGoal.ApplyGoalIDToPlugins(sgb.sg.ID)
 	specjson, err := json.Marshal(subGoal)
 	if err != nil {
 		// We cannot proceed anymore
@@ -47,7 +37,7 @@ func (sgb *ScienceGoalBuilder) AddSubGoal(nodeID string, pluginSpecs []*PluginSp
 	sum := sha256.Sum256(specjson)
 	// instance := hex.EncodeToString(sum[:])[:8]
 	subGoal.checksum = hex.EncodeToString(sum[:])
-	sgb.sg.SubGoals = append(sgb.sg.SubGoals, &subGoal)
+	sgb.sg.SubGoals = append(sgb.sg.SubGoals, subGoal)
 	return sgb
 }
 
@@ -66,7 +56,7 @@ type ScienceGoal struct {
 // GetMySubGoal returns the subgoal assigned to node
 func (g *ScienceGoal) GetMySubGoal(nodeName string) *SubGoal {
 	for _, subGoal := range g.SubGoals {
-		if subGoal.Node.Name == nodeName {
+		if subGoal.Name == nodeName {
 			return subGoal
 		}
 	}
@@ -75,36 +65,35 @@ func (g *ScienceGoal) GetMySubGoal(nodeName string) *SubGoal {
 
 // SubGoal structs node-specific goal along with conditions and rules
 type SubGoal struct {
-	Name         string    `yaml:"name,omitempty"`
-	Node         *Node     `yaml:"node,omitempty"`
-	Plugins      []*Plugin `yaml:"plugins,omitempty"`
-	ScienceRules []string  `yaml:"sciencerules,omitempty"`
-	checksum     string
+	Name         string    `json:"name" yaml:"name"`
+	Plugins      []*Plugin `json:"plugins" yaml:"plugins"`
+	ScienceRules []string  `json:"science_rules" yaml:"scienceRules"`
+	checksum     string    `json:"-" yaml:"-"`
 }
 
-func NewSubGoal(goalID string, nodeID string, plugins []*PluginSpec) *SubGoal {
-	var subGoal SubGoal
-	subGoal.Node = &Node{
-		Name: nodeID,
-	}
-	for _, pluginSpec := range plugins {
-		subGoal.Plugins = append(subGoal.Plugins, &Plugin{
-			Name:       pluginSpec.Name,
-			PluginSpec: pluginSpec,
-			Status: PluginStatus{
-				SchedulingStatus: Waiting,
-			},
-		})
-	}
-	specjson, err := json.Marshal(subGoal)
-	if err != nil {
-		return nil
-	}
-	sum := sha256.Sum256(specjson)
-	// instance := hex.EncodeToString(sum[:])[:8]
-	subGoal.checksum = hex.EncodeToString(sum[:])
-	return &subGoal
-}
+// func NewSubGoal(goalID string, nodeID string, plugins []*PluginSpec) *SubGoal {
+// 	var subGoal SubGoal
+// 	subGoal.Node = &Node{
+// 		Name: nodeID,
+// 	}
+// 	for _, pluginSpec := range plugins {
+// 		subGoal.Plugins = append(subGoal.Plugins, &Plugin{
+// 			Name:       pluginSpec.Name,
+// 			PluginSpec: pluginSpec,
+// 			Status: PluginStatus{
+// 				SchedulingStatus: Waiting,
+// 			},
+// 		})
+// 	}
+// 	specjson, err := json.Marshal(subGoal)
+// 	if err != nil {
+// 		return nil
+// 	}
+// 	sum := sha256.Sum256(specjson)
+// 	// instance := hex.EncodeToString(sum[:])[:8]
+// 	subGoal.checksum = hex.EncodeToString(sum[:])
+// 	return &subGoal
+// }
 
 func (sg *SubGoal) CompareChecksum(otherSubGoal *SubGoal) bool {
 	if sg.checksum == otherSubGoal.checksum {
@@ -114,16 +103,22 @@ func (sg *SubGoal) CompareChecksum(otherSubGoal *SubGoal) bool {
 	}
 }
 
+func (sg *SubGoal) ApplyGoalIDToPlugins(goalID string) {
+	for _, plugin := range sg.Plugins {
+		plugin.GoalID = goalID
+	}
+}
+
 // UpdatePluginContext updates plugin's context event within the subgoal
 // It returns an error if it fails to update context status of the plugin
-func (sg *SubGoal) UpdatePluginContext(contextEvent EventPluginContext) error {
-	for _, plugin := range sg.Plugins {
-		if plugin.Name == contextEvent.PluginName {
-			return plugin.UpdatePluginContext(contextEvent.Status)
-		}
-	}
-	return fmt.Errorf("failed to update context (%s) of plugin %s", contextEvent.Status, contextEvent.PluginName)
-}
+// func (sg *SubGoal) UpdatePluginContext(contextEvent EventPluginContext) error {
+// 	for _, plugin := range sg.Plugins {
+// 		if plugin.Name == contextEvent.PluginName {
+// 			return plugin.UpdatePluginContext(contextEvent.Status)
+// 		}
+// 	}
+// 	return fmt.Errorf("failed to update context (%s) of plugin %s", contextEvent.Status, contextEvent.PluginName)
+// }
 
 // GetSchedulablePlugins returns a list of plugins that are schedulable.
 // A plugin is schedulable when its ContextStatus is Runnable and
@@ -138,6 +133,10 @@ func (sg *SubGoal) GetSchedulablePlugins() (schedulable []*Plugin) {
 	return
 }
 
+func (sg *SubGoal) AddPlugin(plugin *Plugin) {
+	sg.Plugins = append(sg.Plugins, plugin)
+}
+
 // GetPlugin returns the plugin that matches with given pluginName
 func (sg *SubGoal) GetPlugin(pluginName string) *Plugin {
 	for _, plugin := range sg.Plugins {
@@ -150,7 +149,7 @@ func (sg *SubGoal) GetPlugin(pluginName string) *Plugin {
 
 type JobTemplate struct {
 	Name         string `yaml:"name"`
-	Plugins      []*PluginSpec
+	Plugins      []*Plugin
 	ScienceRules []string `yaml:"science_rules"`
 }
 

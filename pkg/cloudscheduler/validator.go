@@ -1,135 +1,94 @@
 package cloudscheduler
 
 import (
+	"encoding/json"
+	"io/ioutil"
+	"os"
+	"path"
+
 	"github.com/sagecontinuum/ses/pkg/datatype"
 	"github.com/sagecontinuum/ses/pkg/logger"
 )
 
 type JobValidator struct {
+	Plugins map[string]*datatype.PluginManifest
+	Nodes   map[string]*datatype.NodeManifest
 }
 
-// ValidateJobAndCreateScienceGoal validates user job and returns a science goals
-// created from the job. It also returns a list of errors in validation if any
-func (jv *JobValidator) ValidateJobAndCreateScienceGoal(job *datatype.Job, meta *MetaHandler) (scienceGoal *datatype.ScienceGoal, errorList []error) {
-	logger.Info.Printf("Validating %s", job.Name)
-	scienceGoal = new(datatype.ScienceGoal)
-	// scienceGoal.ID = job.ID
-	scienceGoal.Name = job.Name
-	return nil, nil
+func NewJobValidator() *JobValidator {
+	return &JobValidator{
+		Plugins: make(map[string]*datatype.PluginManifest),
+		Nodes:   make(map[string]*datatype.NodeManifest),
+	}
+}
 
-	// for _, n := range job.Nodes {
-	// 	node := n
-	// 	var subGoal datatype.SubGoal
-	// 	for _, p := range job.Plugins {
-	// 		plugin := p
-	// 		// Check 1: plugin exists in ECR
-	// 		// exists := pluginExists(plugin)
-	// 		// if !exists {
-	// 		// 	errorList = append(errorList, fmt.Errorf("%s:%s not exist in ECR", plugin.Name, plugin.Version))
-	// 		// 	continue
-	// 		// }
-	// 		// logger.Info.Printf("%s:%s exists in ECR", plugin.Name, plugin.Version)
+func (jv *JobValidator) GetNodeManifest(nodeName string) *datatype.NodeManifest {
+	if n, exist := jv.Nodes[nodeName]; exist {
+		return n
+	} else {
+		return nil
+	}
+}
 
-	// 		// Check 2: node supports hardware requirements of the plugin
-	// 		supported, unsupportedHardwareList := node.GetPluginHardwareUnsupportedList(plugin)
-	// 		if !supported {
-	// 			errorList = append(errorList, fmt.Errorf("%s:%s required hardware not supported by %s: %v", plugin.Name, plugin.PluginSpec.Version, node.Name, unsupportedHardwareList))
-	// 			continue
-	// 		}
-	// 		logger.Info.Printf("%s:%s hardware %v supported by %s", plugin.Name, plugin.PluginSpec.Version, plugin.Hardware, node.Name)
+func (jv *JobValidator) GetPluginManifest(plugin *datatype.Plugin) *datatype.PluginManifest {
+	if p, exist := jv.Plugins[plugin.PluginSpec.Image]; exist {
+		return p
+	} else {
+		return nil
+	}
+}
 
-	// 		// Check 3: architecture of the plugin is supported by node
-	// 		supported, supportedDevices := node.GetPluginArchitectureSupportedDevices(plugin)
-	// 		if !supported {
-	// 			errorList = append(errorList, fmt.Errorf("%s:%s architecture not supported by %s", plugin.Name, plugin.PluginSpec.Version, node.Name))
-	// 			continue
-	// 		}
-	// 		logger.Info.Printf("%s:%s architecture %v supported by %v of node %s", plugin.Name, plugin.PluginSpec.Version, plugin.Architecture, supportedDevices, node.Name)
+func (jv *JobValidator) LoadDatabase(basePath string) error {
+	nodeFiles, err := ioutil.ReadDir(path.Join(basePath, "nodes"))
+	if err != nil {
+		return err
+	}
+	for _, nodeFile := range nodeFiles {
+		nodeFilePath := path.Join(basePath, "nodes", nodeFile.Name())
+		raw, err := os.ReadFile(nodeFilePath)
+		if err != nil {
+			logger.Debug.Printf("Failed to read %s:%s", nodeFilePath, err.Error())
+			continue
+		}
+		var n datatype.NodeManifest
+		err = json.Unmarshal(raw, &n)
+		if err != nil {
+			logger.Debug.Printf("Failed to parse %s:%s", nodeFilePath, err.Error())
+			continue
+		}
+		jv.Nodes[n.Name] = &n
+	}
+	pluginFiles, err := ioutil.ReadDir(path.Join(basePath, "plugins"))
+	if err != nil {
+		return err
+	}
+	for _, pluginFile := range pluginFiles {
+		pluginFilePath := path.Join(basePath, "plugins", pluginFile.Name())
+		raw, err := os.ReadFile(pluginFilePath)
+		if err != nil {
+			logger.Debug.Printf("Failed to read %s:%s", pluginFilePath, err.Error())
+			continue
+		}
+		var p datatype.PluginManifest
+		err = json.Unmarshal(raw, &p)
+		if err != nil {
+			logger.Debug.Printf("Failed to parse %s:%s", pluginFilePath, err.Error())
+			continue
+		}
+		jv.Plugins[p.Image] = &p
+	}
+	return nil
+}
 
-	// 		// Check 4: the required resource is available in node devices
-	// 		for _, device := range supportedDevices {
-	// 			supported, profiles := device.GetUnsupportedPluginProfiles(plugin)
-	// 			if !supported {
-	// 				errorList = append(errorList, fmt.Errorf("%s:%s required resource not supported by device %s of node %s", plugin.Name, plugin.PluginSpec.Version, device.Name, node.Name))
-	// 				continue
-	// 			}
-	// 			// Filter out unsupported knob settings
-	// 			for _, profile := range profiles {
-	// 				err := plugin.RemoveProfile(profile)
-	// 				if err != nil {
-	// 					logger.Error.Printf("%s", err)
-	// 				}
-	// 			}
-	// 		}
-	// 		subGoal.Plugins = append(subGoal.Plugins, plugin)
-	// 	}
-	// 	// Check 4: conditions of job are valid
-
-	// 	// Check 5: valiables are valid
-	// 	if len(subGoal.Plugins) > 0 {
-	// 		subGoal.Node = node
-	// 		subGoal.ScienceRules = job.ScienceRules
-	// 		scienceGoal.SubGoals = append(scienceGoal.SubGoals, &subGoal)
-	// 	}
-	// }
-	//
-	// for _, plugin := range job.Plugins {
-	// 	// Check 1: plugin existence in ECR
-	// 	exists := pluginExists(plugin)
-	// 	if !exists {
-	// 		errorList = append(errorList, fmt.Errorf("%s:%s not exist in ECR", plugin.Name, plugin.Version))
-	// 		continue
-	// 	}
-	// 	logger.Info.Printf("%s:%s exists in ECR", plugin.Name, plugin.Version)
-	//
-	// 	// Check 2: plugins run on target nodes and supported by node hardware and resource
-	// 	for _, node := range job.Nodes {
-	// 		supported, supportedDevices := node.GetPluginArchitectureSupportedDevices(plugin)
-	// 		if !supported {
-	// 			errorList = append(errorList, fmt.Errorf("%s:%s architecture not supported by %s", plugin.Name, plugin.Version, node.Name))
-	// 			continue
-	// 		}
-	// 		logger.Info.Printf("%s:%s architecture %v supported by %v of node %s", plugin.Name, plugin.Version, plugin.Architecture, supportedDevices, node.Name)
-	//
-	// 		supported, unsupportedHardwareList := node.GetPluginHardwareUnsupportedList(plugin)
-	// 		if !supported {
-	// 			errorList = append(errorList, fmt.Errorf("%s:%s required hardware not supported by %s: %v", plugin.Name, plugin.Version, node.Name, unsupportedHardwareList))
-	// 			continue
-	// 		}
-	// 		logger.Info.Printf("%s:%s hardware %v supported by %s", plugin.Name, plugin.Version, plugin.Hardware, node.Name)
-	//
-	// 		for _, device := range supportedDevices {
-	// 			profiles := device.GetUnsupportedPluginProfiles(plugin)
-	// 			logger.Info.Printf("hi")
-	// 			logger.Info.Printf("%v", profiles)
-	// 			// if !supported {
-	// 			// 	errorList = append(errorList, fmt.Errorf(
-	// 			// 		"%s:%s not enough resources to be run on %s device of %s node",
-	// 			// 		plugin.Name,
-	// 			// 		plugin.Version,
-	// 			// 		device.Name,
-	// 			// 		node.Name,
-	// 			// 	))
-	// 			// 	continue
-	// 			// }
-	// 			// Remove profiles
-	// 			for _, profile := range profiles {
-	// 				err := plugin.RemoveProfile(profile)
-	// 				if err != nil {
-	// 					ErrorLogger.Printf("%s", err)
-	// 				}
-	// 			}
-	//
-	// 			logger.Info.Printf("%v\n", plugin)
-	// 		}
-	//
-	// 		// Check 3: if the profiles satisfy the minimum performance requirement of job
-	// 	}
-
-	// Check 4: conditions of job are valid
-
-	// Check 5: valiables are valid
-
-	// }
+// GetNodeNamesByTags returns a list of node names matched with given tags
+func (jv *JobValidator) GetNodeNamesByTags(tags []string) (nodesFound []string) {
+	for _, node := range jv.Nodes {
+		for _, tag := range tags {
+			if _, found := node.Tags[tag]; found {
+				nodesFound = append(nodesFound, tag)
+				break
+			}
+		}
+	}
 	return
 }

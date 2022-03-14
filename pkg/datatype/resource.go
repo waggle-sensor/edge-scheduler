@@ -2,7 +2,7 @@ package datatype
 
 // Resource structs resources used in scheduling
 type Resource struct {
-	CPU       int `yaml:"cpu,omitempty"`
-	Memory    int `yaml:"memory,omitempty"`
-	GPUMemory int `yaml:"gpumemory,omitempty"`
+	CPU       string `json:"cpu,omitempty" yaml:"cpu,omitempty"`
+	Memory    string `json:"memory,omitempty" yaml:"memory,omitempty"`
+	GPUMemory string `json:"gpu_memory,omitempty" yaml:"gpuMemory,omitempty"`
 }

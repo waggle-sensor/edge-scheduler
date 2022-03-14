@@ -1,15 +1,13 @@
 ---
-name: job image collection
-plugintags:
-  - sampling
-nodetags:
-  - greenhouse
-rules:
-  - Daytime(Now) => Run(Imagesampler)
-  - Nighttime(Now) => Stop(Imagesampler)
-statements:
-  - 7 <= env.system.time.hour <= 19 ==> Daytime(Now)
-  - 7 > env.system.time.hour ==> Nighttime(Now)
-  - 19 < env.system.time.hour ==> Nighttime(Now)
+name: image-collection
+plugins:
+- name: imagesampler-bottom
+  pluginSpec:
+    image: waggle/plugin-image-sampler:0.2.5
+    args:
+    - -stream
+    - bottom
+nodes:
+  W023:
 successcriteria:
-  - image.street.sample.accumulated >= 100
+- WallClock(1d)
