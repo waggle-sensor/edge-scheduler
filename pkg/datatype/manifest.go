@@ -60,12 +60,10 @@ func (d *Device) GetUnsupportedPluginProfiles(plugin *PluginManifest) (result bo
 	}
 	result = false
 	for _, profile := range plugin.Profile {
-		if profile.Require.CPU > d.Resource.CPU ||
-			profile.Require.Memory > d.Resource.Memory ||
-			profile.Require.GPUMemory > d.Resource.GPUMemory {
-			unsupportedProfiles = append(unsupportedProfiles, profile)
-		} else {
+		if d.Resource.CanAccommodate(&profile.Require) {
 			result = true
+		} else {
+			unsupportedProfiles = append(unsupportedProfiles, profile)
 		}
 	}
 	return
