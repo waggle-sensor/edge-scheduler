@@ -14,7 +14,7 @@ import (
 
 func init() {
 	var (
-		jobName string
+		jobID   string
 		outPath string
 	)
 	cmdStat := &cobra.Command{
@@ -23,8 +23,8 @@ func init() {
 		TraverseChildren: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			r := interfacing.NewHTTPRequest(serverHostString)
-			if jobName != "" {
-				resp, err := r.RequestGet(fmt.Sprintf("api/v1/jobs/%s/status", jobName), nil)
+			if jobID != "" {
+				resp, err := r.RequestGet(fmt.Sprintf("api/v1/jobs/%s/status", jobID), nil)
 				if err != nil {
 					return err
 				}
@@ -32,7 +32,7 @@ func init() {
 				if err != nil {
 					return err
 				}
-				if blob, exist := body[jobName]; exist {
+				if blob, exist := body[jobID]; exist {
 					jobBlob, err := json.MarshalIndent(blob, "", "  ")
 					if err != nil {
 						return err
@@ -58,12 +58,14 @@ func init() {
 					return err
 				}
 				var (
-					maxLengthName      int = 5
-					maxLengthStatus    int = len("succeeded")
-					maxLengthStartTime int = 35
-					maxLengthDuration  int = 4
+					maxLengthID        int = 5
+					maxLengthName      int = 6
+					maxLengthUser      int = 8
+					maxLengthStatus    int = len("complete")
+					maxLengthStartTime int = len("mm/dd/yyyy hh:MM:ss")
+					maxLengthDuration  int = len("mm/dd/yyyy hh:MM:ss")
 				)
-				formattedList := fmt.Sprintf("%-*s%-*s%-*s%-*s\n", maxLengthName+3, "NAME", maxLengthStatus+3, "STATUS", maxLengthStartTime+3, "START_TIME", maxLengthDuration+3, "RUNNING_TIME")
+				formattedList := fmt.Sprintf("%-*s%-*s%-*s%-*s%-*s%-*s\n", maxLengthID+3, "JOB_ID", maxLengthName+3, "NAME", maxLengthUser+3, "USER", maxLengthStatus+3, "STATUS", maxLengthStartTime+3, "START_TIME", maxLengthDuration+3, "RUNNING_TIME")
 				formattedList += strings.Repeat("=", len(formattedList)) + "\n"
 				for _, blob := range body {
 					jobBlob, err := json.Marshal(blob)
@@ -75,12 +77,18 @@ func init() {
 					if err != nil {
 						return err
 					}
+					var name string
+					if len(job.Name) > maxLengthName {
+						name = job.Name[:maxLengthName-1] + "..."
+					} else {
+						name = job.Name
+					}
 					switch job.Status {
-					case datatype.JobRunning, datatype.JobComplete:
-						formattedList += fmt.Sprintf("%-*s%-*s%-*s%-*s\n", maxLengthName+3, job.Name, maxLengthStatus+3, job.Status, maxLengthStartTime+3, job.LastUpdated, maxLengthDuration+3, time.Since(job.LastUpdated))
+					case datatype.JobSubmitted, datatype.JobRunning, datatype.JobComplete:
+						formattedList += fmt.Sprintf("%-*s%-*s%-*s%-*s%-*s%-*s\n", maxLengthID+3, job.JobID, maxLengthName+3, name, maxLengthUser+3, job.User, maxLengthStatus+3, job.Status, maxLengthStartTime+3, job.LastUpdated.Format("01/02/2006 15:04:05"), maxLengthDuration+3, time.Since(job.LastUpdated))
 						break
 					default:
-						formattedList += fmt.Sprintf("%-*s%-*s%-*s%-*s\n", maxLengthName+3, job.Name, maxLengthStatus+3, job.Status, maxLengthStartTime+3, job.LastUpdated, maxLengthDuration+3, "")
+						formattedList += fmt.Sprintf("%-*s%-*s%-*s%-*s%-*s%-*s\n", maxLengthID+3, job.JobID, maxLengthName+3, name, maxLengthUser+3, job.User, maxLengthStatus+3, job.Status, maxLengthStartTime+3, "-", maxLengthDuration+3, "-")
 					}
 				}
 				fmt.Printf("%s", formattedList)
@@ -89,7 +97,7 @@ func init() {
 		},
 	}
 	flags := cmdStat.Flags()
-	flags.StringVarP(&jobName, "job", "j", "", "Name of the job")
+	flags.StringVarP(&jobID, "job-id", "j", "", "Job ID")
 	flags.StringVarP(&outPath, "out", "o", "", "Path to save output")
 	rootCmd.AddCommand(cmdStat)
 }

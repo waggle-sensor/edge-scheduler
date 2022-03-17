@@ -796,7 +796,7 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 		logger.Error.Printf("Failed to watch %q. Abort the execution", job.Name)
 		rm.TerminateJob(job.Name)
 		rm.UpdateReservation(false)
-		rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventFailure).AddReason(err.Error()).AddJobMeta(job).AddPluginMeta(plugin).Build())
+		rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventFailure).AddReason(err.Error()).AddK3SJobMeta(job).AddPluginMeta(plugin).Build())
 		return
 	}
 	chanEvent := watcher.ResultChan()
@@ -807,7 +807,7 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 		switch event.Type {
 		case watch.Added:
 			pod, _ := rm.GetPod(job.Name)
-			rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusLaunched).AddJobMeta(job).AddPodMeta(pod).AddPluginMeta(plugin).Build())
+			rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusLaunched).AddK3SJobMeta(job).AddPodMeta(pod).AddPluginMeta(plugin).Build())
 		case watch.Modified:
 			if len(job.Status.Conditions) > 0 {
 				pod, _ := rm.GetPod(job.Name)
@@ -815,11 +815,11 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 				switch job.Status.Conditions[0].Type {
 				case batchv1.JobComplete:
 					rm.UpdateReservation(false)
-					rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusComplete).AddJobMeta(job).AddPodMeta(pod).AddPluginMeta(plugin).Build())
+					rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusComplete).AddK3SJobMeta(job).AddPodMeta(pod).AddPluginMeta(plugin).Build())
 					return
 				case batchv1.JobFailed:
 					rm.UpdateReservation(false)
-					rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddJobMeta(job).AddPodMeta(pod).AddPluginMeta(plugin).Build())
+					rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddK3SJobMeta(job).AddPodMeta(pod).AddPluginMeta(plugin).Build())
 					return
 				}
 			} else {
@@ -828,13 +828,13 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 		case watch.Deleted:
 			logger.Debug.Printf("Plugin got deleted. Returning resource and notify")
 			rm.UpdateReservation(false)
-			rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventFailure).AddReason("Plugin deleted").AddJobMeta(job).AddPluginMeta(plugin).Build())
+			rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventFailure).AddReason("Plugin deleted").AddK3SJobMeta(job).AddPluginMeta(plugin).Build())
 			return
 		case watch.Error:
 			logger.Debug.Printf("Error on watcher. Returning resource and notify")
 			rm.TerminateJob(job.Name)
 			rm.UpdateReservation(false)
-			rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventFailure).AddReason("Error on watcher").AddJobMeta(job).AddPluginMeta(plugin).Build())
+			rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventFailure).AddReason("Error on watcher").AddK3SJobMeta(job).AddPluginMeta(plugin).Build())
 			return
 		}
 	}

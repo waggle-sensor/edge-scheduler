@@ -1,7 +1,13 @@
 package cloudscheduler
 
 import (
+	"errors"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"strconv"
+	"strings"
+	"sync"
 
 	"github.com/sagecontinuum/ses/pkg/datatype"
 	"github.com/sagecontinuum/ses/pkg/interfacing"
@@ -15,6 +21,7 @@ type CloudGoalManager struct {
 	rmqHandler   *interfacing.RabbitMQHandler
 	Notifier     *interfacing.Notifier
 	jobs         map[string]*datatype.Job
+	mu           sync.Mutex
 }
 
 // SetRMQHandler sets a RabbitMQ handler used for transferring goals to edge schedulers
@@ -23,31 +30,65 @@ func (cgm *CloudGoalManager) SetRMQHandler(rmqHandler *interfacing.RabbitMQHandl
 	cgm.rmqHandler.CreateExchange("scheduler")
 }
 
-func (cgm *CloudGoalManager) AddJob(job *datatype.Job) error {
-	if _, exist := cgm.jobs[job.Name]; exist {
-		return fmt.Errorf("Job already exists: %s", job.Name)
-	}
+func (cgm *CloudGoalManager) AddJob(job *datatype.Job) string {
+	newJobID := cgm.GenerateNewJobID()
+	job.JobID = newJobID
 	job.UpdateStatus(datatype.JobCreated)
-	cgm.jobs[job.Name] = job
-	return nil
+	cgm.jobs[job.JobID] = job
+	return newJobID
 }
 
 func (cgm *CloudGoalManager) GetJobs() map[string]*datatype.Job {
 	return cgm.jobs
 }
 
-func (cgm *CloudGoalManager) GetJob(jobName string) (*datatype.Job, error) {
-	if job, exist := cgm.jobs[jobName]; exist {
+func (cgm *CloudGoalManager) GetJob(jobID string) (*datatype.Job, error) {
+	if job, exist := cgm.jobs[jobID]; exist {
 		return job, nil
 	} else {
-		return nil, fmt.Errorf("Job %q does not exist", jobName)
+		return nil, fmt.Errorf("Job ID %q does not exist", jobID)
+	}
+}
+
+func (cgm *CloudGoalManager) UpdateJob(job *datatype.Job, submit bool) {
+	cgm.jobs[job.JobID] = job
+	if submit {
+		newScienceGoal := job.ScienceGoal
+		cgm.UpdateScienceGoal(newScienceGoal)
+		event := datatype.NewEventBuilder(datatype.EventGoalStatusNew).AddGoal(newScienceGoal).Build()
+		cgm.Notifier.Notify(event)
+	}
+}
+
+func (cgm *CloudGoalManager) SuspendJob(jobID string) error {
+	if job, exist := cgm.jobs[jobID]; exist {
+		job.UpdateStatus(datatype.JobSuspended)
+		event := datatype.NewEventBuilder(datatype.EventJobStatusSuspended).
+			AddJob(job).
+			AddReason("Suspended by user").Build()
+		cgm.Notifier.Notify(event)
+		return nil
+	} else {
+		return fmt.Errorf("Failed to find job %q to suspend", jobID)
+	}
+}
+
+func (cgm *CloudGoalManager) RemoveJob(jobID string, force bool) error {
+	if job, exist := cgm.jobs[jobID]; exist {
+		if job.Status == datatype.JobRunning && !force {
+			return fmt.Errorf("Failed to remove job %q as it is in running state. Suspend it first or specify force=true", jobID)
+		}
+		delete(cgm.jobs, job.JobID)
+		return nil
+	} else {
+		return fmt.Errorf("Failed to find job %q to remove", jobID)
 	}
 }
 
 // UpdateScienceGoal stores given science goal
 func (cgm *CloudGoalManager) UpdateScienceGoal(scienceGoal *datatype.ScienceGoal) error {
 	// TODO: This operation may need a mutex?
-	cgm.scienceGoals[scienceGoal.ID] = scienceGoal
+	cgm.scienceGoals[scienceGoal.JobID] = scienceGoal
 
 	// Send the updated science goal to all subject edge schedulers
 	if cgm.rmqHandler != nil {
@@ -73,17 +114,36 @@ func (cgm *CloudGoalManager) GetScienceGoal(goalID string) (*datatype.ScienceGoa
 	if goal, exist := cgm.scienceGoals[goalID]; exist {
 		return goal, nil
 	}
-	return nil, fmt.Errorf("the goal %s does not exist", goalID)
+	return nil, fmt.Errorf("Failed to find goal %q", goalID)
 }
 
 // GetScienceGoalsForNode returns a list of goals associated to given node
 func (cgm *CloudGoalManager) GetScienceGoalsForNode(nodeName string) (goals []*datatype.ScienceGoal) {
 	for _, scienceGoal := range cgm.scienceGoals {
 		for _, subGoal := range scienceGoal.SubGoals {
-			if subGoal.Name == nodeName {
+			if strings.ToLower(subGoal.Name) == strings.ToLower(nodeName) {
 				goals = append(goals, scienceGoal)
 			}
 		}
 	}
 	return
+}
+
+func (cgm *CloudGoalManager) GenerateNewJobID() string {
+	cgm.mu.Lock()
+	defer cgm.mu.Unlock()
+	filePath := "/tmp/jobcounter"
+	if _, err := os.Stat(filePath); errors.Is(err, os.ErrNotExist) {
+		ioutil.WriteFile(filePath, []byte("1"), 0600)
+		return "1"
+	} else {
+		counter, err := ioutil.ReadFile(filePath)
+		if err != nil {
+			panic(err)
+		}
+		intCounter, _ := strconv.Atoi(string(counter))
+		intCounter += 1
+		ioutil.WriteFile(filePath, []byte(fmt.Sprint(intCounter)), 0600)
+		return string(counter)
+	}
 }

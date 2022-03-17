@@ -13,7 +13,7 @@ type NodeManifest struct {
 // plugin architecture
 func (n *NodeManifest) GetPluginArchitectureSupportedDevices(plugin *PluginManifest) (result bool, supportedDevices []Device) {
 	for _, nodeDevice := range n.Devices {
-		for pluginArch, _ := range plugin.Architecture {
+		for pluginArch := range plugin.Architecture {
 			if pluginArch == nodeDevice.Architecture {
 				supportedDevices = append(supportedDevices, nodeDevice)
 			}
@@ -30,7 +30,7 @@ func (n *NodeManifest) GetPluginArchitectureSupportedDevices(plugin *PluginManif
 // GetPluginHardwareUnsupportedList returns a list of hardware that are not
 // supported by the node
 func (n *NodeManifest) GetPluginHardwareUnsupportedList(plugin *PluginManifest) (result bool, notSupported []string) {
-	for requiredHardware, _ := range plugin.Hardware {
+	for requiredHardware := range plugin.Hardware {
 		if _, exist := n.Hardware[requiredHardware]; !exist {
 			notSupported = append(notSupported, requiredHardware)
 		}

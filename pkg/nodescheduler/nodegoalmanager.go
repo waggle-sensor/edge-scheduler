@@ -101,7 +101,7 @@ func (ngm *NodeGoalManager) Run(chanToScheduler chan datatype.Event) {
 				}
 			} else {
 				ngm.ScienceGoals[scienceGoal.Name] = scienceGoal
-				ngm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventGoalStatusNew).AddGoal(scienceGoal).Build())
+				ngm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventGoalStatusReceived).AddGoal(scienceGoal).Build())
 			}
 		}
 	}

@@ -19,19 +19,19 @@ type CloudScheduler struct {
 	chanFromGoalManager chan datatype.Event
 }
 
-func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(jobName string) (errorList []error) {
-	job, err := cs.GoalManager.GetJob(jobName)
+func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(jobID string) (errorList []error) {
+	job, err := cs.GoalManager.GetJob(jobID)
 	if err != nil {
 		return []error{err}
 	}
-	scienceGoalBuilder := datatype.NewScienceGoalBuilder(job.Name)
+	scienceGoalBuilder := datatype.NewScienceGoalBuilder(job.Name, job.JobID)
 	logger.Info.Printf("Validating %s...", job.Name)
 	// Step 1: Resolve node tags
 	job.AddNodes(cs.Validator.GetNodeNamesByTags(job.NodeTags))
 	if len(job.Nodes) < 1 {
 		return []error{fmt.Errorf("Node is not selected")}
 	}
-	for nodeName, _ := range job.Nodes {
+	for nodeName := range job.Nodes {
 		approvedPlugins := []*datatype.Plugin{}
 		nodeManifest := cs.Validator.GetNodeManifest(nodeName)
 		if nodeManifest == nil {
@@ -93,12 +93,13 @@ func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(jobName string) (error
 		}
 	}
 	if len(errorList) > 0 {
-		logger.Info.Printf("Validation failed for %s: %v", jobName, errorList)
+		logger.Info.Printf("Validation failed for Job ID %q: %v", jobID, errorList)
 		return errorList
 	} else {
-		logger.Info.Printf("Updating science goal for %s", jobName)
+		logger.Info.Printf("Updating science goal for JOB ID %q", jobID)
 		job.ScienceGoal = scienceGoalBuilder.Build()
 		job.UpdateStatus(datatype.JobSubmitted)
+		cs.GoalManager.UpdateJob(job, true)
 		return nil
 	}
 }
@@ -110,6 +111,15 @@ func (cs *CloudScheduler) Run() {
 		select {
 		case event := <-cs.chanFromGoalManager:
 			logger.Debug.Printf("%s: %q", event.ToString(), event.GetGoalName())
+			switch event.Type {
+			case datatype.EventGoalStatusNew:
+				scienceGoal, err := cs.GoalManager.GetScienceGoal(event.GetGoalID())
+				if err != nil {
+					logger.Error.Printf("Failed to get science goal %q", event.GetGoalID())
+					break
+				}
+				logger.Info.Printf("New goal %q is submitted for job id %q.", scienceGoal.Name, scienceGoal.JobID)
+			}
 		}
 	}
 }

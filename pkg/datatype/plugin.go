@@ -11,18 +11,18 @@ type Plugin struct {
 	Name       string       `json:"name" yaml:"name"`
 	PluginSpec *PluginSpec  `json:"plugin_spec" yaml:"pluginSpec,omitempty"`
 	Status     PluginStatus `json:"status,omitempty" yaml:"status,omitempty"`
-	DataShims  []*DataShim  `yaml:"datashims,omitempty"`
+	DataShims  []*DataShim  `json:"datathims,omitempty" yaml:"datashims,omitempty"`
 	GoalID     string       `json:"-" yaml:"-"`
 }
 
 type PluginSpec struct {
 	Image       string            `json:"image" yaml:"image"`
-	Args        []string          `json:"args" yaml:"args"`
+	Args        []string          `json:"args,omitempty" yaml:"args,omitempty"`
 	Privileged  bool              `json:"privileged,omitempty" yaml:"privileged,omitempty"`
-	Node        string            `json:"node" yaml:"node"`
+	Node        string            `json:"node,omitempty" yaml:"node,omitempty"`
 	Job         string            `json:"job,omitempty" yaml:"job,omitempty"`
-	Selector    map[string]string `json:"selector" yaml:"selector"`
-	Entrypoint  string            `json:"entrypoint" yaml:"entrypoint"`
+	Selector    map[string]string `json:"selector,omitempty" yaml:"selector,omitempty"`
+	Entrypoint  string            `json:"entrypoint,omitempty" yaml:"entrypoint,omitempty"`
 	Env         map[string]string `json:"env,omitempty" yaml:"env,omitempty"`
 	DevelopMode bool              `json:"develop,omitempty" yaml:"develop,omitempty"`
 }

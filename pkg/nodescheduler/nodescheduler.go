@@ -167,7 +167,7 @@ func (ns *NodeScheduler) Run() {
 			// ns.Knowledgebase.RegisterRules(scienceGoal, ns.GoalManager.NodeID)
 			logger.Debug.Printf("%s: %q", event.ToString(), event.GetGoalName())
 			switch event.Type {
-			case datatype.EventGoalStatusNew, datatype.EventGoalStatusUpdated:
+			case datatype.EventGoalStatusReceived, datatype.EventGoalStatusUpdated:
 				ns.ResourceManager.CleanUp()
 				ns.chanNeedScheduling <- event
 				go ns.LogToBeehive.SendWaggleMessage(event.ToWaggleMessage(), "all")

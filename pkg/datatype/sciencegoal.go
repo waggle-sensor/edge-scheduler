@@ -12,12 +12,13 @@ type ScienceGoalBuilder struct {
 	sg ScienceGoal
 }
 
-func NewScienceGoalBuilder(goalName string) *ScienceGoalBuilder {
+func NewScienceGoalBuilder(goalName string, jobID string) *ScienceGoalBuilder {
 	id, _ := uuid.NewV4()
 	return &ScienceGoalBuilder{
 		sg: ScienceGoal{
-			ID:   id.String(),
-			Name: goalName,
+			ID:    id.String(),
+			JobID: jobID,
+			Name:  goalName,
 		},
 	}
 }
@@ -47,10 +48,11 @@ func (sgb *ScienceGoalBuilder) Build() *ScienceGoal {
 
 // ScienceGoal structs local goals and success criteria
 type ScienceGoal struct {
-	ID         string     `yaml:"id"`
-	Name       string     `yaml:"name,omitempty"`
-	SubGoals   []*SubGoal `yaml:"subgoals,omitempty"`
-	Conditions []string   `yaml:"conditions,omitempty"`
+	ID         string     `json:"id" yaml:"id"`
+	JobID      string     `json:"job_id" yaml:"jobID"`
+	Name       string     `json:"name,omitempty" yaml:"name,omitempty"`
+	SubGoals   []*SubGoal `json:"sub_goals,omitempty" yaml:"subgoals,omitempty"`
+	Conditions []string   `json:"conditions,omitempty" yaml:"conditions,omitempty"`
 }
 
 // GetMySubGoal returns the subgoal assigned to node
@@ -154,7 +156,7 @@ type JobTemplate struct {
 }
 
 func (j *JobTemplate) ConvertJobTemplateToScienceGoal(nodeID string) *ScienceGoal {
-	return NewScienceGoalBuilder(j.Name).
+	return NewScienceGoalBuilder(j.Name, "-1").
 		AddSubGoal(nodeID, j.Plugins, j.ScienceRules).
 		Build()
 }

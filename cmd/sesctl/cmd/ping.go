@@ -3,26 +3,19 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"net/url"
 
 	"github.com/sagecontinuum/ses/pkg/interfacing"
 	"github.com/spf13/cobra"
 )
 
 func init() {
-	cmdSubmit := &cobra.Command{
-		Use:              "submit JOB_ID",
-		Short:            "submit a job to cloud scheduler",
+	cmdPing := &cobra.Command{
+		Use:              "ping",
+		Short:            "Ping the Sage edge scheduler",
 		TraverseChildren: true,
-		Args:             cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			jobID := args[0]
-			q, err := url.ParseQuery("id=" + jobID)
-			if err != nil {
-				return err
-			}
 			r := interfacing.NewHTTPRequest(serverHostString)
-			resp, err := r.RequestGet("api/v1/submit", q)
+			resp, err := r.RequestGet("", map[string][]string{})
 			if err != nil {
 				return err
 			}
@@ -35,5 +28,5 @@ func init() {
 			return nil
 		},
 	}
-	rootCmd.AddCommand(cmdSubmit)
+	rootCmd.AddCommand(cmdPing)
 }

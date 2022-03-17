@@ -16,12 +16,15 @@ const (
 	JobSubmitted JobStatus = "Submitted"
 	JobRunning   JobStatus = "Running"
 	JobComplete  JobStatus = "Complete"
-	JobHalted    JobStatus = "Halted"
+	JobSuspended JobStatus = "Suspended"
+	JobRemoved   JobStatus = "Removed"
 )
 
 // Job structs user request for jobs
 type Job struct {
 	Name            string                 `json:"name" yaml:"name"`
+	JobID           string                 `json:"job_id" yaml:"jobID"`
+	User            string                 `json:"user" yaml:"user"`
 	Plugins         []*Plugin              `json:"plugins,omitempty" yaml:"plugins,omitempty"`
 	NodeTags        []string               `json:"node_tags" yaml:"nodeTags"`
 	Nodes           map[string]interface{} `json:"nodes" yaml:"nodes"`
@@ -30,6 +33,14 @@ type Job struct {
 	ScienceGoal     *ScienceGoal           `json:"science_goal,omitempty" yaml:"scienceGoal,omitempty"`
 	Status          JobStatus              `json:"status" yaml:"status"`
 	LastUpdated     time.Time              `json:"last_updated" yaml:"lastUpdated"`
+}
+
+func NewJob(name string, user string, jobID string) *Job {
+	return &Job{
+		Name:  name,
+		JobID: jobID,
+		User:  user,
+	}
 }
 
 func (j *Job) UpdateStatus(newStatus JobStatus) {

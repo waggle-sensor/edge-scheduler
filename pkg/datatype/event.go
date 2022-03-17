@@ -35,6 +35,11 @@ func (eb *EventBuilder) AddReason(reason string) *EventBuilder {
 	return eb
 }
 
+func (eb *EventBuilder) AddJob(j *Job) *EventBuilder {
+	eb.e.Meta["job_id"] = j.JobID
+	return eb
+}
+
 func (eb *EventBuilder) AddGoal(goal *ScienceGoal) *EventBuilder {
 	eb.e.Meta["goal_name"] = goal.Name
 	eb.e.Meta["goal_id"] = goal.ID
@@ -55,7 +60,7 @@ func (eb *EventBuilder) AddPluginMeta(plugin *Plugin) *EventBuilder {
 	return eb
 }
 
-func (eb *EventBuilder) AddJobMeta(job *batchv1.Job) *EventBuilder {
+func (eb *EventBuilder) AddK3SJobMeta(job *batchv1.Job) *EventBuilder {
 	if job == nil {
 		return eb
 	}
@@ -140,8 +145,10 @@ type EventType string
 
 const (
 	// EventSchedulingDecisionScheduled EventType = "sys.scheduler.decision.scheduled"
+	EventJobStatusSuspended    EventType = "sys.scheduler.status.job.suspended"
 	EventGoalStatusNew         EventType = "sys.scheduler.status.goal.new"
 	EventGoalStatusUpdated     EventType = "sys.scheduler.status.goal.updated"
+	EventGoalStatusReceived    EventType = "sys.scheduler.status.goal.received"
 	EventGoalStatusDeleted     EventType = "sys.scheduler.status.goal.deleted"
 	EventPluginStatusPromoted  EventType = "sys.scheduler.status.plugin.promoted"
 	EventPluginStatusScheduled EventType = "sys.scheduler.status.plugin.scheduled"
