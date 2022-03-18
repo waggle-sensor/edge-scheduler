@@ -53,6 +53,7 @@ func (cgm *CloudGoalManager) GetJob(jobID string) (*datatype.Job, error) {
 func (cgm *CloudGoalManager) UpdateJob(job *datatype.Job, submit bool) {
 	cgm.jobs[job.JobID] = job
 	if submit {
+		job.UpdateStatus(datatype.JobSubmitted)
 		newScienceGoal := job.ScienceGoal
 		cgm.UpdateScienceGoal(newScienceGoal)
 		event := datatype.NewEventBuilder(datatype.EventGoalStatusNew).AddGoal(newScienceGoal).Build()

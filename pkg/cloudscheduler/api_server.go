@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 
 	"github.com/gorilla/mux"
 	"github.com/sagecontinuum/ses/pkg/datatype"
@@ -35,7 +36,7 @@ func (api *APIServer) Run() {
 	api_route := r.PathPrefix("/api/v1").Subrouter()
 	api_route.Handle("/create", http.HandlerFunc(api.handlerCreateJob)).Methods(http.MethodGet, http.MethodPost)
 	api_route.Handle("/edit", http.HandlerFunc(api.handlerEditJob)).Methods(http.MethodPost)
-	api_route.Handle("/submit", http.HandlerFunc(api.handlerSubmitJobs)).Methods(http.MethodGet)
+	api_route.Handle("/submit", http.HandlerFunc(api.handlerSubmitJobs)).Methods(http.MethodGet, http.MethodPost)
 	api_route.Handle("/jobs", http.HandlerFunc(api.handlerJobs)).Methods(http.MethodGet)
 	api_route.Handle("/jobs/{id}/status", http.HandlerFunc(api.handlerJobStatus)).Methods(http.MethodGet)
 	api_route.Handle("/jobs/{id}/rm", http.HandlerFunc(api.handlerJobRemove)).Methods(http.MethodGet)
@@ -94,20 +95,74 @@ func (api *APIServer) handlerEditJob(w http.ResponseWriter, r *http.Request) {
 
 func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) {
 	queries := r.URL.Query()
-	if _, exist := queries["id"]; exist {
-		errorList := api.cloudScheduler.ValidateJobAndCreateScienceGoal(queries.Get("id"))
-		if len(errorList) > 0 {
-			response := datatype.NewAPIMessageBuilder().AddError(fmt.Sprintf("%v", errorList)).Build()
+	flagDryRun := false
+	if _, exist := queries["dryrun"]; exist {
+		f, err := strconv.ParseBool(queries.Get("dryrun"))
+		if err != nil {
+			response := datatype.NewAPIMessageBuilder().AddError(err.Error()).Build()
 			respondJSON(w, http.StatusBadRequest, response.ToJson())
-		} else {
-			response := datatype.NewAPIMessageBuilder().AddEntity("job_id", queries.Get("id")).
-				AddEntity("status", datatype.JobSubmitted).Build()
-			respondJSON(w, http.StatusOK, response.ToJson())
+			return
 		}
-	} else {
-		response := datatype.NewAPIMessageBuilder().AddError("job_id is required").Build()
-		respondJSON(w, http.StatusBadRequest, response.ToJson())
+		flagDryRun = f
 	}
+	switch r.Method {
+	case http.MethodGet:
+		queries := r.URL.Query()
+		if _, exist := queries["id"]; exist {
+			errorList := api.cloudScheduler.ValidateJobAndCreateScienceGoal(queries.Get("id"), flagDryRun)
+			if len(errorList) > 0 {
+				response := datatype.NewAPIMessageBuilder().AddError(fmt.Sprintf("%v", errorList)).Build()
+				respondJSON(w, http.StatusBadRequest, response.ToJson())
+				return
+			} else {
+				response := datatype.NewAPIMessageBuilder().AddEntity("job_id", queries.Get("id"))
+				if flagDryRun {
+					response = response.AddEntity("dryrun", true)
+				} else {
+					response = response.AddEntity("status", datatype.JobSubmitted)
+				}
+				respondJSON(w, http.StatusOK, response.Build().ToJson())
+				return
+			}
+		} else {
+			response := datatype.NewAPIMessageBuilder().AddError("job_id is required").Build()
+			respondJSON(w, http.StatusBadRequest, response.ToJson())
+			return
+		}
+	case http.MethodPost:
+		var newJob *datatype.Job
+		// The query includes a full job description
+		blob, err := io.ReadAll(r.Body)
+		if err != nil {
+			response := datatype.NewAPIMessageBuilder().AddError(err.Error()).Build()
+			respondJSON(w, http.StatusBadRequest, response.ToJson())
+			return
+		} else {
+			err = yaml.Unmarshal(blob, &newJob)
+			if err != nil {
+				response := datatype.NewAPIMessageBuilder().AddError(err.Error()).Build()
+				respondJSON(w, http.StatusBadRequest, response.ToJson())
+				return
+			}
+			jobID := api.cloudScheduler.GoalManager.AddJob(newJob)
+			errorList := api.cloudScheduler.ValidateJobAndCreateScienceGoal(jobID, flagDryRun)
+			if len(errorList) > 0 {
+				response := datatype.NewAPIMessageBuilder().AddError(fmt.Sprintf("%v", errorList)).Build()
+				respondJSON(w, http.StatusBadRequest, response.ToJson())
+				return
+			} else {
+				response := datatype.NewAPIMessageBuilder().AddEntity("job_id", jobID)
+				if flagDryRun {
+					response = response.AddEntity("dryrun", true)
+				} else {
+					response = response.AddEntity("status", datatype.JobSubmitted)
+				}
+				respondJSON(w, http.StatusOK, response.Build().ToJson())
+				return
+			}
+		}
+	}
+
 	// switch r.Method {
 	// case PUT, POST:
 	// 	data, err := ioutil.ReadAll(r.Body)
@@ -128,7 +183,7 @@ func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) 
 	// 	respondJSON(w, http.StatusOK, `{"response": "success"}`)
 	// 	return
 	// }
-	respondJSON(w, http.StatusOK, []byte{})
+	// respondJSON(w, http.StatusOK, []byte{})
 	// if r.Method == POST {
 	// 	log.Printf("hit POST")
 	// 	// yamlFile, err := ioutil.ReadAll(r.Body)
@@ -227,21 +282,21 @@ func (api *APIServer) handlerJobs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api *APIServer) handlerJobStatus(w http.ResponseWriter, r *http.Request) {
-	queries := r.URL.Query()
+	vars := mux.Vars(r)
 	if r.Method == http.MethodGet {
 		log.Printf("hit GET")
-		logger.Debug.Printf("API call on Job status of %s", queries.Get("id"))
+		logger.Debug.Printf("API call on Job status of %s", vars["id"])
 		// if goal, err := cs.GoalManager.GetScienceGoal(vars["id"]); err == nil {
 		// 	respondJSON(w, http.StatusOK, goal)
 		// } else {
 		// 	respondJSON(w, http.StatusOK, "")
 		// }
-		job, err := api.cloudScheduler.GoalManager.GetJob(queries.Get("id"))
+		job, err := api.cloudScheduler.GoalManager.GetJob(vars["id"])
 		response := datatype.NewAPIMessageBuilder()
 		if err != nil {
 			response.AddError(err.Error())
 		} else {
-			response.AddEntity(queries.Get("id"), job)
+			response.AddEntity(vars["id"], job)
 		}
 		respondJSON(w, http.StatusOK, response.Build().ToJson())
 	}

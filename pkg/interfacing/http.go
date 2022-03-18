@@ -44,6 +44,20 @@ func (r *HTTPRequest) RequestPostFromFile(subPath string, filePath string) (*htt
 	return http.Post(url.String(), "application/yaml", bytes.NewBuffer(blob))
 }
 
+func (r *HTTPRequest) RequestPostFromFileWithQueries(subPath string, filePath string, queries url.Values) (*http.Response, error) {
+	url, err := url.Parse(r.BaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to parse %q: %s", r.BaseURL, err.Error())
+	}
+	url.Path = path.Join(url.Path, subPath)
+	url.RawQuery = queries.Encode()
+	blob, err := ioutil.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+	return http.Post(url.String(), "application/yaml", bytes.NewBuffer(blob))
+}
+
 func (r *HTTPRequest) ParseJSONHTTPResponse(resp *http.Response) (body map[string]interface{}, err error) {
 	defer resp.Body.Close()
 	stream, err := io.ReadAll(resp.Body)

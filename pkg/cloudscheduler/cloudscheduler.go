@@ -19,7 +19,7 @@ type CloudScheduler struct {
 	chanFromGoalManager chan datatype.Event
 }
 
-func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(jobID string) (errorList []error) {
+func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(jobID string, dryrun bool) (errorList []error) {
 	job, err := cs.GoalManager.GetJob(jobID)
 	if err != nil {
 		return []error{err}
@@ -95,13 +95,15 @@ func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(jobID string) (errorLi
 	if len(errorList) > 0 {
 		logger.Info.Printf("Validation failed for Job ID %q: %v", jobID, errorList)
 		return errorList
-	} else {
-		logger.Info.Printf("Updating science goal for JOB ID %q", jobID)
-		job.ScienceGoal = scienceGoalBuilder.Build()
-		job.UpdateStatus(datatype.JobSubmitted)
-		cs.GoalManager.UpdateJob(job, true)
-		return nil
 	}
+	logger.Info.Printf("Updating science goal for JOB ID %q", jobID)
+	job.ScienceGoal = scienceGoalBuilder.Build()
+	if dryrun {
+		cs.GoalManager.UpdateJob(job, false)
+	} else {
+		cs.GoalManager.UpdateJob(job, true)
+	}
+	return nil
 }
 
 func (cs *CloudScheduler) Run() {
