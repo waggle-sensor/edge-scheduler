@@ -11,8 +11,6 @@ import (
 
 	"github.com/sagecontinuum/ses/pkg/datatype"
 	"github.com/sagecontinuum/ses/pkg/interfacing"
-	"github.com/sagecontinuum/ses/pkg/logger"
-	yaml "gopkg.in/yaml.v2"
 )
 
 // CloudGoalManager structs a goal manager for cloudscheduler
@@ -89,22 +87,22 @@ func (cgm *CloudGoalManager) RemoveJob(jobID string, force bool) error {
 // UpdateScienceGoal stores given science goal
 func (cgm *CloudGoalManager) UpdateScienceGoal(scienceGoal *datatype.ScienceGoal) error {
 	// TODO: This operation may need a mutex?
-	cgm.scienceGoals[scienceGoal.JobID] = scienceGoal
+	cgm.scienceGoals[scienceGoal.ID] = scienceGoal
 
 	// Send the updated science goal to all subject edge schedulers
-	if cgm.rmqHandler != nil {
-		// TODO: Refine what to send to RMQ for edge scheduler
-		// Send the updates
-		for _, subGoal := range scienceGoal.SubGoals {
-			message, err := yaml.Marshal([]*datatype.ScienceGoal{scienceGoal})
-			if err != nil {
-				logger.Error.Printf("Unable to parse the science goal <%s> into YAML: %s", scienceGoal.ID, err.Error())
-				continue
-			}
-			logger.Debug.Printf("%+v", string(message))
-			cgm.rmqHandler.SendYAML(subGoal.Name, message)
-		}
-	}
+	// if cgm.rmqHandler != nil {
+	// 	// TODO: Refine what to send to RMQ for edge scheduler
+	// 	// Send the updates
+	// 	for _, subGoal := range scienceGoal.SubGoals {
+	// 		message, err := yaml.Marshal([]*datatype.ScienceGoal{scienceGoal})
+	// 		if err != nil {
+	// 			logger.Error.Printf("Unable to parse the science goal <%s> into YAML: %s", scienceGoal.ID, err.Error())
+	// 			continue
+	// 		}
+	// 		logger.Debug.Printf("%+v", string(message))
+	// 		cgm.rmqHandler.SendYAML(subGoal.Name, message)
+	// 	}
+	// }
 
 	return nil
 }
