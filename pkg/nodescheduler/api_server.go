@@ -3,6 +3,7 @@ package nodescheduler
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -12,12 +13,6 @@ import (
 	"github.com/sagecontinuum/ses/pkg/logger"
 	yaml "gopkg.in/yaml.v2"
 	// "github.com/urfave/negroni"
-)
-
-const (
-	GET  = "GET"
-	POST = "POST"
-	PUT  = "PUT"
 )
 
 var (
@@ -45,7 +40,7 @@ func (api *APIServer) Run() {
 		fmt.Fprintln(w, `{"id": "Node Scheduler (`+api.nodeScheduler.NodeID+`)", "version":"`+api.version+`"}`)
 	})
 	api_route := r.PathPrefix("/api/v1").Subrouter()
-	api_route.Handle("/kb/rules", http.HandlerFunc(handlerClauses)).Methods(http.MethodGet, http.MethodPost)
+	api_route.Handle("/kb/rules", http.HandlerFunc(api.handlerRules)).Methods(http.MethodGet, http.MethodPost)
 	api_route.Handle("/kb/senses", http.HandlerFunc(api.handlerSenses)).Methods(http.MethodGet, http.MethodPost, http.MethodDelete)
 	api_route.Handle("/goals", http.HandlerFunc(api.handlerGoals)).Methods(http.MethodGet, http.MethodPost, http.MethodPut)
 	logger.Info.Fatalln(http.ListenAndServe(api_address_port, r))
@@ -62,24 +57,38 @@ func respondJSON(w http.ResponseWriter, statusCode int, data interface{}) {
 	}
 }
 
-func handlerClauses(w http.ResponseWriter, r *http.Request) {
-	if r.Method == GET {
+func (api *APIServer) handlerRules(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
 		clauses := ""
 		respondJSON(w, http.StatusOK, clauses)
-	} else if r.Method == POST {
+	case http.MethodPost:
 		r.ParseForm()
 		clause := r.Form.Get("clause")
 		log.Printf(clause)
-
 		respondJSON(w, http.StatusOK, clause)
 	}
 }
 
 func (api *APIServer) handlerSenses(w http.ResponseWriter, r *http.Request) {
-	if r.Method == GET {
-		memory := ""
-		respondJSON(w, http.StatusOK, memory)
-	} else if r.Method == POST {
+
+	switch r.Method {
+	case http.MethodGet:
+		queries := r.URL.Query()
+		if _, exist := queries["key"]; exist {
+			if _, exist := queries["value"]; exist {
+				api.nodeScheduler.Knowledgebase.AddRawMeasure(queries.Get("key"), queries.Get("value"))
+				response := datatype.NewAPIMessageBuilder().AddEntity("status", "success").Build()
+				respondJSON(w, http.StatusOK, response.ToJson())
+			} else {
+				response := datatype.NewAPIMessageBuilder().AddError("no value= found").Build()
+				respondJSON(w, http.StatusOK, response.ToJson())
+			}
+		} else {
+			response := datatype.NewAPIMessageBuilder().AddError("no key= found").Build()
+			respondJSON(w, http.StatusOK, response.ToJson())
+		}
+	case http.MethodPost:
 		r.ParseForm()
 		subject := r.Form.Get("subject")
 		value := r.Form.Get("value")
@@ -87,7 +96,7 @@ func (api *APIServer) handlerSenses(w http.ResponseWriter, r *http.Request) {
 		// Memorize(subject, value)
 		// api.nodeScheduler.Knowledgebase.
 		respondJSON(w, http.StatusOK, subject+value)
-	} else if r.Method == "DELETE" {
+	case http.MethodDelete:
 		log.Print("hit DELETE")
 		r.ParseForm()
 		subject := r.Form.Get("subject")
@@ -96,13 +105,33 @@ func (api *APIServer) handlerSenses(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api *APIServer) handlerGoals(w http.ResponseWriter, r *http.Request) {
-	if r.Method == GET {
+	switch r.Method {
+	case http.MethodGet:
 		// clauses := PrintClauses()
 		// respondJSON(w, http.StatusOK, clauses)
-	} else if r.Method == POST {
-		log.Printf("hit POST")
-		respondJSON(w, http.StatusOK, "")
-	} else if r.Method == PUT {
+	case http.MethodPost:
+		var newGoals []*datatype.ScienceGoal
+		blob, err := io.ReadAll(r.Body)
+		if err != nil {
+			response := datatype.NewAPIMessageBuilder().AddError(err.Error()).Build()
+			respondJSON(w, http.StatusBadRequest, response.ToJson())
+			return
+		} else {
+			logger.Debug.Printf("%s", string(blob))
+			err = json.Unmarshal(blob, &newGoals)
+			if err != nil {
+				response := datatype.NewAPIMessageBuilder().AddError(err.Error()).Build()
+				respondJSON(w, http.StatusBadRequest, response.ToJson())
+				return
+			}
+		}
+		logger.Info.Printf("Adding goals by the REST call.")
+		for _, goal := range newGoals {
+			api.nodeScheduler.GoalManager.AddGoal(goal)
+		}
+		response := datatype.NewAPIMessageBuilder().AddEntity("status", "success").Build()
+		respondJSON(w, http.StatusOK, response.ToJson())
+	case http.MethodPut:
 		log.Printf("hit PUT")
 		// mReader, err := r.MultipartReader()
 		// if err != nil {

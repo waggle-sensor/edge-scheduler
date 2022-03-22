@@ -12,7 +12,7 @@ type Plugin struct {
 	PluginSpec *PluginSpec  `json:"plugin_spec" yaml:"pluginSpec,omitempty"`
 	Status     PluginStatus `json:"status,omitempty" yaml:"status,omitempty"`
 	DataShims  []*DataShim  `json:"datathims,omitempty" yaml:"datashims,omitempty"`
-	GoalID     string       `json:"-" yaml:"-"`
+	GoalID     string       `json:"goal_id,omitempty" yaml:"goalID,omitempty"`
 }
 
 type PluginSpec struct {

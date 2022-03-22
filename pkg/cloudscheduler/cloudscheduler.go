@@ -83,6 +83,7 @@ func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(jobID string, dryrun b
 				// 	}
 				// }
 			}
+			plugin.UpdatePluginSchedulingStatus(datatype.Waiting)
 			approvedPlugins = append(approvedPlugins, plugin)
 		}
 		// Check 4: conditions of job are valid

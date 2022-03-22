@@ -40,19 +40,20 @@ func NewNodeGoalManager(cloudSchedulerURL string, nodeID string, simulate bool) 
 
 // GetScienceGoalByID returns the goal of given goal name
 func (ngm *NodeGoalManager) GetScienceGoalByID(goalID string) (*datatype.ScienceGoal, error) {
-	for _, goal := range ngm.ScienceGoals {
-		if goal.ID == goalID {
-			return goal, nil
-		}
+	if goal, exist := ngm.ScienceGoals[goalID]; exist {
+		return goal, nil
 	}
-	return nil, fmt.Errorf("The goal name %s does not exist", goalID)
+
+	return nil, fmt.Errorf("The goal ID %s does not exist", goalID)
 }
 
 func (ngm *NodeGoalManager) GetScienceGoalByName(goalName string) (*datatype.ScienceGoal, error) {
-	if goal, exist := ngm.ScienceGoals[goalName]; exist {
-		return goal, nil
+	for _, goal := range ngm.ScienceGoals {
+		if goal.Name == goalName {
+			return goal, nil
+		}
 	}
-	return nil, fmt.Errorf("The goal ID %s does not exist", goalName)
+	return nil, fmt.Errorf("The goal Name %s does not exist", goalName)
 }
 
 // SetRMQHandler sets a RabbitMQ handler used for transferring goals to edge schedulers
@@ -61,10 +62,16 @@ func (ngm *NodeGoalManager) SetRMQHandler(rmqHandler *interfacing.RabbitMQHandle
 }
 
 // DropGoal drops given goal from the list
-func (ngm *NodeGoalManager) DropGoal(goalName string) error {
-	if _, exist := ngm.ScienceGoals[goalName]; exist {
-		delete(ngm.ScienceGoals, goalName)
-		return nil
+func (ngm *NodeGoalManager) DropGoalByName(goalName string) error {
+	// if _, exist := ngm.ScienceGoals[goalName]; exist {
+	// 	delete(ngm.ScienceGoals, goalName)
+	// 	return nil
+	// }
+	for _, goal := range ngm.ScienceGoals {
+		if goal.Name == goalName {
+			delete(ngm.ScienceGoals, goal.ID)
+			return nil
+		}
 	}
 	return fmt.Errorf("The goal %s does not exist", goalName)
 }
@@ -90,17 +97,17 @@ func (ngm *NodeGoalManager) Run(chanToScheduler chan datatype.Event) {
 		select {
 		case scienceGoal := <-ngm.chanGoalQueue:
 			logger.Debug.Printf("Received a goal %q", scienceGoal.Name)
-			if goal, exist := ngm.ScienceGoals[scienceGoal.Name]; exist {
+			if goal, err := ngm.GetScienceGoalByName(scienceGoal.Name); err == nil {
 				// if goal.GetMySubGoal(ngm.NodeID) == scienceGoal.GetMySubGoal(ngm.NodeID) {
 				if goal.GetMySubGoal(ngm.NodeID).CompareChecksum(scienceGoal.GetMySubGoal(ngm.NodeID)) {
 					logger.Debug.Printf("The newly submitted goal %s exists and no changes in the goal. Skipping adding the goal", scienceGoal.Name)
 				} else {
 					logger.Debug.Printf("The newly submitted goal %s exists and has changed its content. Need scheduling", scienceGoal.Name)
-					ngm.ScienceGoals[scienceGoal.Name] = scienceGoal
+					ngm.ScienceGoals[scienceGoal.ID] = scienceGoal
 					ngm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventGoalStatusUpdated).AddGoal(scienceGoal).Build())
 				}
 			} else {
-				ngm.ScienceGoals[scienceGoal.Name] = scienceGoal
+				ngm.ScienceGoals[scienceGoal.ID] = scienceGoal
 				ngm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventGoalStatusReceived).AddGoal(scienceGoal).Build())
 			}
 		}
