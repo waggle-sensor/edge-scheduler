@@ -87,7 +87,7 @@ func (kb *Knowledgebase) RegisterRules(scienceGoal *datatype.ScienceGoal, nodeNa
 	logger.Debug.Printf("%+v", mySubGoal.ScienceRules)
 	logger.Info.Printf("Registring science rules of science goal %s to KB", scienceGoal.Name)
 	rules := []string{scienceGoal.ID}
-	rules = append(rules, mySubGoal.ScienceRules...)
+	// rules = append(rules, mySubGoal.ScienceRules...)
 	kb.ChanToKB <- RequestToKB{
 		Command: "rule",
 		Args:    rules,

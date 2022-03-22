@@ -1,0 +1,24 @@
+---
+name: helloworld
+plugins:
+- name: longtask
+  pluginSpec:
+    image: waggle/plugin-base:1.1.1-base
+    args:
+    - bash
+    - -c
+    - for i in {1..15}; do date; sleep 1; done
+- name: shorttask
+  pluginSpec:
+    image: waggle/plugin-base:1.1.1-base
+    args:
+    - bash
+    - -c
+    - for i in {1..5}; do date; sleep 1; done
+nodes:
+  W023:
+scienceRules:
+- "longtask: minutevariable > 5"
+- "shorttask: minutevariable > 2"
+successcriteria:
+- WallClock(1d)

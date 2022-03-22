@@ -13,6 +13,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -304,13 +305,12 @@ func (rm *ResourceManager) WatchJobs(namespace string) (watch.Interface, error) 
 
 // CreateK3SJob creates and returns a Kubernetes job object of the pllugin
 func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, error) {
-	if plugin.Name == "" {
-		name, err := pluginNameForSpec(plugin.PluginSpec)
-		if err != nil {
-			return nil, err
-		}
-		plugin.Name = name
+	// if plugin.Name == "" {
+	name, err := pluginNameForSpec(plugin)
+	if err != nil {
+		return nil, err
 	}
+	// }
 	envs := []apiv1.EnvVar{
 		{
 			Name:  "PULSE_SERVER",
@@ -380,7 +380,7 @@ func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, err
 	}
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      plugin.Name,
+			Name:      name,
 			Namespace: rm.Namespace,
 		},
 		Spec: batchv1.JobSpec{
@@ -1030,7 +1030,7 @@ func (rm *ResourceManager) Run(chanPluginToUpdate <-chan *datatype.Plugin) {
 
 var validNamePattern = regexp.MustCompile("^[a-z0-9-]+$")
 
-func pluginNameForSpec(spec *datatype.PluginSpec) (string, error) {
+func pluginNameForSpec(plugin *datatype.Plugin) (string, error) {
 	// if no given name for the plugin, use PLUGIN-VERSION-INSTANCE format for name
 	// INSTANCE is calculated as Sha256("DOMAIN/PLUGIN:VERSION&ARGUMENTS") and
 	// take the first 8 hex letters.
@@ -1038,14 +1038,14 @@ func pluginNameForSpec(spec *datatype.PluginSpec) (string, error) {
 	//       the same domain, only one deployment will be applied to the cluster
 	// NOTE2: To comply with RFC 1123 for Kubernetes object name, only lower alphanumeric
 	//        characters with '-' is allowed
-	// if spec.Name != "" {
-	// 	jobName := strings.Join([]string{spec.Name, strconv.FormatInt(time.Now().Unix(), 10)}, "-")
-	// 	if !validNamePattern.MatchString(jobName) {
-	// 		return "", fmt.Errorf("plugin name must consist of alphanumeric characters with '-' RFC1123")
-	// 	}
-	// 	return jobName, nil
-	// }
-	return generateJobNameForSpec(spec)
+	if plugin.Name != "" {
+		jobName := strings.Join([]string{plugin.Name, strconv.FormatInt(time.Now().Unix(), 10)}, "-")
+		if !validNamePattern.MatchString(jobName) {
+			return "", fmt.Errorf("plugin name must consist of alphanumeric characters with '-' RFC1123")
+		}
+		return jobName, nil
+	}
+	return generateJobNameForSpec(plugin.PluginSpec)
 }
 
 // generateJobNameForSpec generates a consistent name for a Spec.

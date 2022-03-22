@@ -54,6 +54,7 @@ func main() {
 		logger.Debug.Println("Creating scheduler for simulation...")
 		ns = nodescheduler.NewFakeNodeSchedulerBuilder(nodeID, Version).
 			AddGoalManager().
+			AddKnowledgebase().
 			AddResourceManager().
 			AddAPIServer().
 			Build()
@@ -61,6 +62,7 @@ func main() {
 		logger.Debug.Println("Creating scheduler for real...")
 		ns = nodescheduler.NewRealNodeSchedulerBuilder(nodeID, Version).
 			AddGoalManager(cloudschedulerURI).
+			AddKnowledgebase().
 			AddResourceManager(registry, incluster, kubeconfig).
 			AddAPIServer().
 			AddLoggerToBeehive(rabbitmqURI, rabbitmqUsername, rabbitmqPassword, getenv("WAGGLE_APP_ID", "")).

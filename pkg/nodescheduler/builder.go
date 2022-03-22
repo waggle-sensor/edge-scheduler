@@ -5,7 +5,6 @@ import (
 
 	"github.com/sagecontinuum/ses/pkg/datatype"
 	"github.com/sagecontinuum/ses/pkg/interfacing"
-	"github.com/sagecontinuum/ses/pkg/knowledgebase"
 	"github.com/sagecontinuum/ses/pkg/nodescheduler/policy"
 )
 
@@ -81,12 +80,8 @@ func (rns *RealNodeScheduler) AddResourceManager(registry string, incluster bool
 	return rns
 }
 
-func (rns *RealNodeScheduler) AddKnowledgebase(rabbitMQURI string) *RealNodeScheduler {
-	rns.nodeScheduler.Knowledgebase = &knowledgebase.Knowledgebase{
-		PathToPythonKB: "kb.py",
-		ChanToKB:       make(chan knowledgebase.RequestToKB, maxChannelBuffer),
-		RMQHost:        rabbitMQURI,
-	}
+func (rns *RealNodeScheduler) AddKnowledgebase() *RealNodeScheduler {
+	rns.nodeScheduler.Knowledgebase = NewKnowledgeBase(rns.nodeScheduler.NodeID)
 	return rns
 }
 
@@ -157,12 +152,8 @@ func (fns *FakeNodeScheduler) AddResourceManager() *FakeNodeScheduler {
 	return fns
 }
 
-func (fns *FakeNodeScheduler) AddKnowledgebase(rabbitMQURI string) *FakeNodeScheduler {
-	fns.nodeScheduler.Knowledgebase = &knowledgebase.Knowledgebase{
-		PathToPythonKB: "kb.py",
-		ChanToKB:       make(chan knowledgebase.RequestToKB, maxChannelBuffer),
-		RMQHost:        rabbitMQURI,
-	}
+func (fns *FakeNodeScheduler) AddKnowledgebase() *FakeNodeScheduler {
+	fns.nodeScheduler.Knowledgebase = NewKnowledgeBase(fns.nodeScheduler.NodeID)
 	return fns
 }
 

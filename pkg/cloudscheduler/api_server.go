@@ -1,6 +1,7 @@
 package cloudscheduler
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -371,11 +372,13 @@ func (api *APIServer) handlerGoalForNode(w http.ResponseWriter, r *http.Request)
 	vars := mux.Vars(r)
 	nodeName := vars["nodeName"]
 	goals := api.cloudScheduler.GoalManager.GetScienceGoalsForNode(nodeName)
-	response := datatype.NewAPIMessageBuilder().AddEntity(nodeName, goals).Build()
-	// dat, _ := yaml.Marshal(goals)
-	// respondYAML(w, http.StatusOK, goals)
-	// respondYAML(w, http.StatusOK, `[{"response": "No goals found"}]`)
-	respondJSON(w, http.StatusOK, response.ToJson())
+	blob, err := json.MarshalIndent(goals, "", "  ")
+	if err != nil {
+		response := datatype.NewAPIMessageBuilder().AddError(err.Error()).Build()
+		respondJSON(w, http.StatusOK, response.ToJson())
+		return
+	}
+	respondJSON(w, http.StatusOK, blob)
 }
 
 func respondJSON(w http.ResponseWriter, statusCode int, data []byte) {
