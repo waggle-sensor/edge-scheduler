@@ -201,6 +201,15 @@ func createDeploymentForConfig(config *pluginConfig) *appsv1.Deployment {
 										},
 									},
 								},
+								// Set pod IP for use by ROS clients.
+								{
+									Name: "ROS_IP",
+									ValueFrom: &apiv1.EnvVarSource{
+										FieldRef: &apiv1.ObjectFieldSelector{
+											FieldPath: "status.podIP",
+										},
+									},
+								},
 							},
 							// NOTE This will provide WAGGLE_NODE_ID and WAGGLE_NODE_VSN for cases that a plugin
 							// needs to make a node specific choice. This is not the ideal way to manage node
