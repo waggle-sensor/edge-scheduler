@@ -353,7 +353,7 @@ func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, err
 		// Use default WES roscore hostname for ROS clients.
 		{
 			Name:  "ROS_MASTER_URI",
-			Value: "http://roscore:11311",
+			Value: "http://wes-roscore:11311",
 		},
 	}
 	for k, v := range plugin.PluginSpec.Env {
