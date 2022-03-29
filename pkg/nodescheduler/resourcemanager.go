@@ -341,6 +341,20 @@ func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, err
 				},
 			},
 		},
+		// Set pod IP for use by ROS clients.
+		{
+			Name: "ROS_IP",
+			ValueFrom: &apiv1.EnvVarSource{
+				FieldRef: &apiv1.ObjectFieldSelector{
+					FieldPath: "status.podIP",
+				},
+			},
+		},
+		// Use default WES roscore hostname for ROS clients.
+		{
+			Name:  "ROS_MASTER_URI",
+			Value: "http://roscore:11311",
+		},
 	}
 	for k, v := range plugin.PluginSpec.Env {
 		envs = append(envs, apiv1.EnvVar{

@@ -210,6 +210,11 @@ func createDeploymentForConfig(config *pluginConfig) *appsv1.Deployment {
 										},
 									},
 								},
+								// Use default WES roscore hostname for ROS clients.
+								{
+									Name:  "ROS_MASTER_URI",
+									Value: "http://roscore:11311",
+								},
 							},
 							// NOTE This will provide WAGGLE_NODE_ID and WAGGLE_NODE_VSN for cases that a plugin
 							// needs to make a node specific choice. This is not the ideal way to manage node
