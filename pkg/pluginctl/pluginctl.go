@@ -1,6 +1,7 @@
 package pluginctl
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -29,6 +30,7 @@ type Deployment struct {
 	PluginImage    string
 	PluginArgs     []string
 	EnvVarString   []string
+	EnvFromFile    string
 	DevelopMode    bool
 }
 
@@ -62,7 +64,17 @@ func (p *PluginCtl) Deploy(dep *Deployment) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("Failed to parse selector %q", err.Error())
 	}
-
+	if dep.EnvFromFile != "" {
+		logger.Debug.Printf("Reading env file %q...", dep.EnvFromFile)
+		file, err := os.Open(dep.EnvFromFile)
+		if err != nil {
+			return "", fmt.Errorf("Failed to open env-from file %q: %s", dep.EnvFromFile, err.Error())
+		}
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			dep.EnvVarString = append(dep.EnvVarString, scanner.Text())
+		}
+	}
 	envs, err := parseEnv(dep.EnvVarString)
 	if err != nil {
 		return "", fmt.Errorf("Failed to parse env %q", err.Error())
