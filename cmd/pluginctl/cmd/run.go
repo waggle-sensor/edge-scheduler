@@ -23,6 +23,7 @@ func init() {
 	flags.StringVar(&deployment.Entrypoint, "entrypoint", "", "Specify command to run inside plugin")
 	flags.BoolVarP(&deployment.Privileged, "privileged", "p", false, "Deploy as privileged plugin")
 	flags.StringSliceVarP(&deployment.EnvVarString, "env", "e", []string{}, "Set environment variables")
+	flags.StringVarP(&deployment.EnvFromFile, "env-from", "", "", "Set environment variables from file")
 	flags.BoolVar(&deployment.DevelopMode, "develop", false, "Enable the following development time features: access to wan network")
 	rootCmd.AddCommand(cmdRun)
 }
