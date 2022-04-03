@@ -40,6 +40,7 @@ import (
 const (
 	namespace             = "ses"
 	rancherKubeconfigPath = "/etc/rancher/k3s/k3s.yaml"
+	configMapNameForGoals = "waggle-plugin-scheduler-goals"
 )
 
 var (
@@ -257,7 +258,7 @@ func (rm *ResourceManager) CreateConfigMap(name string, data map[string]string, 
 }
 
 // WatchConfigMap
-func (rm *ResourceManager) WatchConfigMap(name string, namespace string) (watch.Interface, error) {
+func (rm *ResourceManager) GetConfigMapWatcher(name string, namespace string) (func() (watch.Interface, error), error) {
 	if namespace == "" {
 		namespace = rm.Namespace
 	}
@@ -267,8 +268,13 @@ func (rm *ResourceManager) WatchConfigMap(name string, namespace string) (watch.
 	}
 	// var selector *metav1.LabelSelector
 	// err = metav1.Convert_Map_string_To_string_To_v1_LabelSelector(&configMap.Labels, selector, nil)
-	watcher, err := rm.Clientset.CoreV1().ConfigMaps(namespace).Watch(context.TODO(), metav1.SingleObject(metav1.ObjectMeta{Name: configMap.Name, Namespace: configMap.Namespace}))
-	return watcher, err
+	return func() (watch.Interface, error) {
+		return rm.Clientset.CoreV1().
+			ConfigMaps(namespace).
+			Watch(context.TODO(),
+				metav1.SingleObject(metav1.ObjectMeta{Name: configMap.Name, Namespace: configMap.Namespace}),
+			)
+	}, nil
 }
 
 func (rm *ResourceManager) WatchJob(name string, namespace string, retry int) (watcher watch.Interface, err error) {
@@ -804,12 +810,12 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 	}
 	logger.Info.Printf("Plugin %q deployed", job.Name)
 	plugin.PluginSpec.Job = job.Name
-	rm.UpdateReservation(true)
+	// rm.UpdateReservation(true)
 	watcher, err := rm.WatchJob(job.Name, rm.Namespace, 3)
 	if err != nil {
 		logger.Error.Printf("Failed to watch %q. Abort the execution", job.Name)
 		rm.TerminateJob(job.Name)
-		rm.UpdateReservation(false)
+		// rm.UpdateReservation(false)
 		rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventFailure).AddReason(err.Error()).AddK3SJobMeta(job).AddPluginMeta(plugin).Build())
 		return
 	}
@@ -828,11 +834,11 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 				logger.Debug.Printf("Plugin %s status %s: %s", job.Name, event.Type, job.Status.Conditions[0].Type)
 				switch job.Status.Conditions[0].Type {
 				case batchv1.JobComplete:
-					rm.UpdateReservation(false)
+					// rm.UpdateReservation(false)
 					rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusComplete).AddK3SJobMeta(job).AddPodMeta(pod).AddPluginMeta(plugin).Build())
 					return
 				case batchv1.JobFailed:
-					rm.UpdateReservation(false)
+					// rm.UpdateReservation(false)
 					rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddK3SJobMeta(job).AddPodMeta(pod).AddPluginMeta(plugin).Build())
 					return
 				}
@@ -841,13 +847,13 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 			}
 		case watch.Deleted:
 			logger.Debug.Printf("Plugin got deleted. Returning resource and notify")
-			rm.UpdateReservation(false)
+			// rm.UpdateReservation(false)
 			rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventFailure).AddReason("Plugin deleted").AddK3SJobMeta(job).AddPluginMeta(plugin).Build())
 			return
 		case watch.Error:
 			logger.Debug.Printf("Error on watcher. Returning resource and notify")
 			rm.TerminateJob(job.Name)
-			rm.UpdateReservation(false)
+			// rm.UpdateReservation(false)
 			rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventFailure).AddReason("Error on watcher").AddK3SJobMeta(job).AddPluginMeta(plugin).Build())
 			return
 		}
@@ -858,45 +864,100 @@ func (rm *ResourceManager) GatherResourceUse() {
 	// rm.Clientset.metricsv1
 }
 
-// GabageCollector cleans up completed/failed jobs that exceed
+// RunGabageCollector cleans up completed/failed jobs that exceed
 // their lifespan specified in `ttlSecondsAfterFinished`
 //
 // NOTE: This should be done by Kubernetes TTL controller with TTLSecondsAfterFinished specified in job,
 // but it could not get enabled in k3s with Kubernetes v1.20 that has the TTL controller disabled
 // by default. Kubernetes v1.21+ has the controller enabled by default
-func (rm *ResourceManager) RunGabageCollector() {
-	for {
-		jobList, err := rm.ListJobs()
+func (rm *ResourceManager) RunGabageCollector() error {
+	jobList, err := rm.ListJobs()
+	if err != nil {
+		return fmt.Errorf("Failed to get job list: %s", err.Error())
+	}
+	for _, job := range jobList.Items {
+		podPhase, err := rm.GetPluginStatus(job.Name)
 		if err != nil {
-			logger.Error.Printf("Failed to get job list %q", err.Error())
-		} else {
-			for _, job := range jobList.Items {
-				podPhase, err := rm.GetPluginStatus(job.Name)
-				if err != nil {
-					continue
-				}
-				switch podPhase {
-				case apiv1.PodFailed:
-					fallthrough
-				case apiv1.PodSucceeded:
-					elapsedSeconds := time.Now().Sub(job.CreationTimestamp.Time).Seconds()
-					if elapsedSeconds > float64(ttlSecondsAfterFinished) {
-						logger.Debug.Printf("%q exceeded ttlSeconds of %.2f. Cleaning up...", job.Name, elapsedSeconds)
-						rm.TerminateJob(job.Name)
-					}
-				}
+			continue
+		}
+		switch podPhase {
+		case apiv1.PodFailed:
+			fallthrough
+		case apiv1.PodSucceeded:
+			elapsedSeconds := time.Now().Sub(job.CreationTimestamp.Time).Seconds()
+			if elapsedSeconds > float64(ttlSecondsAfterFinished) {
+				logger.Debug.Printf("%q exceeded ttlSeconds of %.2f. Cleaning up...", job.Name, elapsedSeconds)
+				rm.TerminateJob(job.Name)
 			}
 		}
-		time.Sleep(1 * time.Minute)
 	}
+	return nil
+}
+
+func (rm *ResourceManager) Configure() (err error) {
+	err = rm.CreateNamespace("ses")
+	if err != nil {
+		return
+	}
+	servicesToBringUp := []string{"wes-rabbitmq", "wes-audio-server"}
+	for _, service := range servicesToBringUp {
+		err = rm.ForwardService(service, "default", "ses")
+		if err != nil {
+			return
+		}
+	}
+	configMapsToBring := []string{"waggle-data-config", "wes-audio-server-plugin-conf"}
+	for _, configMapName := range configMapsToBring {
+		err = rm.CopyConfigMap(configMapName, "default", rm.Namespace)
+		if err != nil {
+			logger.Error.Printf("Failed to create ConfigMap %q: %q", configMapName, err.Error())
+		}
+	}
+	err = rm.CreateConfigMap(configMapNameForGoals, map[string]string{}, "default", false)
+	if err != nil {
+		return
+	}
+	return
 }
 
 func (rm *ResourceManager) Run(chanPluginToUpdate <-chan *datatype.Plugin) {
 	if rm.MetricsClient == nil {
 		logger.Info.Println("No metrics client is set. Metrics information cannot be obtained")
-		return
 	}
-	logger.Info.Println("Start collecting metrics from Kubernetes")
+	// NOTE: The garbage collector runs to clean up completed/failed jobs
+	//       This should be done by Kubernetes with versions higher than v1.21
+	//       v1.20 could do it by enabling TTL controller, but could not set it
+	//       via k3s server --kube-control-manager-arg feature-gates=TTL...=true
+	// go ns.ResourceManager.RunGabageCollector()
+	gabageCollectorTicker := time.NewTicker(1 * time.Minute)
+	logger.Info.Printf("Pull goals from k3s configmap %s", configMapNameForGoals)
+	goalConfigMapFunc, _ := rm.GetConfigMapWatcher(configMapNameForGoals, "default")
+	goalWatcher := NewAdvancedWatcher(configMapNameForGoals, goalConfigMapFunc)
+	goalWatcher.Run()
+	logger.Info.Println("Starting the main loop of resource manager...")
+	for {
+		select {
+		case <-gabageCollectorTicker.C:
+			err := rm.RunGabageCollector()
+			if err != nil {
+				logger.Error.Printf("Failed to run gabage collector: %s", err.Error())
+			}
+		case event := <-goalWatcher.C:
+			switch event.Type {
+			case watch.Added, watch.Modified:
+				if updatedConfigMap, ok := event.Object.(*apiv1.ConfigMap); ok {
+					logger.Debug.Printf("%v", updatedConfigMap.Data)
+					event := datatype.NewEventBuilder(datatype.EventGoalStatusReceivedBulk).
+						AddEntry("goals", updatedConfigMap.Data["goals"]).Build()
+					rm.Notifier.Notify(event)
+				}
+			}
+			// case watch.Deleted, watch.Error:
+			// 	logger.Error.Printf("Failed on %q k3s watcher", configMapName)
+			// 	break
+			// }
+		}
+	}
 	// for {
 	// 	nodeMetrics, err := rm.MetricsClient.MetricsV1beta1().NodeMetricses().List(context.TODO(), metav1.ListOptions{})
 	// 	if err != nil {
@@ -1040,6 +1101,56 @@ func (rm *ResourceManager) Run(chanPluginToUpdate <-chan *datatype.Plugin) {
 	// 	}
 	// }
 	// }
+}
+
+type AdvancedWatcher struct {
+	Name string
+	Func func() (watch.Interface, error)
+	C    chan watch.Event
+}
+
+func NewAdvancedWatcher(n string, f func() (watch.Interface, error)) *AdvancedWatcher {
+	return &AdvancedWatcher{
+		Name: n,
+		Func: f,
+		C:    make(chan watch.Event),
+	}
+}
+
+func (w *AdvancedWatcher) runWatcher() error {
+	ticker := time.NewTicker(1 * time.Minute)
+	lastEvent := time.Now()
+	timeOut := 30 * time.Minute
+	watcher, err := w.Func()
+	if err != nil {
+		return fmt.Errorf("Failed to get watcher from Kubernetes")
+	}
+	for {
+		select {
+		case e, ok := <-watcher.ResultChan():
+			if !ok {
+				return fmt.Errorf("Watcher is closed")
+			} else {
+				w.C <- e
+				lastEvent = time.Now()
+			}
+		case <-ticker.C:
+			if time.Now().After(lastEvent.Add(timeOut)) {
+				return fmt.Errorf("Watcher timed out")
+			}
+		}
+	}
+}
+
+func (w *AdvancedWatcher) Run() {
+	go func() {
+		for {
+			if err := w.runWatcher(); err != nil {
+				logger.Error.Printf("Failed on watcher %q: %s", w.Name, err.Error())
+			}
+			time.Sleep(5 * time.Second)
+		}
+	}()
 }
 
 var validNamePattern = regexp.MustCompile("^[a-z0-9-]+$")

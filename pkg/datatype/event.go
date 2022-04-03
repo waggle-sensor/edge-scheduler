@@ -46,6 +46,11 @@ func (eb *EventBuilder) AddGoal(goal *ScienceGoal) *EventBuilder {
 	return eb
 }
 
+func (eb *EventBuilder) AddEntry(k string, v string) *EventBuilder {
+	eb.e.Meta[k] = v
+	return eb
+}
+
 func (eb *EventBuilder) AddPluginMeta(plugin *Plugin) *EventBuilder {
 	eb.e.Meta["plugin_name"] = plugin.Name
 	eb.e.Meta["plugin_image"] = plugin.PluginSpec.Image
@@ -110,6 +115,10 @@ func (e *Event) GetReason() string {
 	return e.get("reason")
 }
 
+func (e *Event) GetEntry(k string) string {
+	return e.get(k)
+}
+
 func (e *Event) ToString() string {
 	return string(e.Type)
 }
@@ -145,17 +154,18 @@ type EventType string
 
 const (
 	// EventSchedulingDecisionScheduled EventType = "sys.scheduler.decision.scheduled"
-	EventJobStatusSuspended    EventType = "sys.scheduler.status.job.suspended"
-	EventGoalStatusNew         EventType = "sys.scheduler.status.goal.new"
-	EventGoalStatusUpdated     EventType = "sys.scheduler.status.goal.updated"
-	EventGoalStatusReceived    EventType = "sys.scheduler.status.goal.received"
-	EventGoalStatusDeleted     EventType = "sys.scheduler.status.goal.deleted"
-	EventPluginStatusPromoted  EventType = "sys.scheduler.status.plugin.promoted"
-	EventPluginStatusScheduled EventType = "sys.scheduler.status.plugin.scheduled"
-	EventPluginStatusLaunched  EventType = "sys.scheduler.status.plugin.launched"
-	EventPluginStatusComplete  EventType = "sys.scheduler.status.plugin.complete"
-	EventPluginStatusFailed    EventType = "sys.scheduler.status.plugin.failed"
-	EventFailure               EventType = "sys.scheduler.failure"
+	EventJobStatusSuspended     EventType = "sys.scheduler.status.job.suspended"
+	EventGoalStatusNew          EventType = "sys.scheduler.status.goal.new"
+	EventGoalStatusUpdated      EventType = "sys.scheduler.status.goal.updated"
+	EventGoalStatusReceived     EventType = "sys.scheduler.status.goal.received"
+	EventGoalStatusReceivedBulk EventType = "sys.scheduler.status.goal.received.bulk"
+	EventGoalStatusDeleted      EventType = "sys.scheduler.status.goal.deleted"
+	EventPluginStatusPromoted   EventType = "sys.scheduler.status.plugin.promoted"
+	EventPluginStatusScheduled  EventType = "sys.scheduler.status.plugin.scheduled"
+	EventPluginStatusLaunched   EventType = "sys.scheduler.status.plugin.launched"
+	EventPluginStatusComplete   EventType = "sys.scheduler.status.plugin.complete"
+	EventPluginStatusFailed     EventType = "sys.scheduler.status.plugin.failed"
+	EventFailure                EventType = "sys.scheduler.failure"
 )
 
 // type EventErrorCode string

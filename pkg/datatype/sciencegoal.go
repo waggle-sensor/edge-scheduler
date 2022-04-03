@@ -30,14 +30,10 @@ func (sgb *ScienceGoalBuilder) AddSubGoal(nodeID string, plugins []*Plugin, scie
 		ScienceRules: scienceRules,
 	}
 	subGoal.ApplyGoalIDToPlugins(sgb.sg.ID)
-	specjson, err := json.Marshal(subGoal)
+	err := subGoal.AddChecksum()
 	if err != nil {
-		// We cannot proceed anymore
 		return nil
 	}
-	sum := sha256.Sum256(specjson)
-	// instance := hex.EncodeToString(sum[:])[:8]
-	subGoal.checksum = hex.EncodeToString(sum[:])
 	sgb.sg.SubGoals = append(sgb.sg.SubGoals, subGoal)
 	return sgb
 }
@@ -96,6 +92,18 @@ type SubGoal struct {
 // 	subGoal.checksum = hex.EncodeToString(sum[:])
 // 	return &subGoal
 // }
+
+func (sg *SubGoal) AddChecksum() error {
+	specjson, err := json.Marshal(sg)
+	if err != nil {
+		// We cannot proceed anymore
+		return err
+	}
+	sum := sha256.Sum256(specjson)
+	// instance := hex.EncodeToString(sum[:])[:8]
+	sg.checksum = hex.EncodeToString(sum[:])
+	return nil
+}
 
 func (sg *SubGoal) CompareChecksum(otherSubGoal *SubGoal) bool {
 	if sg.checksum == otherSubGoal.checksum {
