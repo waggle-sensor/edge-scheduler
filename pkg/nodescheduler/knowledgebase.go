@@ -2,7 +2,6 @@ package nodescheduler
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -26,6 +25,21 @@ func NewKnowledgeBase(nodeID string) *KnowledgeBase {
 	}
 }
 
+func (kb *KnowledgeBase) add(obj interface{}, k string, v interface{}) {
+	currentKB := obj.(map[string]interface{})
+	keys := strings.SplitN(k, ".", 2)
+	if len(keys) == 1 {
+		currentKB[keys[0]] = v
+	} else {
+		if nextKB, exist := currentKB[keys[0]]; !exist {
+			currentKB[keys[0]] = map[string]interface{}{}
+			kb.add(currentKB[keys[0]], keys[1], v)
+		} else {
+			kb.add(nextKB, keys[1], v)
+		}
+	}
+}
+
 func (kb *KnowledgeBase) AddRulesFromScienceGoal(s *datatype.ScienceGoal) {
 	mySubGoal := s.GetMySubGoal(kb.nodeID)
 	kb.rules[s.ID] = mySubGoal.ScienceRules
@@ -38,28 +52,39 @@ func (kb *KnowledgeBase) DropRules(goalID string) {
 }
 
 func (kb *KnowledgeBase) AddRawMeasure(k string, v interface{}) {
-	logger.Debug.Printf("Added raw measure %q:%s", k, v.(string))
-	v, err := strconv.ParseFloat(v.(string), 64)
-	if err != nil {
-		kb.measures[k] = v.(string)
-	} else {
-		kb.measures[k] = v
-	}
-
+	logger.Debug.Printf("Added raw measure %q:%s", k, v)
+	kb.add(kb.measures, k, v)
+	// logger.Debug.Printf("Added raw measure %q:%s", k, v.(string))
+	// v, err := strconv.ParseFloat(v.(string), 64)
+	// if err != nil {
+	// 	kb.measures[k] = v.(string)
+	// } else {
+	// 	kb.measures[k] = v
+	// }
 }
 
 func (kb *KnowledgeBase) AddMeasure(v *datatype.WaggleMessage) {
 
 }
 
-func (kb *KnowledgeBase) Evaluate(goalID string) (results []string, err error) {
+func (kb *KnowledgeBase) EvaluateRule(rule string) (string, error) {
+	condition, result, err := parseRule(rule)
+	if err != nil {
+		return "", fmt.Errorf("Failed to parse rule")
+	}
+	if parser.Evaluate(condition, kb.measures) {
+		return result, nil
+	} else {
+		return "", nil
+	}
+}
+
+func (kb *KnowledgeBase) EvaluateGoal(goalID string) (results []string, err error) {
 	if rules, exist := kb.rules[goalID]; exist {
 		for _, rule := range rules {
-			condition, result, err := parseRule(rule)
-			if err != nil {
-				logger.Error.Printf("Failed to parse rule %q: %s", rule, err.Error())
-			}
-			if parser.Evaluate(condition, kb.measures) {
+			if result, err := kb.EvaluateRule(rule); err != nil {
+				logger.Error.Printf("Failed to evaluate rule %q: %s", rule, err.Error())
+			} else if result != "" {
 				results = append(results, result)
 			}
 		}

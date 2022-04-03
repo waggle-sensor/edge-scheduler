@@ -1,5 +1,5 @@
 ---
-name: helloworld
+name: scoreboard
 plugins:
 - name: longtask
   pluginSpec:
@@ -18,11 +18,7 @@ plugins:
 nodes:
   W023:
 scienceRules:
-- "longtask: sys.time.minute == 0"
-- "longtask: sys.time.minute == 30"
-- "shorttask: sys.time.minute == 0"
-- "shorttask: sys.time.minute == 15"
-- "shorttask: sys.time.minute == 30"
-- "shorttask: sys.time.minute == 45"
+- "longtask: minutevariable > 5"
+- "shorttask: minutevariable > 2"
 successcriteria:
 - WallClock(1d)

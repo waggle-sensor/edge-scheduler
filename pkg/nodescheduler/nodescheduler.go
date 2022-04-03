@@ -1,20 +1,17 @@
 package nodescheduler
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/sagecontinuum/ses/pkg/datatype"
 	"github.com/sagecontinuum/ses/pkg/interfacing"
 	"github.com/sagecontinuum/ses/pkg/logger"
 	"github.com/sagecontinuum/ses/pkg/nodescheduler/policy"
-	yaml "gopkg.in/yaml.v2"
-	apiv1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/watch"
 )
 
 const (
-	maxChannelBuffer      = 100
-	configMapNameForGoals = "waggle-plugin-scheduler-goals"
+	maxChannelBuffer = 100
 )
 
 type NodeScheduler struct {
@@ -65,82 +62,15 @@ func (ns *NodeScheduler) Configure() (err error) {
 	if ns.Simulate {
 		return
 	}
-	err = ns.ResourceManager.CreateNamespace("ses")
-	if err != nil {
-		return
-	}
-	servicesToBringUp := []string{"wes-rabbitmq", "wes-audio-server"}
-	for _, service := range servicesToBringUp {
-		err = ns.ResourceManager.ForwardService(service, "default", "ses")
-		if err != nil {
-			return
-		}
-	}
-	configMapsToBring := []string{"waggle-data-config", "wes-audio-server-plugin-conf"}
-	for _, configMapName := range configMapsToBring {
-		err = ns.ResourceManager.CopyConfigMap(configMapName, "default", ns.ResourceManager.Namespace)
-		if err != nil {
-			logger.Error.Printf("Failed to create ConfigMap %q: %q", configMapName, err.Error())
-		}
-	}
-	err = ns.ResourceManager.CreateConfigMap(configMapNameForGoals, map[string]string{}, "default", false)
-	if err != nil {
-		return
-	}
-	return nil
-}
-
-func (ns *NodeScheduler) pullGoalsFromK3S(configMapName string) {
-	logger.Info.Printf("Pull goals from k3s configmap %s", configMapName)
-	for {
-		watcher, err := ns.ResourceManager.WatchConfigMap(configMapName, "default")
-		if err != nil {
-			logger.Error.Printf("Failed to watch %q. Retrying in 60 seconds...", configMapName)
-			time.Sleep(60 * time.Second)
-			continue
-		}
-		for event := range watcher.ResultChan() {
-			logger.Debug.Printf("%q", event.Type)
-			switch event.Type {
-			case watch.Added, watch.Modified:
-				if updatedConfigMap, ok := event.Object.(*apiv1.ConfigMap); ok {
-					logger.Debug.Printf("%v", updatedConfigMap.Data)
-					var jobTemplates []datatype.JobTemplate
-					err := yaml.Unmarshal([]byte(updatedConfigMap.Data["goals"]), &jobTemplates)
-					if err != nil {
-						logger.Error.Printf("Failed to load goals from Kubernetes ConfigMap %q", err.Error())
-					} else {
-						for _, t := range jobTemplates {
-							scienceGoal := t.ConvertJobTemplateToScienceGoal(ns.NodeID)
-							if scienceGoal == nil {
-								logger.Error.Printf("Failed to convert into Science Goal %q", t.Name)
-							} else {
-								ns.GoalManager.AddGoal(scienceGoal)
-							}
-						}
-					}
-				}
-			case watch.Deleted, watch.Error:
-				logger.Error.Printf("Failed on %q k3s watcher", configMapName)
-				break
-			}
-		}
-		logger.Info.Printf("Watcher %q has closed. Reopening in 60 seconds...", configMapName)
-		time.Sleep(60 * time.Second)
-	}
+	err = ns.ResourceManager.Configure()
+	return
 }
 
 // Run handles communications between components for scheduling
 func (ns *NodeScheduler) Run() {
 	go ns.GoalManager.Run(ns.chanFromGoalManager)
-	go ns.pullGoalsFromK3S(configMapNameForGoals)
 	// go ns.Knowledgebase.Run()
 	go ns.ResourceManager.Run(ns.chanPluginToResourceManager)
-	// NOTE: The garbage collector runs to clean up completed/failed jobs
-	//       This should be done by Kubernetes with versions higher than v1.21
-	//       v1.20 could do it by enabling TTL controller, but could not set it
-	//       via k3s server --kube-control-manager-arg feature-gates=TTL...=true
-	go ns.ResourceManager.RunGabageCollector()
 	go ns.APIServer.Run()
 
 	// TODO: We generate a 30-second timer to (re)-evaluate given science rules
@@ -149,8 +79,9 @@ func (ns *NodeScheduler) Run() {
 		select {
 		case <-ticker.C:
 			logger.Debug.Print("Rule evaluation triggered")
+			ns.Knowledgebase.AddRawMeasure("sys.time.minute", time.Now().Minute())
 			for goalID, _ := range ns.GoalManager.ScienceGoals {
-				r, err := ns.Knowledgebase.Evaluate(goalID)
+				r, err := ns.Knowledgebase.EvaluateGoal(goalID)
 				if err != nil {
 					logger.Debug.Printf("Failed to evaluate goal %q: %s", goalID, err.Error())
 				} else {
@@ -160,8 +91,7 @@ func (ns *NodeScheduler) Run() {
 							logger.Debug.Printf("Failed to find goal %q: %s", goalID, err.Error())
 						} else {
 							plugin := sg.GetMySubGoal(ns.NodeID).GetPlugin(pluginName)
-							//
-							if plugin.Status.SchedulingStatus != datatype.Running {
+							if plugin.Status.SchedulingStatus == datatype.Waiting {
 								plugin.UpdatePluginSchedulingStatus(datatype.Ready)
 								response := datatype.NewEventBuilder(datatype.EventPluginStatusPromoted).AddReason("kb triggered").Build()
 								ns.chanNeedScheduling <- response
@@ -208,7 +138,7 @@ func (ns *NodeScheduler) Run() {
 				go ns.LogToBeehive.SendWaggleMessage(event.ToWaggleMessage(), "all")
 			}
 		case event := <-ns.chanFromResourceManager:
-			logger.Debug.Printf("%s: %q", event.ToString(), event.GetPluginName())
+			logger.Debug.Printf("%s", event.ToString())
 			switch event.Type {
 			case datatype.EventPluginStatusLaunched:
 				scienceGoal, err := ns.GoalManager.GetScienceGoalByID(event.GetGoalID())
@@ -239,6 +169,16 @@ func (ns *NodeScheduler) Run() {
 				logger.Debug.Printf("Error reported from resource manager: %q", event.GetReason())
 				go ns.LogToBeehive.SendWaggleMessage(event.ToWaggleMessage(), "all")
 				ns.chanNeedScheduling <- event
+			case datatype.EventGoalStatusReceivedBulk:
+				logger.Debug.Printf("A bulk goal is received")
+				data := event.GetEntry("goals")
+				var goals []datatype.ScienceGoal
+				err := json.Unmarshal([]byte(data), &goals)
+				if err != nil {
+					logger.Error.Printf("Failed to load bulk goals %q", err.Error())
+				} else {
+					ns.GoalManager.SetGoals(goals)
+				}
 			}
 		// case scheduledScienceGoal := <-ns.chanRunGoal:
 		// 	logger.Info.Printf("Goal %s needs scheduling", scheduledScienceGoal.Name)
@@ -285,8 +225,8 @@ func (ns *NodeScheduler) Run() {
 			// 		go ns.LogToBeehive.SendWaggleMessage(e.ToWaggleMessage(), "all")
 			// 	}
 			// }
-			// Selecte best task
-			plugin, err := ns.SchedulingPolicy.SimpleScheduler.SelectBestTask(
+			// Select the best task
+			plugins, err := ns.SchedulingPolicy.SimpleScheduler.SelectBestPlugins(
 				ns.GoalManager.ScienceGoals,
 				datatype.Resource{
 					CPU:       "999000m",
@@ -298,15 +238,15 @@ func (ns *NodeScheduler) Run() {
 			if err != nil {
 				logger.Error.Printf("Failed to get the best task to run %q", err.Error())
 			} else {
-				if plugin != nil {
-					if ns.ResourceManager.WillItFit(plugin) {
-						e := datatype.NewEventBuilder(datatype.EventPluginStatusScheduled).AddReason("Fits to resource").AddPluginMeta(plugin).Build()
-						logger.Debug.Printf("%s: %q (%q)", e.ToString(), e.GetPluginName(), e.GetReason())
-						go ns.LogToBeehive.SendWaggleMessage(e.ToWaggleMessage(), "all")
-						go ns.ResourceManager.LaunchAndWatchPlugin(plugin)
-					} else {
-						logger.Debug.Printf("Resource is not availble for plugin %q", plugin.Name)
-					}
+				for _, plugin := range plugins {
+					// if ns.ResourceManager.WillItFit(plugin) {
+					e := datatype.NewEventBuilder(datatype.EventPluginStatusScheduled).AddReason("Fits to resource").AddPluginMeta(plugin).Build()
+					logger.Debug.Printf("%s: %q (%q)", e.ToString(), e.GetPluginName(), e.GetReason())
+					go ns.LogToBeehive.SendWaggleMessage(e.ToWaggleMessage(), "all")
+					go ns.ResourceManager.LaunchAndWatchPlugin(plugin)
+					// } else {
+					// 	logger.Debug.Printf("Resource is not availble for plugin %q", plugin.Name)
+					// }
 				}
 			}
 		}
