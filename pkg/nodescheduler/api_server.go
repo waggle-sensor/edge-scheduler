@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strconv"
 
 	"github.com/gorilla/mux"
 	"github.com/sagecontinuum/ses/pkg/datatype"
@@ -77,7 +78,11 @@ func (api *APIServer) handlerSenses(w http.ResponseWriter, r *http.Request) {
 		queries := r.URL.Query()
 		if _, exist := queries["key"]; exist {
 			if _, exist := queries["value"]; exist {
-				api.nodeScheduler.Knowledgebase.AddRawMeasure(queries.Get("key"), queries.Get("value"))
+				if v, err := strconv.ParseFloat(queries.Get("value"), 64); err != nil {
+					api.nodeScheduler.Knowledgebase.AddRawMeasure(queries.Get("key"), queries.Get("value"))
+				} else {
+					api.nodeScheduler.Knowledgebase.AddRawMeasure(queries.Get("key"), v)
+				}
 				response := datatype.NewAPIMessageBuilder().AddEntity("status", "success").Build()
 				respondJSON(w, http.StatusOK, response.ToJson())
 			} else {

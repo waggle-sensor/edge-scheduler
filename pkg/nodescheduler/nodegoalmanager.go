@@ -63,10 +63,6 @@ func (ngm *NodeGoalManager) SetRMQHandler(rmqHandler *interfacing.RabbitMQHandle
 
 // DropGoal drops given goal from the list
 func (ngm *NodeGoalManager) DropGoalByName(goalName string) error {
-	// if _, exist := ngm.ScienceGoals[goalName]; exist {
-	// 	delete(ngm.ScienceGoals, goalName)
-	// 	return nil
-	// }
 	for _, goal := range ngm.ScienceGoals {
 		if goal.Name == goalName {
 			delete(ngm.ScienceGoals, goal.ID)
@@ -76,8 +72,39 @@ func (ngm *NodeGoalManager) DropGoalByName(goalName string) error {
 	return fmt.Errorf("The goal %s does not exist", goalName)
 }
 
+func (ngm *NodeGoalManager) DropGoal(goalID string) error {
+	if g, exist := ngm.ScienceGoals[goalID]; exist {
+		delete(ngm.ScienceGoals, goalID)
+		ngm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventGoalStatusDeleted).AddGoal(g).Build())
+		return nil
+	} else {
+		return fmt.Errorf("Failed to find goal by ID %s", goalID)
+	}
+}
+
 func (ngm *NodeGoalManager) AddGoal(goal *datatype.ScienceGoal) {
 	ngm.chanGoalQueue <- goal
+}
+
+// SetGoals addes given science goals and drops existing goals.
+//
+// If a goal already exists and content of the goal is the same with the existing goal, it skips.
+func (ngm *NodeGoalManager) SetGoals(goals [](datatype.ScienceGoal)) {
+	goalIDs := make(map[string]bool)
+	for _, goal := range goals {
+		goalIDs[goal.ID] = true
+	}
+	// Remove existing goals not included in the new goals
+	for _, goal := range ngm.ScienceGoals {
+		if _, exist := goalIDs[goal.ID]; !exist {
+			ngm.DropGoal(goal.ID)
+		}
+	}
+	for _, goal := range goals {
+		subGoal := goal.GetMySubGoal(ngm.NodeID)
+		subGoal.AddChecksum()
+		ngm.AddGoal(&goal)
+	}
 }
 
 // RunGoalManager handles goal related events from both cloud and local
