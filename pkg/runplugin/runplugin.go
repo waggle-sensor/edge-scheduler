@@ -118,7 +118,10 @@ type pluginConfig struct {
 	Password string
 }
 
-var hostPathDirectoryOrCreate = apiv1.HostPathDirectoryOrCreate
+var (
+	hostPathDirectoryOrCreate = apiv1.HostPathDirectoryOrCreate
+	hostPathDirectory         = apiv1.HostPathDirectory
+)
 
 func labelsForConfig(config *pluginConfig) map[string]string {
 	return map[string]string{
@@ -149,6 +152,72 @@ func securityContextForConfig(config *pluginConfig) *apiv1.SecurityContext {
 }
 
 func createDeploymentForConfig(config *pluginConfig) *appsv1.Deployment {
+	volumes := []apiv1.Volume{
+		{
+			Name: "uploads",
+			VolumeSource: apiv1.VolumeSource{
+				HostPath: &apiv1.HostPathVolumeSource{
+					Path: path.Join("/media/plugin-data/uploads", config.Name, config.Version),
+					Type: &hostPathDirectoryOrCreate,
+				},
+			},
+		},
+		{
+			Name: "waggle-data-config",
+			VolumeSource: apiv1.VolumeSource{
+				ConfigMap: &apiv1.ConfigMapVolumeSource{
+					LocalObjectReference: apiv1.LocalObjectReference{
+						Name: "waggle-data-config",
+					},
+				},
+			},
+		},
+		{
+			Name: "wes-audio-server-plugin-conf",
+			VolumeSource: apiv1.VolumeSource{
+				ConfigMap: &apiv1.ConfigMapVolumeSource{
+					LocalObjectReference: apiv1.LocalObjectReference{
+						Name: "wes-audio-server-plugin-conf",
+					},
+				},
+			},
+		},
+	}
+
+	volumeMounts := []apiv1.VolumeMount{
+		{
+			Name:      "uploads",
+			MountPath: "/run/waggle/uploads",
+		},
+		{
+			Name:      "waggle-data-config",
+			MountPath: "/run/waggle/data-config.json",
+			SubPath:   "data-config.json",
+		},
+		{
+			Name:      "wes-audio-server-plugin-conf",
+			MountPath: "/etc/asound.conf",
+			SubPath:   "asound.conf",
+		},
+	}
+
+	// provide privileged plugins access to host devices
+	if config.Privileged {
+		volumes = append(volumes, apiv1.Volume{
+			Name: "dev",
+			VolumeSource: apiv1.VolumeSource{
+				HostPath: &apiv1.HostPathVolumeSource{
+					Path: "/dev",
+					Type: &hostPathDirectory,
+				},
+			},
+		})
+		volumeMounts = append(volumeMounts, apiv1.VolumeMount{
+			Name:      "dev",
+			MountPath: "/host/dev",
+		})
+	}
+
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: config.Name,
@@ -232,55 +301,10 @@ func createDeploymentForConfig(config *pluginConfig) *appsv1.Deployment {
 								Limits:   apiv1.ResourceList{},
 								Requests: apiv1.ResourceList{},
 							},
-							VolumeMounts: []apiv1.VolumeMount{
-								{
-									Name:      "uploads",
-									MountPath: "/run/waggle/uploads",
-								},
-								{
-									Name:      "waggle-data-config",
-									MountPath: "/run/waggle/data-config.json",
-									SubPath:   "data-config.json",
-								},
-								{
-									Name:      "wes-audio-server-plugin-conf",
-									MountPath: "/etc/asound.conf",
-									SubPath:   "asound.conf",
-								},
-							},
+							VolumeMounts: volumeMounts,
 						},
 					},
-					Volumes: []apiv1.Volume{
-						{
-							Name: "uploads",
-							VolumeSource: apiv1.VolumeSource{
-								HostPath: &apiv1.HostPathVolumeSource{
-									Path: path.Join("/media/plugin-data/uploads", config.Name, config.Version),
-									Type: &hostPathDirectoryOrCreate,
-								},
-							},
-						},
-						{
-							Name: "waggle-data-config",
-							VolumeSource: apiv1.VolumeSource{
-								ConfigMap: &apiv1.ConfigMapVolumeSource{
-									LocalObjectReference: apiv1.LocalObjectReference{
-										Name: "waggle-data-config",
-									},
-								},
-							},
-						},
-						{
-							Name: "wes-audio-server-plugin-conf",
-							VolumeSource: apiv1.VolumeSource{
-								ConfigMap: &apiv1.ConfigMapVolumeSource{
-									LocalObjectReference: apiv1.LocalObjectReference{
-										Name: "wes-audio-server-plugin-conf",
-									},
-								},
-							},
-						},
-					},
+					Volumes: volumes,
 				},
 			},
 		},
