@@ -310,8 +310,90 @@ func (rm *ResourceManager) WatchJobs(namespace string) (watch.Interface, error) 
 	return watcher, err
 }
 
-// NewPluginJob creates a Kubernetes job object for a plugin.
-func (rm *ResourceManager) NewPluginPodTemplateSpec(plugin *datatype.Plugin) (v1.PodTemplateSpec, error) {
+// NewPluginJob makes a new Kubernetes object for a Job based plugin.
+func (rm *ResourceManager) NewPluginJob(plugin *datatype.Plugin) (*batchv1.Job, error) {
+	name, err := pluginNameForSpec(plugin)
+	if err != nil {
+		return nil, err
+	}
+
+	template := newPluginPodTemplateSpec(plugin)
+	template.Spec.RestartPolicy = apiv1.RestartPolicyNever
+
+	return &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: rm.Namespace,
+		},
+		Spec: batchv1.JobSpec{
+			Template:                template,
+			BackoffLimit:            &backOffLimit,
+			TTLSecondsAfterFinished: &ttlSecondsAfterFinished,
+		},
+	}, nil
+}
+
+// NewPluginDeployment makes a new Kubernetes object for a Deployment based plugin.
+func (rm *ResourceManager) NewPluginDeployment(plugin *datatype.Plugin) (*appsv1.Deployment, error) {
+	name, err := pluginNameForSpec(plugin)
+	if err != nil {
+		return nil, err
+	}
+
+	template := newPluginPodTemplateSpec(plugin)
+	template.Spec.RestartPolicy = apiv1.RestartPolicyAlways
+
+	return &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: rm.Namespace,
+		},
+		Spec: appsv1.DeploymentSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app": name,
+				},
+			},
+			Template: template,
+		},
+	}, nil
+}
+
+func newPluginPodTemplateSpec(plugin *datatype.Plugin) v1.PodTemplateSpec {
+	return v1.PodTemplateSpec{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels: labelsForConfig(plugin),
+		},
+		Spec: apiv1.PodSpec{
+			NodeSelector: nodeSelectorForConfig(plugin.PluginSpec),
+			Containers:   newPluginContainers(plugin),
+			Volumes:      newPluginVolumes(plugin),
+		},
+	}
+}
+
+func newPluginContainers(plugin *datatype.Plugin) []apiv1.Container {
+	container := apiv1.Container{
+		SecurityContext: securityContextForConfig(plugin.PluginSpec),
+		Name:            plugin.Name,
+		Image:           plugin.PluginSpec.Image,
+		Args:            plugin.PluginSpec.Args,
+		Env:             newPluginEnv(plugin),
+		Resources: apiv1.ResourceRequirements{
+			Limits:   apiv1.ResourceList{},
+			Requests: apiv1.ResourceList{},
+		},
+		VolumeMounts: newPluginVolumeMounts(plugin),
+	}
+
+	if plugin.PluginSpec.Entrypoint != "" {
+		container.Command = []string{plugin.PluginSpec.Entrypoint}
+	}
+
+	return []apiv1.Container{container}
+}
+
+func newPluginEnv(plugin *datatype.Plugin) []apiv1.EnvVar {
 	envs := []apiv1.EnvVar{
 		{
 			Name:  "PULSE_SERVER",
@@ -365,6 +447,10 @@ func (rm *ResourceManager) NewPluginPodTemplateSpec(plugin *datatype.Plugin) (v1
 		})
 	}
 
+	return envs
+}
+
+func newPluginVolumes(plugin *datatype.Plugin) []apiv1.Volume {
 	volumes := []apiv1.Volume{
 		{
 			Name: "uploads",
@@ -397,6 +483,22 @@ func (rm *ResourceManager) NewPluginPodTemplateSpec(plugin *datatype.Plugin) (v1
 		},
 	}
 
+	if plugin.PluginSpec.Privileged {
+		volumes = append(volumes, apiv1.Volume{
+			Name: "dev",
+			VolumeSource: apiv1.VolumeSource{
+				HostPath: &apiv1.HostPathVolumeSource{
+					Path: "/dev",
+					Type: &hostPathDirectory,
+				},
+			},
+		})
+	}
+
+	return volumes
+}
+
+func newPluginVolumeMounts(plugin *datatype.Plugin) []apiv1.VolumeMount {
 	volumeMounts := []apiv1.VolumeMount{
 		{
 			Name:      "uploads",
@@ -414,103 +516,14 @@ func (rm *ResourceManager) NewPluginPodTemplateSpec(plugin *datatype.Plugin) (v1
 		},
 	}
 
-	// provide privileged plugins access to host devices
 	if plugin.PluginSpec.Privileged {
-		volumes = append(volumes, apiv1.Volume{
-			Name: "dev",
-			VolumeSource: apiv1.VolumeSource{
-				HostPath: &apiv1.HostPathVolumeSource{
-					Path: "/dev",
-					Type: &hostPathDirectory,
-				},
-			},
-		})
 		volumeMounts = append(volumeMounts, apiv1.VolumeMount{
 			Name:      "dev",
 			MountPath: "/host/dev",
 		})
 	}
 
-	container := apiv1.Container{
-		SecurityContext: securityContextForConfig(plugin.PluginSpec),
-		Name:            plugin.Name,
-		Image:           plugin.PluginSpec.Image,
-		Args:            plugin.PluginSpec.Args,
-		Env:             envs,
-		Resources: apiv1.ResourceRequirements{
-			Limits:   apiv1.ResourceList{},
-			Requests: apiv1.ResourceList{},
-		},
-		VolumeMounts: volumeMounts,
-	}
-
-	if plugin.PluginSpec.Entrypoint != "" {
-		container.Command = []string{plugin.PluginSpec.Entrypoint}
-	}
-
-	return v1.PodTemplateSpec{
-		ObjectMeta: metav1.ObjectMeta{
-			Labels: labelsForConfig(plugin),
-		},
-		Spec: apiv1.PodSpec{
-			NodeSelector:  nodeSelectorForConfig(plugin.PluginSpec),
-			RestartPolicy: apiv1.RestartPolicyNever,
-			Containers:    []apiv1.Container{container},
-			Volumes:       volumes,
-		},
-	}, nil
-}
-
-// NewPluginJob creates a Kubernetes job object for a plugin.
-func (rm *ResourceManager) NewPluginJob(plugin *datatype.Plugin) (*batchv1.Job, error) {
-	name, err := pluginNameForSpec(plugin)
-	if err != nil {
-		return nil, err
-	}
-
-	podTemplateSpec, err := rm.NewPluginPodTemplateSpec(plugin)
-	if err != nil {
-		return nil, err
-	}
-
-	return &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: rm.Namespace,
-		},
-		Spec: batchv1.JobSpec{
-			Template:                podTemplateSpec,
-			BackoffLimit:            &backOffLimit,
-			TTLSecondsAfterFinished: &ttlSecondsAfterFinished,
-		},
-	}, nil
-}
-
-func (rm *ResourceManager) NewPluginDeployment(plugin *datatype.Plugin) (*appsv1.Deployment, error) {
-	name, err := pluginNameForSpec(plugin)
-	if err != nil {
-		return nil, err
-	}
-
-	podTemplateSpec, err := rm.NewPluginPodTemplateSpec(plugin)
-	if err != nil {
-		return nil, err
-	}
-
-	return &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: rm.Namespace,
-		},
-		Spec: appsv1.DeploymentSpec{
-			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{
-					"app": name,
-				},
-			},
-			Template: podTemplateSpec,
-		},
-	}, nil
+	return volumeMounts
 }
 
 // CreateDeployment creates and returns a Kubernetes deployment object of the plugin
