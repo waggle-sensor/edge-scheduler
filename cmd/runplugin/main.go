@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	rabbithole "github.com/michaelklishin/rabbit-hole"
+	"github.com/sagecontinuum/ses/pkg/nodescheduler"
 	"github.com/sagecontinuum/ses/pkg/runplugin"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -86,9 +87,17 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// NOTE(sean) starting to centralize Kubernetes object functionality in ResourceManager
+	resourceManager, err := nodescheduler.NewK3SResourceManager("", false, kubeconfig, false)
+	if err != nil {
+		log.Fatal(err)
+	}
+	resourceManager.Namespace = "default"
+
 	sch := &runplugin.Scheduler{
 		KubernetesClientset: clientset,
 		RabbitMQClient:      rmqclient,
+		ResourceManager:     resourceManager,
 	}
 
 	args := flag.Args()

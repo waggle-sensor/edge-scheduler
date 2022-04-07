@@ -93,7 +93,7 @@ func (p *PluginCtl) Deploy(dep *Deployment) (string, error) {
 			DevelopMode: dep.DevelopMode,
 		},
 	}
-	job, err := p.ResourceManager.CreateJob(&plugin)
+	job, err := p.ResourceManager.NewPluginJob(&plugin)
 	if err != nil {
 		return "", err
 	}

@@ -310,13 +310,8 @@ func (rm *ResourceManager) WatchJobs(namespace string) (watch.Interface, error) 
 	return watcher, err
 }
 
-// CreateK3SJob creates and returns a Kubernetes job object of the pllugin
-func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, error) {
-	name, err := pluginNameForSpec(plugin)
-	if err != nil {
-		return nil, err
-	}
-
+// NewPluginJob creates a Kubernetes job object for a plugin.
+func (rm *ResourceManager) NewPluginPodTemplateSpec(plugin *datatype.Plugin) (v1.PodTemplateSpec, error) {
 	envs := []apiv1.EnvVar{
 		{
 			Name:  "PULSE_SERVER",
@@ -448,8 +443,34 @@ func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, err
 		},
 		VolumeMounts: volumeMounts,
 	}
+
 	if plugin.PluginSpec.Entrypoint != "" {
 		container.Command = []string{plugin.PluginSpec.Entrypoint}
+	}
+
+	return v1.PodTemplateSpec{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels: labelsForConfig(plugin),
+		},
+		Spec: apiv1.PodSpec{
+			NodeSelector:  nodeSelectorForConfig(plugin.PluginSpec),
+			RestartPolicy: apiv1.RestartPolicyNever,
+			Containers:    []apiv1.Container{container},
+			Volumes:       volumes,
+		},
+	}, nil
+}
+
+// NewPluginJob creates a Kubernetes job object for a plugin.
+func (rm *ResourceManager) NewPluginJob(plugin *datatype.Plugin) (*batchv1.Job, error) {
+	name, err := pluginNameForSpec(plugin)
+	if err != nil {
+		return nil, err
+	}
+
+	podTemplateSpec, err := rm.NewPluginPodTemplateSpec(plugin)
+	if err != nil {
+		return nil, err
 	}
 
 	return &batchv1.Job{
@@ -458,19 +479,36 @@ func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, err
 			Namespace: rm.Namespace,
 		},
 		Spec: batchv1.JobSpec{
-			Template: v1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: labelsForConfig(plugin),
-				},
-				Spec: apiv1.PodSpec{
-					NodeSelector:  nodeSelectorForConfig(plugin.PluginSpec),
-					RestartPolicy: apiv1.RestartPolicyNever,
-					Containers:    []apiv1.Container{container},
-					Volumes:       volumes,
-				},
-			},
+			Template:                podTemplateSpec,
 			BackoffLimit:            &backOffLimit,
 			TTLSecondsAfterFinished: &ttlSecondsAfterFinished,
+		},
+	}, nil
+}
+
+func (rm *ResourceManager) NewPluginDeployment(plugin *datatype.Plugin) (*appsv1.Deployment, error) {
+	name, err := pluginNameForSpec(plugin)
+	if err != nil {
+		return nil, err
+	}
+
+	podTemplateSpec, err := rm.NewPluginPodTemplateSpec(plugin)
+	if err != nil {
+		return nil, err
+	}
+
+	return &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: rm.Namespace,
+		},
+		Spec: appsv1.DeploymentSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app": name,
+				},
+			},
+			Template: podTemplateSpec,
 		},
 	}, nil
 }
@@ -820,7 +858,7 @@ func (rm *ResourceManager) WillItFit(plugin *datatype.Plugin) bool {
 
 func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 	logger.Debug.Printf("Running plugin %q...", plugin.Name)
-	job, err := rm.CreateJob(plugin)
+	job, err := rm.NewPluginJob(plugin)
 	if err != nil {
 		logger.Error.Printf("Failed to create Kubernetes Job for %q: %q", plugin.Name, err.Error())
 		rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventFailure).AddReason(err.Error()).AddPluginMeta(plugin).Build())

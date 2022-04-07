@@ -13,8 +13,8 @@ import (
 	"time"
 
 	rabbithole "github.com/michaelklishin/rabbit-hole"
-	appsv1 "k8s.io/api/apps/v1"
-	apiv1 "k8s.io/api/core/v1"
+	"github.com/sagecontinuum/ses/pkg/datatype"
+	"github.com/sagecontinuum/ses/pkg/nodescheduler"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -22,6 +22,7 @@ import (
 type Scheduler struct {
 	KubernetesClientset *kubernetes.Clientset
 	RabbitMQClient      *rabbithole.Client
+	ResourceManager     *nodescheduler.ResourceManager
 }
 
 type Spec struct {
@@ -101,7 +102,7 @@ func (sch *Scheduler) RunPlugin(spec *Spec) error {
 	}
 
 	log.Printf("updating kubernetes deployment for %q", spec.Image)
-	if err := updateKubernetesDeployment(sch.KubernetesClientset, config); err != nil {
+	if err := updateKubernetesDeployment(sch.KubernetesClientset, sch.ResourceManager, config); err != nil {
 		return err
 	}
 
@@ -118,206 +119,26 @@ type pluginConfig struct {
 	Password string
 }
 
-var (
-	hostPathDirectoryOrCreate = apiv1.HostPathDirectoryOrCreate
-	hostPathDirectory         = apiv1.HostPathDirectory
-)
-
-func labelsForConfig(config *pluginConfig) map[string]string {
-	return map[string]string{
-		"app":                           config.Name,
-		"role":                          "plugin", // TODO drop in place of sagecontinuum.org/role
-		"sagecontinuum.org/role":        "plugin",
-		"sagecontinuum.org/plugin-job":  config.Job,
-		"sagecontinuum.org/plugin-task": config.Name,
-	}
-}
-
-func nodeSelectorForConfig(config *pluginConfig) map[string]string {
-	vals := map[string]string{}
-	if config.Node != "" {
-		vals["k3s.io/hostname"] = config.Node
-	}
-	for k, v := range config.Selector {
-		vals[k] = v
-	}
-	return vals
-}
-
-func securityContextForConfig(config *pluginConfig) *apiv1.SecurityContext {
-	if config.Privileged {
-		return &apiv1.SecurityContext{Privileged: &config.Privileged}
-	}
-	return nil
-}
-
-func createDeploymentForConfig(config *pluginConfig) *appsv1.Deployment {
-	volumes := []apiv1.Volume{
-		{
-			Name: "uploads",
-			VolumeSource: apiv1.VolumeSource{
-				HostPath: &apiv1.HostPathVolumeSource{
-					Path: path.Join("/media/plugin-data/uploads", config.Name, config.Version),
-					Type: &hostPathDirectoryOrCreate,
-				},
-			},
+func updateKubernetesDeployment(clientset *kubernetes.Clientset, rm *nodescheduler.ResourceManager, config *pluginConfig) error {
+	deployment, err := rm.NewPluginDeployment(&datatype.Plugin{
+		Name: config.Name,
+		PluginSpec: &datatype.PluginSpec{
+			Image:      config.Image,
+			Args:       config.Args,
+			Privileged: config.Privileged,
+			Node:       config.Node,
+			Job:        config.Job,
+			Selector:   config.Selector,
 		},
-		{
-			Name: "waggle-data-config",
-			VolumeSource: apiv1.VolumeSource{
-				ConfigMap: &apiv1.ConfigMapVolumeSource{
-					LocalObjectReference: apiv1.LocalObjectReference{
-						Name: "waggle-data-config",
-					},
-				},
-			},
-		},
-		{
-			Name: "wes-audio-server-plugin-conf",
-			VolumeSource: apiv1.VolumeSource{
-				ConfigMap: &apiv1.ConfigMapVolumeSource{
-					LocalObjectReference: apiv1.LocalObjectReference{
-						Name: "wes-audio-server-plugin-conf",
-					},
-				},
-			},
-		},
+	})
+	if err != nil {
+		return nil
 	}
-
-	volumeMounts := []apiv1.VolumeMount{
-		{
-			Name:      "uploads",
-			MountPath: "/run/waggle/uploads",
-		},
-		{
-			Name:      "waggle-data-config",
-			MountPath: "/run/waggle/data-config.json",
-			SubPath:   "data-config.json",
-		},
-		{
-			Name:      "wes-audio-server-plugin-conf",
-			MountPath: "/etc/asound.conf",
-			SubPath:   "asound.conf",
-		},
-	}
-
-	// provide privileged plugins access to host devices
-	if config.Privileged {
-		volumes = append(volumes, apiv1.Volume{
-			Name: "dev",
-			VolumeSource: apiv1.VolumeSource{
-				HostPath: &apiv1.HostPathVolumeSource{
-					Path: "/dev",
-					Type: &hostPathDirectory,
-				},
-			},
-		})
-		volumeMounts = append(volumeMounts, apiv1.VolumeMount{
-			Name:      "dev",
-			MountPath: "/host/dev",
-		})
-	}
-
-	return &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: config.Name,
-		},
-		Spec: appsv1.DeploymentSpec{
-			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{
-					"app": config.Name,
-				},
-			},
-			Template: apiv1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: labelsForConfig(config),
-				},
-				Spec: apiv1.PodSpec{
-					NodeSelector: nodeSelectorForConfig(config),
-					Containers: []apiv1.Container{
-						{
-							SecurityContext: securityContextForConfig(config),
-							Name:            config.Name,
-							Image:           config.Image,
-							Args:            config.Args,
-							Env: []apiv1.EnvVar{
-								{
-									Name:  "PULSE_SERVER",
-									Value: "tcp:wes-audio-server:4713",
-								},
-								{
-									Name:  "WAGGLE_PLUGIN_HOST",
-									Value: "wes-rabbitmq",
-								},
-								{
-									Name:  "WAGGLE_PLUGIN_PORT",
-									Value: "5672",
-								},
-								{
-									Name:  "WAGGLE_PLUGIN_USERNAME",
-									Value: config.Username,
-								},
-								{
-									Name:  "WAGGLE_PLUGIN_PASSWORD",
-									Value: config.Password,
-								},
-								// NOTE WAGGLE_APP_ID is used to bind plugin <-> Pod identities.
-								{
-									Name: "WAGGLE_APP_ID",
-									ValueFrom: &apiv1.EnvVarSource{
-										FieldRef: &apiv1.ObjectFieldSelector{
-											FieldPath: "metadata.uid",
-										},
-									},
-								},
-								// Set pod IP for use by ROS clients.
-								{
-									Name: "ROS_IP",
-									ValueFrom: &apiv1.EnvVarSource{
-										FieldRef: &apiv1.ObjectFieldSelector{
-											FieldPath: "status.podIP",
-										},
-									},
-								},
-								// Use default WES roscore hostname for ROS clients.
-								{
-									Name:  "ROS_MASTER_URI",
-									Value: "http://wes-roscore.default.svc.cluster.local:11311",
-								},
-							},
-							// NOTE This will provide WAGGLE_NODE_ID and WAGGLE_NODE_VSN for cases that a plugin
-							// needs to make a node specific choice. This is not the ideal way to manage node
-							// specific config, but may unblock things for now.
-							EnvFrom: []apiv1.EnvFromSource{
-								{
-									ConfigMapRef: &apiv1.ConfigMapEnvSource{
-										LocalObjectReference: apiv1.LocalObjectReference{
-											Name: "wes-identity",
-										},
-									},
-								},
-							},
-							Resources: apiv1.ResourceRequirements{
-								Limits:   apiv1.ResourceList{},
-								Requests: apiv1.ResourceList{},
-							},
-							VolumeMounts: volumeMounts,
-						},
-					},
-					Volumes: volumes,
-				},
-			},
-		},
-	}
-}
-
-func updateKubernetesDeployment(clientset *kubernetes.Clientset, config *pluginConfig) error {
-	deployment := createDeploymentForConfig(config)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	deployments := clientset.AppsV1().Deployments("default")
+	deployments := clientset.AppsV1().Deployments(rm.Namespace)
 
 	// if deployment exists, then update it, else create it
 	if _, err := deployments.Get(ctx, deployment.Name, metav1.GetOptions{}); err == nil {
