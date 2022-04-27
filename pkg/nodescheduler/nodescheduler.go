@@ -79,7 +79,7 @@ func (ns *NodeScheduler) Run() {
 		select {
 		case <-ticker.C:
 			logger.Debug.Print("Rule evaluation triggered")
-			ns.Knowledgebase.AddRawMeasure("sys.time.minute", time.Now().Minute())
+			// ns.Knowledgebase.AddRawMeasure("sys.time.minute", time.Now().Minute())
 			for goalID, _ := range ns.GoalManager.ScienceGoals {
 				r, err := ns.Knowledgebase.EvaluateGoal(goalID)
 				if err != nil {
@@ -148,7 +148,7 @@ func (ns *NodeScheduler) Run() {
 					pluginName := event.GetPluginName()
 					plugin := scienceGoal.GetMySubGoal(ns.NodeID).GetPlugin(pluginName)
 					if plugin != nil {
-						plugin.UpdatePluginSchedulingStatus(datatype.Running)
+
 						go ns.LogToBeehive.SendWaggleMessage(event.ToWaggleMessage(), "all")
 					}
 				}
@@ -243,6 +243,7 @@ func (ns *NodeScheduler) Run() {
 					e := datatype.NewEventBuilder(datatype.EventPluginStatusScheduled).AddReason("Fits to resource").AddPluginMeta(plugin).Build()
 					logger.Debug.Printf("%s: %q (%q)", e.ToString(), e.GetPluginName(), e.GetReason())
 					go ns.LogToBeehive.SendWaggleMessage(e.ToWaggleMessage(), "all")
+					plugin.UpdatePluginSchedulingStatus(datatype.Running)
 					go ns.ResourceManager.LaunchAndWatchPlugin(plugin)
 					// } else {
 					// 	logger.Debug.Printf("Resource is not availble for plugin %q", plugin.Name)
