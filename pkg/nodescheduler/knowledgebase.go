@@ -56,7 +56,7 @@ func (kb *KnowledgeBase) DropRules(goalID string) {
 func (kb *KnowledgeBase) AddRawMeasure(k string, v interface{}) {
 	logger.Debug.Printf("Added raw measure %q:%s", k, v)
 	// kb.add(kb.measures, k, v)
-	r := interfacing.NewHTTPRequest("http://127.0.0.1:5000")
+	r := interfacing.NewHTTPRequest(kb.ruleCheckerURI)
 	data, _ := json.Marshal(map[string]interface{}{
 		"key":   k,
 		"value": v,
@@ -86,7 +86,7 @@ func (kb *KnowledgeBase) EvaluateRule(rule string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("Failed to parse rule")
 	}
-	r := interfacing.NewHTTPRequest("http://wes-rulechecker:5000")
+	r := interfacing.NewHTTPRequest(kb.ruleCheckerURI)
 	data, _ := json.Marshal(map[string]interface{}{
 		"rule": condition,
 	})
@@ -97,6 +97,11 @@ func (kb *KnowledgeBase) EvaluateRule(rule string) (string, error) {
 	body, err := r.ParseJSONHTTPResponse(resp)
 	if err != nil {
 		return "", fmt.Errorf("Failed to parse response: %s", err.Error())
+	}
+	if r, exists := body["response"]; exists {
+		if r.(string) == "failed" {
+			return "", fmt.Errorf("Failed to evaluate rule: %s", body["error"])
+		}
 	}
 	if v, exists := body["result"]; exists {
 		if v.(bool) == true {
