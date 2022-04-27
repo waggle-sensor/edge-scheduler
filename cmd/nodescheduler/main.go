@@ -30,6 +30,7 @@ func main() {
 		kubeconfig        string
 		registry          string
 		cloudschedulerURI string
+		rulecheckerURI    string
 		nodeID            string
 		incluster         bool
 	)
@@ -47,6 +48,7 @@ func main() {
 	flag.StringVar(&rabbitmqUsername, "rabbitmq-username", getenv("RABBITMQ_USERNAME", "service"), "RabbitMQ management username")
 	flag.StringVar(&rabbitmqPassword, "rabbitmq-password", getenv("RABBITMQ_PASSWORD", "service"), "RabbitMQ management password")
 	flag.StringVar(&cloudschedulerURI, "cloudscheduler-uri", "http://localhost:9770", "cloudscheduler URI")
+	flag.StringVar(&rulecheckerURI, "rulechecker-uri", "http://wes-rulechecker:5000", "rulechecker URI")
 	flag.Parse()
 	logger.Info.Printf("Node scheduler (%q) starts...", nodeID)
 	var ns *nodescheduler.NodeScheduler
@@ -62,7 +64,7 @@ func main() {
 		logger.Debug.Println("Creating scheduler for real...")
 		ns = nodescheduler.NewRealNodeSchedulerBuilder(nodeID, Version).
 			AddGoalManager(cloudschedulerURI).
-			AddKnowledgebase().
+			AddKnowledgebase(rulecheckerURI).
 			AddResourceManager(registry, incluster, kubeconfig).
 			AddAPIServer().
 			AddLoggerToBeehive(rabbitmqURI, rabbitmqUsername, rabbitmqPassword, getenv("WAGGLE_APP_ID", "")).

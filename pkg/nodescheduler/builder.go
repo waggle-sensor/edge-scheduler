@@ -80,8 +80,8 @@ func (rns *RealNodeScheduler) AddResourceManager(registry string, incluster bool
 	return rns
 }
 
-func (rns *RealNodeScheduler) AddKnowledgebase() *RealNodeScheduler {
-	rns.nodeScheduler.Knowledgebase = NewKnowledgeBase(rns.nodeScheduler.NodeID)
+func (rns *RealNodeScheduler) AddKnowledgebase(ruleCheckerURI string) *RealNodeScheduler {
+	rns.nodeScheduler.Knowledgebase = NewKnowledgeBase(rns.nodeScheduler.NodeID, ruleCheckerURI)
 	return rns
 }
 
@@ -153,7 +153,7 @@ func (fns *FakeNodeScheduler) AddResourceManager() *FakeNodeScheduler {
 }
 
 func (fns *FakeNodeScheduler) AddKnowledgebase() *FakeNodeScheduler {
-	fns.nodeScheduler.Knowledgebase = NewKnowledgeBase(fns.nodeScheduler.NodeID)
+	fns.nodeScheduler.Knowledgebase = NewKnowledgeBase(fns.nodeScheduler.NodeID, "")
 	return fns
 }
 

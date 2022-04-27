@@ -101,9 +101,10 @@ func (ngm *NodeGoalManager) SetGoals(goals [](datatype.ScienceGoal)) {
 		}
 	}
 	for _, goal := range goals {
-		subGoal := goal.GetMySubGoal(ngm.NodeID)
-		subGoal.AddChecksum()
-		ngm.AddGoal(&goal)
+		if subGoal := goal.GetMySubGoal(ngm.NodeID); subGoal != nil {
+			subGoal.AddChecksum()
+			ngm.AddGoal(&goal)
+		}
 	}
 }
 

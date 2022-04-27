@@ -1,27 +1,29 @@
 package nodescheduler
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/sagecontinuum/ses/pkg/datatype"
+	"github.com/sagecontinuum/ses/pkg/interfacing"
 	"github.com/sagecontinuum/ses/pkg/logger"
-
-	"github.com/nikunjy/rules/parser"
 )
 
 type KnowledgeBase struct {
-	nodeID   string
-	rules    map[string][]string
-	measures map[string]interface{}
+	nodeID         string
+	rules          map[string][]string
+	measures       map[string]interface{}
+	ruleCheckerURI string
 }
 
-func NewKnowledgeBase(nodeID string) *KnowledgeBase {
+func NewKnowledgeBase(nodeID string, ruleCheckerURI string) *KnowledgeBase {
 	return &KnowledgeBase{
-		nodeID:   nodeID,
-		rules:    make(map[string][]string),
-		measures: map[string]interface{}{},
+		nodeID:         nodeID,
+		rules:          make(map[string][]string),
+		measures:       map[string]interface{}{},
+		ruleCheckerURI: ruleCheckerURI,
 	}
 }
 
@@ -53,7 +55,19 @@ func (kb *KnowledgeBase) DropRules(goalID string) {
 
 func (kb *KnowledgeBase) AddRawMeasure(k string, v interface{}) {
 	logger.Debug.Printf("Added raw measure %q:%s", k, v)
-	kb.add(kb.measures, k, v)
+	// kb.add(kb.measures, k, v)
+	r := interfacing.NewHTTPRequest("http://127.0.0.1:5000")
+	data, _ := json.Marshal(map[string]interface{}{
+		"key":   k,
+		"value": v,
+	})
+	resp, err := r.RequestPost("store", data)
+
+	body, err := r.ParseJSONHTTPResponse(resp)
+	if err != nil {
+
+	}
+	logger.Debug.Printf("%v", body)
 	// logger.Debug.Printf("Added raw measure %q:%s", k, v.(string))
 	// v, err := strconv.ParseFloat(v.(string), 64)
 	// if err != nil {
@@ -72,11 +86,32 @@ func (kb *KnowledgeBase) EvaluateRule(rule string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("Failed to parse rule")
 	}
-	if parser.Evaluate(condition, kb.measures) {
-		return result, nil
-	} else {
-		return "", nil
+	r := interfacing.NewHTTPRequest("http://wes-rulechecker:5000")
+	data, _ := json.Marshal(map[string]interface{}{
+		"rule": condition,
+	})
+	resp, err := r.RequestPost("evaluate", data)
+	if err != nil {
+		return "", fmt.Errorf("Failed to get data from checker: %s", err.Error())
 	}
+	body, err := r.ParseJSONHTTPResponse(resp)
+	if err != nil {
+		return "", fmt.Errorf("Failed to parse response: %s", err.Error())
+	}
+	if v, exists := body["result"]; exists {
+		if v.(bool) == true {
+			return result, nil
+		} else {
+			return "", nil
+		}
+	} else {
+		return "", fmt.Errorf("Response does not contain result: %v", body)
+	}
+	// if parser.Evaluate(condition, kb.measures) {
+	// 	return result, nil
+	// } else {
+	// 	return "", nil
+	// }
 }
 
 func (kb *KnowledgeBase) EvaluateGoal(goalID string) (results []string, err error) {
