@@ -361,6 +361,11 @@ func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, err
 			Name:  "ROS_MASTER_URI",
 			Value: "http://wes-roscore.default.svc.cluster.local:11311",
 		},
+		// Use WES scoreboard
+		{
+			Name:  "REDIS_HOST",
+			Value: "wes-scoreboard.default.svc.cluster.local",
+		},
 	}
 	for k, v := range plugin.PluginSpec.Env {
 		envs = append(envs, apiv1.EnvVar{
@@ -899,7 +904,7 @@ func (rm *ResourceManager) Configure() (err error) {
 	if err != nil {
 		return
 	}
-	servicesToBringUp := []string{"wes-rabbitmq", "wes-audio-server"}
+	servicesToBringUp := []string{"wes-rabbitmq", "wes-audio-server", "wes-scoreboard"}
 	for _, service := range servicesToBringUp {
 		err = rm.ForwardService(service, "default", "ses")
 		if err != nil {

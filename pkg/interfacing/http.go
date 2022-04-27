@@ -31,6 +31,15 @@ func (r *HTTPRequest) RequestGet(subPath string, queries url.Values) (*http.Resp
 	return http.Get(url.String())
 }
 
+func (r *HTTPRequest) RequestPost(subPath string, body []byte) (*http.Response, error) {
+	url, err := url.Parse(r.BaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to parse %q: %s", r.BaseURL, err.Error())
+	}
+	url.Path = path.Join(url.Path, subPath)
+	return http.Post(url.String(), "application/json", bytes.NewBuffer(body))
+}
+
 func (r *HTTPRequest) RequestPostFromFile(subPath string, filePath string) (*http.Response, error) {
 	url, err := url.Parse(r.BaseURL)
 	if err != nil {
@@ -41,7 +50,7 @@ func (r *HTTPRequest) RequestPostFromFile(subPath string, filePath string) (*htt
 	if err != nil {
 		return nil, err
 	}
-	return http.Post(url.String(), "application/yaml", bytes.NewBuffer(blob))
+	return http.Post(url.String(), "application/json", bytes.NewBuffer(blob))
 }
 
 func (r *HTTPRequest) RequestPostFromFileWithQueries(subPath string, filePath string, queries url.Values) (*http.Response, error) {
@@ -55,7 +64,7 @@ func (r *HTTPRequest) RequestPostFromFileWithQueries(subPath string, filePath st
 	if err != nil {
 		return nil, err
 	}
-	return http.Post(url.String(), "application/yaml", bytes.NewBuffer(blob))
+	return http.Post(url.String(), "application/json", bytes.NewBuffer(blob))
 }
 
 func (r *HTTPRequest) ParseJSONHTTPResponse(resp *http.Response) (body map[string]interface{}, err error) {
