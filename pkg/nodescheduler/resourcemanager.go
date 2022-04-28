@@ -62,10 +62,11 @@ type ResourceManager struct {
 	Plugins       []*datatype.Plugin
 	reserved      bool
 	mutex         sync.Mutex
+	runner        string
 }
 
 // NewResourceManager returns an instance of ResourceManager
-func NewK3SResourceManager(registry string, incluster bool, kubeconfig string, simulate bool) (rm *ResourceManager, err error) {
+func NewK3SResourceManager(registry string, incluster bool, kubeconfig string, runner string, simulate bool) (rm *ResourceManager, err error) {
 	if simulate {
 		return &ResourceManager{
 			Namespace:     namespace,
@@ -75,6 +76,7 @@ func NewK3SResourceManager(registry string, incluster bool, kubeconfig string, s
 			Simulate:      simulate,
 			Plugins:       make([]*datatype.Plugin, 0),
 			reserved:      false,
+			runner:        runner,
 		}, nil
 	}
 	registryAddress, err := url.Parse(registry)
@@ -95,6 +97,7 @@ func NewK3SResourceManager(registry string, incluster bool, kubeconfig string, s
 		Clientset:     k3sClient,
 		MetricsClient: metricsClient,
 		Simulate:      simulate,
+		runner:        runner,
 	}, nil
 }
 
@@ -107,10 +110,11 @@ func generatePassword() string {
 	return hex.EncodeToString(b)
 }
 
-func labelsForConfig(plugin *datatype.Plugin) map[string]string {
+func (rm *ResourceManager) labelsForConfig(plugin *datatype.Plugin) map[string]string {
 	labels := map[string]string{
 		"app":                           plugin.Name,
-		"role":                          "plugin", // TODO drop in place of sagecontinuum.org/role
+		"role":                          "plugin",  // TODO drop in place of sagecontinuum.org/role
+		"sagecontinuum.org/runner":      rm.runner, // This indicates which tool is creating the object
 		"sagecontinuum.org/role":        "plugin",
 		"sagecontinuum.org/plugin-job":  plugin.PluginSpec.Job,
 		"sagecontinuum.org/plugin-task": plugin.Name,
@@ -465,7 +469,7 @@ func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, err
 		Spec: batchv1.JobSpec{
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: labelsForConfig(plugin),
+					Labels: rm.labelsForConfig(plugin),
 				},
 				Spec: apiv1.PodSpec{
 					NodeSelector:  nodeSelectorForConfig(plugin.PluginSpec),
