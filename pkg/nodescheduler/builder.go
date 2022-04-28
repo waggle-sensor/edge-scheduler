@@ -2,6 +2,7 @@ package nodescheduler
 
 import (
 	"net/url"
+	"strings"
 
 	"github.com/sagecontinuum/ses/pkg/datatype"
 	"github.com/sagecontinuum/ses/pkg/interfacing"
@@ -27,7 +28,7 @@ func NewRealNodeSchedulerBuilder(nodeID string, version string) *RealNodeSchedul
 	return &RealNodeScheduler{
 		nodeScheduler: &NodeScheduler{
 			Version:                     version,
-			NodeID:                      nodeID,
+			NodeID:                      strings.ToLower(nodeID),
 			Simulate:                    false,
 			SchedulingPolicy:            schedulingPolicy,
 			chanContextEventToScheduler: make(chan datatype.EventPluginContext, maxChannelBuffer),
@@ -112,7 +113,7 @@ func NewFakeNodeSchedulerBuilder(nodeID string, version string) *FakeNodeSchedul
 	return &FakeNodeScheduler{
 		nodeScheduler: &NodeScheduler{
 			Version:                     version,
-			NodeID:                      nodeID,
+			NodeID:                      strings.ToLower(nodeID),
 			Simulate:                    true,
 			SchedulingPolicy:            schedulingPolicy,
 			chanContextEventToScheduler: make(chan datatype.EventPluginContext, maxChannelBuffer),
