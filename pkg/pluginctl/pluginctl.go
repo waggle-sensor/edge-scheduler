@@ -35,7 +35,7 @@ type Deployment struct {
 }
 
 func NewPluginCtl(kubeconfig string) (*PluginCtl, error) {
-	resourceManager, err := nodescheduler.NewK3SResourceManager("", false, kubeconfig, false)
+	resourceManager, err := nodescheduler.NewK3SResourceManager("", false, kubeconfig, "pluginctl", false)
 	if err != nil {
 		return nil, err
 	}

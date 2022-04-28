@@ -75,6 +75,7 @@ func (rns *RealNodeScheduler) AddResourceManager(registry string, incluster bool
 		MetricsClient: metricsClient,
 		Simulate:      false,
 		Notifier:      interfacing.NewNotifier(),
+		runner:        "nodescheduler",
 	}
 	rns.nodeScheduler.ResourceManager.Notifier.Subscribe(rns.nodeScheduler.chanFromResourceManager)
 	return rns
@@ -147,6 +148,7 @@ func (fns *FakeNodeScheduler) AddResourceManager() *FakeNodeScheduler {
 		MetricsClient: nil,
 		Simulate:      true,
 		Notifier:      interfacing.NewNotifier(),
+		runner:        "nodescheduler",
 	}
 	fns.nodeScheduler.ResourceManager.Notifier.Subscribe(fns.nodeScheduler.chanFromResourceManager)
 	return fns
