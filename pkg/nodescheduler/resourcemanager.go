@@ -384,7 +384,7 @@ func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, err
 			Name: "uploads",
 			VolumeSource: apiv1.VolumeSource{
 				HostPath: &apiv1.HostPathVolumeSource{
-					Path: path.Join("/media/plugin-data/uploads", plugin.Name, plugin.PluginSpec.GetImageVersion()),
+					Path: path.Join("/media/plugin-data/uploads", plugin.PluginSpec.Job, plugin.Name, plugin.PluginSpec.GetImageVersion()),
 					Type: &hostPathDirectoryOrCreate,
 				},
 			},

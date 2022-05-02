@@ -157,7 +157,7 @@ func createDeploymentForConfig(config *pluginConfig) *appsv1.Deployment {
 			Name: "uploads",
 			VolumeSource: apiv1.VolumeSource{
 				HostPath: &apiv1.HostPathVolumeSource{
-					Path: path.Join("/media/plugin-data/uploads", config.Name, config.Version),
+					Path: path.Join("/media/plugin-data/uploads", config.Job, config.Name, config.Version),
 					Type: &hostPathDirectoryOrCreate,
 				},
 			},
