@@ -1,0 +1,30 @@
+version: "3.9"
+
+services:
+  rabbitmq:
+    image: rabbitmq:3.8.11-management
+    ports:
+    - 5672:5672
+    - 15672:15672
+    volumes:
+    - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
+    - ./rabbitmq_definitions.json:/etc/rabbitmq/definitions.json
+    restart: always
+  cloudscheduler:
+    image: waggle/scheduler:0.9.9
+    command:
+    - cloudscheduler
+    - -rabbitmq-uri
+    - localhost
+    - -rabbitmq-username
+    - service
+    - -rabbitmq-password
+    - service
+    - -data-dir
+    - /app/data
+    ports:
+    - 9770:9770
+    volumes:
+    - /Users/yongho.kim/tmp/nodes:/app/data/nodes
+    - /Users/yongho.kim/tmp/plugins:/app/data/plugins
+    restart: always

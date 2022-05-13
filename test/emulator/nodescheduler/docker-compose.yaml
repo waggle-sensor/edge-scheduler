@@ -1,0 +1,93 @@
+version: "3.9"
+
+services:
+  rabbitmq:
+    image: rabbitmq:3.8.11-management
+    ports:
+    - 5672:5672
+    - 15672:15672
+    volumes:
+    - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
+    - ./rabbitmq_definitions.json:/etc/rabbitmq/definitions.json
+    restart: always
+  influxdb:
+    image: influxdb:2.1.1
+    ports:
+    - 8086:8086
+    restart: always
+  influxdb-setup:
+    image: influxdb:2.1.1
+    restart: "no"
+    depends_on:
+    - influxdb
+    links:
+    - "influxdb:influx"
+    volumes:
+    - influx_token:/influx_token
+    command: |
+      /bin/bash -c "
+      for i in {1..3}; do
+      echo 'Attempting to setup influxdb...';
+      influx setup \
+      --host http://influx:8086 \
+      --org waggle \
+      --bucket waggle \
+      --username waggle \
+      --password wagglewaggle \
+      --force;
+      influx auth create \
+      --user waggle \
+      --org waggle \
+      --hide-headers \
+      --write-buckets \
+      --read-buckets \
+      -d waggle-read-write-token | awk '{print $$3}' > /influx_token/token && break;
+      sleep 1;
+      done"
+  influxdb-loader:
+    image: waggle/node-influxdb-loader:0.0.0
+    restart: always
+    depends_on:
+    - influxdb
+    - influxdb-setup
+    links:
+    - "influxdb:influx"
+    - "rabbitmq:rmq"
+    volumes:
+    - influx_token:/influx_token
+    ports:
+    - 8080:8080
+    environment:
+    - RABBITMQ_HOST=rmq
+    - RABBITMQ_PORT=5672
+    - RABBITMQ_USERNAME=service
+    - RABBITMQ_PASSWORD=service
+    - RABBITMQ_EXCHANGE=data.topic
+    - INFLUXDB_URL=http://influx:8086
+    entrypoint: /bin/bash
+    command: |
+      -c "
+      export INFLUXDB_TOKEN=$$(cat /influx_token/token);
+      python3 /app/loader.py"
+  sciencerule-checker:
+    image: waggle/sciencerule-checker:0.0.0
+    restart: always
+    links:
+    - "influxdb:influx"
+    depends_on:
+    - influxdb-setup
+    volumes:
+    - influx_token:/influx_token
+    ports:
+    - 5001:5001
+    environment:
+    - NODE_INFLUXDB_URL=http://influx:8086
+    - SERVER_PORT=5001
+    entrypoint: /bin/bash
+    command: |
+      -c "
+      export NODE_INFLUXDB_QUERY_TOKEN=$$(cat /influx_token/token);
+      python3 /app/server.py"
+volumes:
+  influx_token:
+

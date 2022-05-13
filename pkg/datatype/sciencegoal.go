@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"strings"
 
 	uuid "github.com/nu7hatch/gouuid"
 )
@@ -54,7 +55,7 @@ type ScienceGoal struct {
 // GetMySubGoal returns the subgoal assigned to node
 func (g *ScienceGoal) GetMySubGoal(nodeName string) *SubGoal {
 	for _, subGoal := range g.SubGoals {
-		if subGoal.Name == nodeName {
+		if strings.ToLower(subGoal.Name) == strings.ToLower(nodeName) {
 			return subGoal
 		}
 	}

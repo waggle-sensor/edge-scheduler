@@ -74,7 +74,7 @@ func (ns *NodeScheduler) Run() {
 	go ns.APIServer.Run()
 
 	// TODO: We generate a 30-second timer to (re)-evaluate given science rules
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(5 * time.Second)
 	for {
 		select {
 		case <-ticker.C:
