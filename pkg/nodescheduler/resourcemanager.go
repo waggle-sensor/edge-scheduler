@@ -756,7 +756,11 @@ func (rm *ResourceManager) GetPod(jobName string) (*apiv1.Pod, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &pods.Items[0], nil
+	if len(pods.Items) > 0 {
+		return &pods.Items[0], nil
+	} else {
+		return nil, fmt.Errorf("No pod exists for job %q", jobName)
+	}
 }
 
 func (rm *ResourceManager) GetPodName(jobName string) (string, error) {
