@@ -1,3 +1,6 @@
+ARG TARGETARCH
+ARG VERSION
+
 FROM waggle/plugin-base:1.1.1-base as base
 
 RUN apt-get update \
@@ -12,8 +15,8 @@ RUN apt-get update \
 #  czmq-dev \
   && rm -rf /var/lib/apt/lists/*
 # libczmq-dev
-
 ARG TARGETARCH
+ARG VERSION
 WORKDIR /tmp
 RUN wget https://golang.org/dl/go1.17.6.linux-${TARGETARCH}.tar.gz \
   && rm -rf /usr/local/go && tar -C /usr/local -xzf go1.17.6.linux-${TARGETARCH}.tar.gz \
@@ -23,6 +26,8 @@ RUN wget https://golang.org/dl/go1.17.6.linux-${TARGETARCH}.tar.gz \
 FROM base as builder
 WORKDIR $GOPATH/src/github.com/sagecontinuum/ses
 COPY . .
+
+ARG TARGETARCH
 ARG VERSION
 ENV VERSION=${VERSION}
 RUN export PATH=$PATH:/usr/local/go/bin:/usr/bin/pkg-config \
@@ -37,7 +42,7 @@ COPY requirements.txt /app/
 RUN pip3 install -r /app/requirements.txt
 
 COPY --from=builder /app/ /app/
-
+ARG TARGETARCH
 RUN chmod +x /app/cloudscheduler-${TARGETARCH} \
   && ln -s /app/cloudscheduler-${TARGETARCH} /usr/bin/cloudscheduler \
   && chmod +x /app/nodescheduler-${TARGETARCH} \

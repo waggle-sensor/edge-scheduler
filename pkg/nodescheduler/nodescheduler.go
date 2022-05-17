@@ -79,6 +79,7 @@ func (ns *NodeScheduler) Run() {
 		select {
 		case <-ticker.C:
 			logger.Debug.Print("Rule evaluation triggered")
+			triggerScheduling := false
 			// ns.Knowledgebase.AddRawMeasure("sys.time.minute", time.Now().Minute())
 			for goalID, _ := range ns.GoalManager.ScienceGoals {
 				r, err := ns.Knowledgebase.EvaluateGoal(goalID)
@@ -93,12 +94,15 @@ func (ns *NodeScheduler) Run() {
 							plugin := sg.GetMySubGoal(ns.NodeID).GetPlugin(pluginName)
 							if plugin.Status.SchedulingStatus == datatype.Waiting {
 								plugin.UpdatePluginSchedulingStatus(datatype.Ready)
-								response := datatype.NewEventBuilder(datatype.EventPluginStatusPromoted).AddReason("kb triggered").Build()
-								ns.chanNeedScheduling <- response
+								triggerScheduling = true
 							}
 						}
 					}
 				}
+			}
+			if triggerScheduling {
+				response := datatype.NewEventBuilder(datatype.EventPluginStatusPromoted).AddReason("kb triggered").Build()
+				ns.chanNeedScheduling <- response
 			}
 
 		// case contextEvent := <-ns.chanContextEventToScheduler:
