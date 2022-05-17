@@ -164,6 +164,7 @@ const (
 	EventPluginStatusScheduled  EventType = "sys.scheduler.status.plugin.scheduled"
 	EventPluginStatusLaunched   EventType = "sys.scheduler.status.plugin.launched"
 	EventPluginStatusComplete   EventType = "sys.scheduler.status.plugin.complete"
+	EventPluginLastExecution    EventType = "sys.scheduler.plugin.lastexecution"
 	EventPluginStatusFailed     EventType = "sys.scheduler.status.plugin.failed"
 	EventFailure                EventType = "sys.scheduler.failure"
 )
