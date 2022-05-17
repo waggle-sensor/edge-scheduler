@@ -166,7 +166,7 @@ func (ns *NodeScheduler) Run() {
 					event.Timestamp,
 					map[string]string{},
 				)
-				go ns.LogToBeehive.SendWaggleMessage(message, "local")
+				go ns.LogToBeehive.SendWaggleMessage(message, "node")
 				fallthrough
 			case datatype.EventPluginStatusFailed:
 				scienceGoal, err := ns.GoalManager.GetScienceGoalByID(event.GetGoalID())
