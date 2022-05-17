@@ -156,7 +156,19 @@ func (ns *NodeScheduler) Run() {
 						go ns.LogToBeehive.SendWaggleMessage(event.ToWaggleMessage(), "all")
 					}
 				}
-			case datatype.EventPluginStatusComplete, datatype.EventPluginStatusFailed:
+			case datatype.EventPluginStatusComplete:
+				// publish plugin completion message locally so that
+				// rule checker knows when the last execution was
+				pluginName := event.GetPluginName()
+				message := datatype.NewMessage(
+					string(datatype.EventPluginLastExecution),
+					pluginName,
+					event.Timestamp,
+					map[string]string{},
+				)
+				go ns.LogToBeehive.SendWaggleMessage(message, "local")
+				fallthrough
+			case datatype.EventPluginStatusFailed:
 				scienceGoal, err := ns.GoalManager.GetScienceGoalByID(event.GetGoalID())
 				if err != nil {
 					logger.Error.Printf("Could not get goal to update plugin status: %q", err.Error())
