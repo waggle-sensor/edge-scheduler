@@ -83,11 +83,8 @@ func (jv *JobValidator) LoadDatabase(basePath string) error {
 // GetNodeNamesByTags returns a list of node names matched with given tags
 func (jv *JobValidator) GetNodeNamesByTags(tags []string) (nodesFound []string) {
 	for _, node := range jv.Nodes {
-		for _, tag := range tags {
-			if _, found := node.Tags[tag]; found {
-				nodesFound = append(nodesFound, tag)
-				break
-			}
+		if node.MatchTags(tags, true) {
+			nodesFound = append(nodesFound, node.Name)
 		}
 	}
 	return

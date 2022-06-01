@@ -11,7 +11,7 @@ services:
     - ./rabbitmq_definitions.json:/etc/rabbitmq/definitions.json
     restart: always
   cloudscheduler:
-    image: waggle/scheduler:0.9.9
+    image: waggle/scheduler:0.12.2
     command:
     - cloudscheduler
     - -rabbitmq-uri

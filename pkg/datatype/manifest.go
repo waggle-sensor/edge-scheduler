@@ -3,17 +3,42 @@ package datatype
 // Node structs information about nodes
 type NodeManifest struct {
 	Name     string                 `json:"name" yaml:"name"`
-	Tags     map[string]bool        `json:"tags,omitempty" yaml:"tags,omitempty"`
+	Tags     []string               `json:"tags,omitempty" yaml:"tags,omitempty"`
 	Devices  []Device               `json:"devices,omitempty" yaml:"devices,omitempty"`
 	Hardware map[string]interface{} `json:"hardware,omitempty" yaml:"hardware,omitempty"`
 	Ontology map[string]interface{} `json:"ontology,omitempty" yaml:"ontology,omitempty"`
+}
+
+func (n *NodeManifest) MatchTags(tags []string, matchAll bool) bool {
+	tagCount := 0
+	for _, tag := range tags {
+		for _, nodeTag := range n.Tags {
+			if nodeTag == tag {
+				tagCount += 1
+				break
+			}
+		}
+	}
+	if matchAll {
+		if tagCount == len(tags) {
+			return true
+		} else {
+			return false
+		}
+	} else {
+		if tagCount > 0 {
+			return true
+		} else {
+			return false
+		}
+	}
 }
 
 // GetPluginArchitectureSupportedDevices returns a device list that supports
 // plugin architecture
 func (n *NodeManifest) GetPluginArchitectureSupportedDevices(plugin *PluginManifest) (result bool, supportedDevices []Device) {
 	for _, nodeDevice := range n.Devices {
-		for pluginArch := range plugin.Architecture {
+		for _, pluginArch := range plugin.Architecture {
 			if pluginArch == nodeDevice.Architecture {
 				supportedDevices = append(supportedDevices, nodeDevice)
 			}
@@ -70,10 +95,10 @@ func (d *Device) GetUnsupportedPluginProfiles(plugin *PluginManifest) (result bo
 }
 
 type PluginManifest struct {
-	Name         string                 `json:"name" yaml:"name"`
-	Image        string                 `json:"image" yaml:"image"`
-	Tags         map[string]bool        `json:"tags,omitempty" yaml:"tags,omitempty"`
-	Hardware     map[string]bool        `json:"required_hardware,omitempty" yaml:"requiredHardware,omitempty"`
-	Architecture map[string]interface{} `json:"arch" yaml:"arch"`
-	Profile      []Profile              `json:"profiles,omitempty" yaml:"profiles,omitempty"`
+	Name         string          `json:"name" yaml:"name"`
+	Image        string          `json:"image" yaml:"image"`
+	Tags         map[string]bool `json:"tags,omitempty" yaml:"tags,omitempty"`
+	Hardware     map[string]bool `json:"required_hardware,omitempty" yaml:"requiredHardware,omitempty"`
+	Architecture []string        `json:"architecture" yaml:"architecture"`
+	Profile      []Profile       `json:"profiles,omitempty" yaml:"profiles,omitempty"`
 }
