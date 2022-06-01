@@ -3,9 +3,9 @@ package cmd
 import (
 	"os"
 
-	"github.com/sagecontinuum/ses/pkg/logger"
-	"github.com/sagecontinuum/ses/pkg/pluginctl"
 	"github.com/spf13/cobra"
+	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
+	"github.com/waggle-sensor/edge-scheduler/pkg/pluginctl"
 
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	kubectl "k8s.io/kubectl/pkg/cmd"

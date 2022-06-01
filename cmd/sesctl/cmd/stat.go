@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sagecontinuum/ses/pkg/datatype"
-	"github.com/sagecontinuum/ses/pkg/interfacing"
 	"github.com/spf13/cobra"
+	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
+	"github.com/waggle-sensor/edge-scheduler/pkg/interfacing"
 )
 
 func init() {

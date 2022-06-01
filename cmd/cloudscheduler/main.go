@@ -4,9 +4,9 @@ import (
 	"flag"
 	"os"
 
-	"github.com/sagecontinuum/ses/pkg/cloudscheduler"
-	"github.com/sagecontinuum/ses/pkg/interfacing"
-	"github.com/sagecontinuum/ses/pkg/logger"
+	"github.com/waggle-sensor/edge-scheduler/pkg/cloudscheduler"
+	"github.com/waggle-sensor/edge-scheduler/pkg/interfacing"
+	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
 )
 
 var Version string

@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 
 	rabbithole "github.com/michaelklishin/rabbit-hole"
-	"github.com/sagecontinuum/ses/pkg/runplugin"
+	"github.com/waggle-sensor/edge-scheduler/pkg/runplugin"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"

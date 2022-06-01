@@ -1,7 +1,7 @@
 package policy
 
 import (
-	"github.com/sagecontinuum/ses/pkg/datatype"
+	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
 )
 
 type SchedulingPolicy struct {

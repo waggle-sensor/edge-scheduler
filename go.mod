@@ -1,4 +1,4 @@
-module github.com/sagecontinuum/ses
+module github.com/waggle-sensor/edge-scheduler
 
 go 1.17
 

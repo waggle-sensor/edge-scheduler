@@ -3,8 +3,8 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/sagecontinuum/ses/pkg/pluginctl"
 	"github.com/spf13/cobra"
+	"github.com/waggle-sensor/edge-scheduler/pkg/pluginctl"
 )
 
 func init() {

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/sagecontinuum/ses/cmd/sesctl/cmd"
+	"github.com/waggle-sensor/edge-scheduler/cmd/sesctl/cmd"
 )
 
 var Version = "0.0.0"

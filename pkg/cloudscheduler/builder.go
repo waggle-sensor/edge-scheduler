@@ -1,8 +1,8 @@
 package cloudscheduler
 
 import (
-	"github.com/sagecontinuum/ses/pkg/datatype"
-	"github.com/sagecontinuum/ses/pkg/interfacing"
+	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
+	"github.com/waggle-sensor/edge-scheduler/pkg/interfacing"
 )
 
 type RealCloudScheduler struct {

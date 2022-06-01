@@ -4,9 +4,9 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/sagecontinuum/ses/pkg/datatype"
-	"github.com/sagecontinuum/ses/pkg/interfacing"
-	"github.com/sagecontinuum/ses/pkg/nodescheduler/policy"
+	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
+	"github.com/waggle-sensor/edge-scheduler/pkg/interfacing"
+	"github.com/waggle-sensor/edge-scheduler/pkg/nodescheduler/policy"
 )
 
 // NOTE: I do not know why we need this if we can't vary arguments in the functions

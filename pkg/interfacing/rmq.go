@@ -3,9 +3,9 @@ package interfacing
 import (
 	"fmt"
 
-	"github.com/sagecontinuum/ses/pkg/datatype"
-	"github.com/sagecontinuum/ses/pkg/logger"
 	"github.com/streadway/amqp"
+	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
+	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
 )
 
 type RabbitMQHandler struct {

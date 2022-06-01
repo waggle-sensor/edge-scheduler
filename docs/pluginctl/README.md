@@ -8,11 +8,11 @@ pluginctl --help for more information
 ```
 
 # Installation and Set up
-Pluginctl supports for amd64 and arm64 architecture. Please check [Releases](https://github.com/sagecontinuum/ses/releases) to download the binary for Waggle/Sage node or talk to the system manager to get the tool installed. The tool may not work properly if Kubernetes does not have [Waggle edge stack](https://github.com/waggle-sensor/waggle-edge-stack) (WES) installed and running. Sage/Waggle nodes already have WES running at the system level.
+Pluginctl supports for amd64 and arm64 architecture. Please check [Releases](https://github.com/waggle-sensor/edge-scheduler/releases) to download the binary for Waggle/Sage node or talk to the system manager to get the tool installed. The tool may not work properly if Kubernetes does not have [Waggle edge stack](https://github.com/waggle-sensor/waggle-edge-stack) (WES) installed and running. Sage/Waggle nodes already have WES running at the system level.
 
 ```bash
 # For arm64 architecture
-wget -O /usr/bin/pluginctl https://github.com/sagecontinuum/ses/releases/download/0.8.3/pluginctl-arm64
+wget -O /usr/bin/pluginctl https://github.com/waggle-sensor/edge-scheduler/releases/download/0.8.3/pluginctl-arm64
 chmod +x /usr/bin/pluginctl
 ```
 
