@@ -1,0 +1,34 @@
+---
+name: traffic-state
+plugins:
+- name: object-counter
+  pluginSpec:
+    image: seonghapark/object-counter:0.4.2
+    selector:
+    - resource.gpu=true
+    args:
+    - -stream
+    - bottom
+    - -all-objects
+    - -continuous
+- name: traffic-state-estimator
+  pluginSpec:
+    image: seonghapark/traffic-state:0.0.5
+    args:
+    - --input
+    - bottom
+    - -roi
+    - "0.2, 0.8, 0.8, 0.2" # how to specify this per node?
+- name: road-ice-detector
+  pluginSpec:
+    image: noimage
+nodesTags:
+- WSN
+- camera_bottom
+- urban
+scienceRules:
+- "object-counter: True"
+- "traffic-state-estimator: cronjob('traffic-state-estimator', '*/10 * * * *') or e('env.event.traffic') == True"
+- "road-ice-detector: True"
+successcriteria:
+- WallClock(1d)

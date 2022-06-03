@@ -1,0 +1,16 @@
+---
+name: helloworld
+plugins:
+- name: myapp
+  pluginSpec:
+    image: theone/imagesampler:0.3.0
+    entrypoint: /bin/bash
+    args:
+    - -c
+    - "echo hello world"
+nodes:
+  W023:
+scienceRules:
+- "myapp: cronjob('myapp', '0 * * * *')"
+successcriteria:
+- WallClock(1d)

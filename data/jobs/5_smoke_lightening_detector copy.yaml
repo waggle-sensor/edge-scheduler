@@ -1,0 +1,27 @@
+---
+name: smoke-lightening-detector
+plugins:
+- name: thermal-image-analyzer
+  pluginSpec:
+    image: noimage
+    args:
+    - interval
+    - 30
+- name: smoke-detector
+  pluginSpec:
+    image: iperezx/wildfire-smoke-detection:0.5.0
+- name: thunder-sound-recognizer
+  pluginSpec:
+    image: noimage
+- name: lightening-source-finder
+  pluginSpec:
+    image: noimage
+nodes:
+  W032: #??
+scienceRules:
+- "thermal-image-analyzer: True"
+- "smoke-detector: v('env.detection.heat') == True or v('env.detection.smoke') == True"
+- "thunder-sound-recognizer: True"
+- "lightening-source-finder: v('env.detection.thunder') > 0.5"
+successcriteria:
+- WallClock(1d)

@@ -1,0 +1,23 @@
+---
+name: water-detection
+plugins:
+- name: water-detector
+  pluginSpec:
+    image: seonghapark/surface-water-detection:0.0.6
+    selector:
+    - resource.gpu=true
+    args:
+    - -stream
+    - left
+    - -model-path
+    - deeplabv2_resnet101_msc-cocostuff164k-100000.pth
+    - -config-path
+    - configs/cocostuff164k.yaml
+nodesTag:
+- WSN
+- raingauge
+- camera_bottom
+scienceRules:
+- "water-detector: v('env.raingauge.uint') > 3 and cronjob('water-detector', '*/10 * * * *')"
+successcriteria:
+- WallClock(1d)

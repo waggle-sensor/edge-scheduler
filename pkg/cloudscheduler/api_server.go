@@ -131,7 +131,7 @@ func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	case http.MethodPost:
-		var newJob *datatype.Job
+		newJob := datatype.NewJob("", "", "")
 		// The query includes a full job description
 		blob, err := io.ReadAll(r.Body)
 		if err != nil {

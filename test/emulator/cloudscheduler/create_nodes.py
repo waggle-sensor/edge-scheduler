@@ -22,7 +22,11 @@ def build_tags(spec: dict) -> list:
             spec.get("top_camera", "none") != "none",
             spec.get("bottom_camera", "none") != "none",
             spec.get("left_camera", "none") != "none",
-            spec.get("right_camera", "none") != "none"]) else ""
+            spec.get("right_camera", "none") != "none"]) else "",
+        "camera_left" if spec.get("left_camera", "none") != "none" else "",
+        "camera_top" if spec.get("top_camera", "none") != "none" else "",
+        "camera_right" if spec.get("right_camera", "none") != "none" else "",
+        "camera_bottom" if spec.get("bottom_camera", "none") != "none" else "",
     ]
     return " ".join(tags).split()
 

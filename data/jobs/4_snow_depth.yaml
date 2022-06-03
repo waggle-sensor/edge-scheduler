@@ -1,0 +1,16 @@
+---
+name: snow-depth
+plugins:
+- name: thermal-image-analyzer
+  pluginSpec:
+    image: noimage
+- name: snow-depth-detector
+  pluginSpec:
+    image: noimage
+nodesTags:
+- NEON
+scienceRules:
+- "thermal-image-analyzer: cronjob('thermal-image-analyzer', '*/10 * * * *')"
+- "snow-depth-detector: cronjob('snow-depth-detector', '*/10 * * * *')"
+successcriteria:
+- WallClock(1d)
