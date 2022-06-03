@@ -5,7 +5,7 @@ plugins:
   pluginSpec:
     image: seonghapark/surface-water-detection:0.0.6
     selector:
-    - resource.gpu=true
+      resource.gpu: true
     args:
     - -stream
     - left
@@ -13,7 +13,7 @@ plugins:
     - deeplabv2_resnet101_msc-cocostuff164k-100000.pth
     - -config-path
     - configs/cocostuff164k.yaml
-nodesTag:
+nodeTags:
 - WSN
 - raingauge
 - camera_bottom

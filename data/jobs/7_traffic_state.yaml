@@ -5,7 +5,7 @@ plugins:
   pluginSpec:
     image: seonghapark/object-counter:0.4.2
     selector:
-    - resource.gpu=true
+      resource.gpu: true
     args:
     - -stream
     - bottom
