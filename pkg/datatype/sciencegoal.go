@@ -62,6 +62,19 @@ func (g *ScienceGoal) GetMySubGoal(nodeName string) *SubGoal {
 	return nil
 }
 
+// ShowMyScienceGoal returns the science goal with node's sub goal.
+// It simply removes all other nodes' sub goal. Note that this creates a new object (deep copy).
+func (g *ScienceGoal) ShowMyScienceGoal(nodeName string) *ScienceGoal {
+	mySubgoal := *g.GetMySubGoal(nodeName)
+	return &ScienceGoal{
+		ID:         g.ID,
+		JobID:      g.JobID,
+		Name:       g.Name,
+		SubGoals:   []*SubGoal{&mySubgoal},
+		Conditions: g.Conditions,
+	}
+}
+
 // SubGoal structs node-specific goal along with conditions and rules
 type SubGoal struct {
 	Name         string    `json:"name" yaml:"name"`

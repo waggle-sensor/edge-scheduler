@@ -78,9 +78,19 @@ func (cgm *CloudGoalManager) RemoveJob(jobID string, force bool) error {
 			return fmt.Errorf("Failed to remove job %q as it is in running state. Suspend it first or specify force=true", jobID)
 		}
 		delete(cgm.jobs, job.JobID)
+		cgm.RemoveScienceGoal(job.ScienceGoal.ID)
 		return nil
 	} else {
 		return fmt.Errorf("Failed to find job %q to remove", jobID)
+	}
+}
+
+func (cgm *CloudGoalManager) RemoveScienceGoal(goalID string) error {
+	if goal, exist := cgm.scienceGoals[goalID]; exist {
+		delete(cgm.scienceGoals, goal.ID)
+		return nil
+	} else {
+		return fmt.Errorf("Failed to find science goal %q to remove", goalID)
 	}
 }
 
