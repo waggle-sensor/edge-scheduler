@@ -852,7 +852,7 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 					return
 				case batchv1.JobFailed:
 					// rm.UpdateReservation(false)
-					rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddK3SJobMeta(job).AddPodMeta(pod).AddPluginMeta(plugin).Build())
+					rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason(job.Status.Conditions[0].Reason).AddK3SJobMeta(job).AddPodMeta(pod).AddPluginMeta(plugin).Build())
 					return
 				}
 			} else {
