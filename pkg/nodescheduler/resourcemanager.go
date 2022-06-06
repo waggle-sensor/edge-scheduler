@@ -651,7 +651,7 @@ func (rm *ResourceManager) CreateDataConfigMap(configName string, datashims []*d
 }
 
 func (rm *ResourceManager) RunPlugin(job *batchv1.Job) (*batchv1.Job, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	jobClient := rm.Clientset.BatchV1().Jobs(rm.Namespace)
 	return jobClient.Create(ctx, job, metav1.CreateOptions{})
@@ -659,7 +659,7 @@ func (rm *ResourceManager) RunPlugin(job *batchv1.Job) (*batchv1.Job, error) {
 
 // LaunchPlugin launches a k3s deployment in the cluster
 func (rm *ResourceManager) LaunchPlugin(deployment *appsv1.Deployment) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	deploymentsClient := rm.Clientset.AppsV1().Deployments(rm.Namespace)
 	result, err := deploymentsClient.Create(ctx, deployment, metav1.CreateOptions{})
@@ -717,7 +717,7 @@ func (rm *ResourceManager) TerminateDeployment(pluginName string) error {
 }
 
 func (rm *ResourceManager) TerminateJob(jobName string) error {
-	deleteDependencies := metav1.DeletePropagationBackground
+	deleteDependencies := metav1.DeletePropagationForeground
 	return rm.Clientset.BatchV1().Jobs(rm.Namespace).Delete(context.TODO(), jobName, metav1.DeleteOptions{PropagationPolicy: &deleteDependencies})
 }
 
@@ -876,7 +876,7 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 					return
 				case batchv1.JobFailed:
 					// rm.UpdateReservation(false)
-					rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddK3SJobMeta(job).AddPodMeta(pod).AddPluginMeta(plugin).Build())
+					rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason(job.Status.Conditions[0].Reason).AddK3SJobMeta(job).AddPodMeta(pod).AddPluginMeta(plugin).Build())
 					return
 				}
 			} else {

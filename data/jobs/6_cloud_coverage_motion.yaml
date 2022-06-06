@@ -1,0 +1,32 @@
+---
+name: cloud-coverage-motion
+plugins:
+- name: cloud-cover-estimator
+  pluginSpec:
+    image: seonghapark/cloud-cover:0.1.3
+    selector:
+      resource.gpu: true
+    args:
+    - -stream
+    - top
+- name: cloud-motion
+  pluginSpec:
+    image: bhupendraraut/cloud-motion:0.22.2.27
+    args:
+    - --input
+    - top
+- name: imagesampler
+  pluginSpec:
+    image: waggle/plugin-image-sampler:0.3.0
+    args:
+    - -stream
+    - top
+nodesTags:
+- WSN
+- camera_top
+scienceRules:
+- "cloud-cover-estimator: cronjob('cloud-cover-estimator', '*/10 * * * *')"
+- "cloud-motion: v('env.coverage.cloud') > 0.3"
+- "imagesampler: e('env.event.cloud.interesting')"
+successcriteria:
+- WallClock(1d)

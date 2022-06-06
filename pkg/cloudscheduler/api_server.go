@@ -131,7 +131,7 @@ func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	case http.MethodPost:
-		var newJob *datatype.Job
+		newJob := datatype.NewJob("", "", "")
 		// The query includes a full job description
 		blob, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -371,7 +371,10 @@ func (api *APIServer) handlerGoals(w http.ResponseWriter, r *http.Request) {
 func (api *APIServer) handlerGoalForNode(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	nodeName := vars["nodeName"]
-	goals := api.cloudScheduler.GoalManager.GetScienceGoalsForNode(nodeName)
+	var goals []*datatype.ScienceGoal
+	for _, g := range api.cloudScheduler.GoalManager.GetScienceGoalsForNode(nodeName) {
+		goals = append(goals, g.ShowMyScienceGoal(nodeName))
+	}
 	blob, err := json.MarshalIndent(goals, "", "  ")
 	if err != nil {
 		response := datatype.NewAPIMessageBuilder().AddError(err.Error()).Build()

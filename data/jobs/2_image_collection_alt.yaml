@@ -1,0 +1,35 @@
+---
+name: image-collection
+plugins:
+- name: imagesampler-top
+  pluginSpec:
+    image: theone/imagesampler:0.3.0
+    args:
+    - -stream
+    - top
+- name: imagesampler-bottom
+  pluginSpec:
+    image: theone/imagesampler:0.3.0
+    args:
+    - -stream
+    - bottom
+- name: imagesampler-left
+  pluginSpec:
+    image: theone/imagesampler:0.3.0
+    args:
+    - -stream
+    - left
+nodes:
+  W023:
+  - imagesampler-top
+  - imagesampler-bottom
+  - imagesampler-left
+  W024:
+  - imagesampler-top
+  - imagesampler-bottom
+scienceRules:
+- "imagesampler-top: cronjob('imagesampler-top', '0 * * * *')"
+- "imagesampler-bottom: cronjob('imagesampler-bottom', '0 * * * *')"
+- "imagesampler-left: cronjob('imagesampler-left', '0 * * * *')"
+successcriteria:
+- WallClock(1d)

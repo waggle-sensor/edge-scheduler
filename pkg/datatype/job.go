@@ -40,6 +40,7 @@ func NewJob(name string, user string, jobID string) *Job {
 		Name:  name,
 		JobID: jobID,
 		User:  user,
+		Nodes: make(map[string]interface{}),
 	}
 }
 

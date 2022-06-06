@@ -1,0 +1,37 @@
+---
+name: image-collection
+plugins:
+- name: imagesampler-top
+  pluginSpec:
+    image: theone/imagesampler:0.3.0
+    args:
+    - -stream
+    - top
+- name: imagesampler-bottom
+  pluginSpec:
+    image: theone/imagesampler:0.3.0
+    args:
+    - -stream
+    - bottom
+- name: imagesampler-left
+  pluginSpec:
+    image: theone/imagesampler:0.3.0
+    args:
+    - -stream
+    - left
+- name: imagesampler-right
+  pluginSpec:
+    image: theone/imagesampler:0.3.0
+    args:
+    - -stream
+    - right
+nodesTags:
+- WSN
+- camera
+scienceRules:
+- "imagesampler-top: cronjob('imagesampler-top', '0 * * * *')"
+- "imagesampler-bottom: cronjob('imagesampler-bottom', '0 * * * *')"
+- "imagesampler-left: cronjob('imagesampler-left', '0 * * * *')"
+- "imagesampler-right: cronjob('imagesampler-right', '0 * * * *')"
+successcriteria:
+- WallClock(1d)
