@@ -26,10 +26,10 @@ def build_arch(spec: dict) -> list:
     return " ".join(archs).split()
 
 
-def new_plugin(spec: dict) -> dict:
+def new_plugin(spec: dict, image_prefix: str) -> dict:
     return {
         "name": spec.get("name", ""),
-        "image": spec.get("id", ""),
+        "image": "/".join([image_prefix, spec.get("id", "")]),
         "tags": spec.get("tags"),
         "required_hardware": build_required_hardware(spec),
         "architecture": build_arch(spec),
@@ -54,7 +54,7 @@ def create_plugins(args):
         if plugin_spec.get("id", "") == "":
             continue
         print(f'Creating plugin for {plugin_spec.get("id")}...')
-        plugin = new_plugin(plugin_spec)
+        plugin = new_plugin(plugin_spec, image_prefix=args.ecr_prefix)
         save(args.out_path, plugin)
         print("Done")
     return 0
@@ -62,6 +62,14 @@ def create_plugins(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-ecr-prefix",
+        dest="ecr_prefix",
+        action="store",
+        default="registry.sagecontinuum.org",
+        type=str,
+        help="ECR registry URL"
+    )
     parser.add_argument(
         "-plugin-url",
         dest="plugin_url",
