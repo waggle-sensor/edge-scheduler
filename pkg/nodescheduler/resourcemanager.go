@@ -693,7 +693,7 @@ func (rm *ResourceManager) TerminateDeployment(pluginName string) error {
 }
 
 func (rm *ResourceManager) TerminateJob(jobName string) error {
-	deleteDependencies := metav1.DeletePropagationBackground
+	deleteDependencies := metav1.DeletePropagationForeground
 	return rm.Clientset.BatchV1().Jobs(rm.Namespace).Delete(context.TODO(), jobName, metav1.DeleteOptions{PropagationPolicy: &deleteDependencies})
 }
 
