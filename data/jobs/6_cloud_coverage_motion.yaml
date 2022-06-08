@@ -21,7 +21,7 @@ plugins:
     args:
     - -stream
     - top
-nodesTags:
+nodeTags:
 - WSN
 - camera_top
 scienceRules:

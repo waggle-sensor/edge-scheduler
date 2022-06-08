@@ -1,0 +1,17 @@
+---
+name: video-sampling
+plugins:
+- name: videosampler-left
+  pluginSpec:
+    image: registry.sagecontinuum.org/theone/video-sampler:0.3.0
+    args:
+    - -stream
+    - left
+    - -duration
+    - 60
+nodes:
+  W023:
+scienceRules:
+- "videosampler-left: cronjob('videosampler-left', '*/5 7,8,9 * * *')"
+successcriteria:
+- WallClock(1d)

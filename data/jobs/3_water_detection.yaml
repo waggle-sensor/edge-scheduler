@@ -3,7 +3,7 @@ name: water-detection
 plugins:
 - name: water-detector
   pluginSpec:
-    image: seonghapark/surface-water-detection:0.0.6
+    image: registry.sagecontinuum.org/seonghapark/surface-water-detection:0.0.6
     selector:
       resource.gpu: true
     args:

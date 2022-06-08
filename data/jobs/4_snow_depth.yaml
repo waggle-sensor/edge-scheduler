@@ -7,7 +7,7 @@ plugins:
 - name: snow-depth-detector
   pluginSpec:
     image: noimage
-nodesTags:
+nodeTags:
 - NEON
 scienceRules:
 - "thermal-image-analyzer: cronjob('thermal-image-analyzer', '*/10 * * * *')"

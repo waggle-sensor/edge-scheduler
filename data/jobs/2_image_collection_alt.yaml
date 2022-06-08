@@ -3,19 +3,19 @@ name: image-collection
 plugins:
 - name: imagesampler-top
   pluginSpec:
-    image: theone/imagesampler:0.3.0
+    image: registry.sagecontinuum.org/theone/imagesampler:0.3.0
     args:
     - -stream
     - top
 - name: imagesampler-bottom
   pluginSpec:
-    image: theone/imagesampler:0.3.0
+    image: registry.sagecontinuum.org/theone/imagesampler:0.3.0
     args:
     - -stream
     - bottom
 - name: imagesampler-left
   pluginSpec:
-    image: theone/imagesampler:0.3.0
+    image: registry.sagecontinuum.org/theone/imagesampler:0.3.0
     args:
     - -stream
     - left
