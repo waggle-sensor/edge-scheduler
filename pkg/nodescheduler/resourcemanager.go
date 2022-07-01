@@ -45,6 +45,7 @@ const (
 
 var (
 	hostPathDirectoryOrCreate       = apiv1.HostPathDirectoryOrCreate
+	hostPathDirectory               = apiv1.HostPathDirectory
 	backOffLimit              int32 = 0
 	ttlSecondsAfterFinished   int32 = 3600
 )
@@ -319,12 +320,11 @@ func (rm *ResourceManager) WatchJobs(namespace string) (watch.Interface, error) 
 
 // CreateK3SJob creates and returns a Kubernetes job object of the pllugin
 func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, error) {
-	// if plugin.Name == "" {
 	name, err := pluginNameForSpec(plugin)
 	if err != nil {
 		return nil, err
 	}
-	// }
+
 	envs := []apiv1.EnvVar{
 		{
 			Name:  "PULSE_SERVER",
@@ -375,12 +375,80 @@ func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, err
 			Value: "wes-scoreboard.default.svc.cluster.local",
 		},
 	}
+
 	for k, v := range plugin.PluginSpec.Env {
 		envs = append(envs, apiv1.EnvVar{
 			Name:  k,
 			Value: v,
 		})
 	}
+
+	volumes := []apiv1.Volume{
+		{
+			Name: "uploads",
+			VolumeSource: apiv1.VolumeSource{
+				HostPath: &apiv1.HostPathVolumeSource{
+					Path: path.Join("/media/plugin-data/uploads", plugin.PluginSpec.Job, plugin.Name, plugin.PluginSpec.GetImageVersion()),
+					Type: &hostPathDirectoryOrCreate,
+				},
+			},
+		},
+		{
+			Name: "waggle-data-config",
+			VolumeSource: apiv1.VolumeSource{
+				ConfigMap: &apiv1.ConfigMapVolumeSource{
+					LocalObjectReference: apiv1.LocalObjectReference{
+						Name: "waggle-data-config",
+					},
+				},
+			},
+		},
+		{
+			Name: "wes-audio-server-plugin-conf",
+			VolumeSource: apiv1.VolumeSource{
+				ConfigMap: &apiv1.ConfigMapVolumeSource{
+					LocalObjectReference: apiv1.LocalObjectReference{
+						Name: "wes-audio-server-plugin-conf",
+					},
+				},
+			},
+		},
+	}
+
+	volumeMounts := []apiv1.VolumeMount{
+		{
+			Name:      "uploads",
+			MountPath: "/run/waggle/uploads",
+		},
+		{
+			Name:      "waggle-data-config",
+			MountPath: "/run/waggle/data-config.json",
+			SubPath:   "data-config.json",
+		},
+		{
+			Name:      "wes-audio-server-plugin-conf",
+			MountPath: "/etc/asound.conf",
+			SubPath:   "asound.conf",
+		},
+	}
+
+	// provide privileged plugins access to host devices
+	if plugin.PluginSpec.Privileged {
+		volumes = append(volumes, apiv1.Volume{
+			Name: "dev",
+			VolumeSource: apiv1.VolumeSource{
+				HostPath: &apiv1.HostPathVolumeSource{
+					Path: "/dev",
+					Type: &hostPathDirectory,
+				},
+			},
+		})
+		volumeMounts = append(volumeMounts, apiv1.VolumeMount{
+			Name:      "dev",
+			MountPath: "/host/dev",
+		})
+	}
+
 	container := apiv1.Container{
 		SecurityContext: securityContextForConfig(plugin.PluginSpec),
 		Name:            plugin.Name,
@@ -396,26 +464,12 @@ func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, err
 			// 	apiv1.ResourceMemory: resource.MustParse("1.5Gi"),
 			// },
 		},
-		VolumeMounts: []apiv1.VolumeMount{
-			{
-				Name:      "uploads",
-				MountPath: "/run/waggle/uploads",
-			},
-			{
-				Name:      "waggle-data-config",
-				MountPath: "/run/waggle/data-config.json",
-				SubPath:   "data-config.json",
-			},
-			{
-				Name:      "wes-audio-server-plugin-conf",
-				MountPath: "/etc/asound.conf",
-				SubPath:   "asound.conf",
-			},
-		},
+		VolumeMounts: volumeMounts,
 	}
 	if plugin.PluginSpec.Entrypoint != "" {
 		container.Command = []string{plugin.PluginSpec.Entrypoint}
 	}
+
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -432,37 +486,7 @@ func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, err
 					// TODO: The priority class will be revisited when using resource metrics to schedule plugins
 					// PriorityClassName: getPriorityClassName(plugin.PluginSpec),
 					Containers: []apiv1.Container{container},
-					Volumes: []apiv1.Volume{
-						{
-							Name: "uploads",
-							VolumeSource: apiv1.VolumeSource{
-								HostPath: &apiv1.HostPathVolumeSource{
-									Path: path.Join("/media/plugin-data/uploads", plugin.Name, plugin.PluginSpec.GetImageVersion()),
-									Type: &hostPathDirectoryOrCreate,
-								},
-							},
-						},
-						{
-							Name: "waggle-data-config",
-							VolumeSource: apiv1.VolumeSource{
-								ConfigMap: &apiv1.ConfigMapVolumeSource{
-									LocalObjectReference: apiv1.LocalObjectReference{
-										Name: "waggle-data-config",
-									},
-								},
-							},
-						},
-						{
-							Name: "wes-audio-server-plugin-conf",
-							VolumeSource: apiv1.VolumeSource{
-								ConfigMap: &apiv1.ConfigMapVolumeSource{
-									LocalObjectReference: apiv1.LocalObjectReference{
-										Name: "wes-audio-server-plugin-conf",
-									},
-								},
-							},
-						},
-					},
+					Volumes:    volumes,
 				},
 			},
 			BackoffLimit:            &backOffLimit,

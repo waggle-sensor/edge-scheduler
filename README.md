@@ -1,10 +1,10 @@
-# Sage Edge Scheduler (SES)
+# Edge Scheduler (ES)
 
-SES offers software components that allow users to submit "jobs" that run applications (user plugins) on edge computing nodes.
+Edge Scheduler offers software components that allow users to submit "jobs" that run applications (user plugins) on edge computing nodes.
 
 One cloud scheduler manages multiple node schedulers. Each node scheduler must contact to only one cloud scheduler. Users interact only with a cloud scheduler to submit and monitor jobs.
 
-## Build Docker Image for SES
+## Build Docker Image for Edge Scheduler
 
 ```
 # Build a Docker image with the version 0.0.0
