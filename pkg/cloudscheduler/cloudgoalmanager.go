@@ -9,8 +9,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/sagecontinuum/ses/pkg/datatype"
-	"github.com/sagecontinuum/ses/pkg/interfacing"
+	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
+	"github.com/waggle-sensor/edge-scheduler/pkg/interfacing"
 )
 
 // CloudGoalManager structs a goal manager for cloudscheduler

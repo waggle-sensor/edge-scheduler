@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/sagecontinuum/ses/pkg/datatype"
-	"github.com/sagecontinuum/ses/pkg/interfacing"
-	"github.com/sagecontinuum/ses/pkg/logger"
-	"github.com/sagecontinuum/ses/pkg/nodescheduler/policy"
+	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
+	"github.com/waggle-sensor/edge-scheduler/pkg/interfacing"
+	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
+	"github.com/waggle-sensor/edge-scheduler/pkg/nodescheduler/policy"
 )
 
 const (
@@ -22,7 +22,7 @@ type NodeScheduler struct {
 	GoalManager                 *NodeGoalManager
 	APIServer                   *APIServer
 	Simulate                    bool
-	SchedulingPolicy            *policy.SchedulingPolicy
+	SchedulingPolicy            policy.SchedulingPolicy
 	LogToBeehive                *interfacing.RabbitMQHandler
 	chanContextEventToScheduler chan datatype.EventPluginContext
 	chanFromGoalManager         chan datatype.Event
@@ -245,7 +245,7 @@ func (ns *NodeScheduler) Run() {
 			// 	}
 			// }
 			// Select the best task
-			plugins, err := ns.SchedulingPolicy.SimpleScheduler.SelectBestPlugins(
+			plugins, err := ns.SchedulingPolicy.SelectBestPlugins(
 				ns.GoalManager.ScienceGoals,
 				datatype.Resource{
 					CPU:       "999000m",

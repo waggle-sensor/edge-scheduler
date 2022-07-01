@@ -3,7 +3,7 @@ package interfacing
 import (
 	"sync"
 
-	"github.com/sagecontinuum/ses/pkg/datatype"
+	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
 )
 
 type Notifier struct {

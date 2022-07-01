@@ -8,9 +8,9 @@ import (
 	"path"
 	"time"
 
-	"github.com/sagecontinuum/ses/pkg/datatype"
-	"github.com/sagecontinuum/ses/pkg/interfacing"
-	"github.com/sagecontinuum/ses/pkg/logger"
+	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
+	"github.com/waggle-sensor/edge-scheduler/pkg/interfacing"
+	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
 	yaml "gopkg.in/yaml.v2"
 	"k8s.io/apimachinery/pkg/watch"
 )

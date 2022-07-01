@@ -19,9 +19,9 @@ import (
 	"time"
 
 	rabbithole "github.com/michaelklishin/rabbit-hole"
-	"github.com/sagecontinuum/ses/pkg/datatype"
-	"github.com/sagecontinuum/ses/pkg/interfacing"
-	"github.com/sagecontinuum/ses/pkg/logger"
+	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
+	"github.com/waggle-sensor/edge-scheduler/pkg/interfacing"
+	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
 
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
@@ -147,6 +147,10 @@ func securityContextForConfig(pluginSpec *datatype.PluginSpec) *apiv1.SecurityCo
 		return &apiv1.SecurityContext{Privileged: &pluginSpec.Privileged}
 	}
 	return nil
+}
+
+func getPriorityClassName(pluginSpec *datatype.PluginSpec) string {
+	return "wes-plugin-default"
 }
 
 // CreatePluginCredential creates a credential inside RabbitMQ server for the plugin
@@ -386,6 +390,11 @@ func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, err
 		Resources: apiv1.ResourceRequirements{
 			Limits:   apiv1.ResourceList{},
 			Requests: apiv1.ResourceList{},
+			// TODO: this should be revisited when talking about resource-aware scheduling
+			// Requests: apiv1.ResourceList{
+			// 	apiv1.ResourceCPU:    resource.MustParse("1500m"),
+			// 	apiv1.ResourceMemory: resource.MustParse("1.5Gi"),
+			// },
 		},
 		VolumeMounts: []apiv1.VolumeMount{
 			{
@@ -420,7 +429,9 @@ func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, err
 				Spec: apiv1.PodSpec{
 					NodeSelector:  nodeSelectorForConfig(plugin.PluginSpec),
 					RestartPolicy: apiv1.RestartPolicyNever,
-					Containers:    []apiv1.Container{container},
+					// TODO: The priority class will be revisited when using resource metrics to schedule plugins
+					// PriorityClassName: getPriorityClassName(plugin.PluginSpec),
+					Containers: []apiv1.Container{container},
 					Volumes: []apiv1.Volume{
 						{
 							Name: "uploads",

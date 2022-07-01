@@ -6,9 +6,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/sagecontinuum/ses/pkg/logger"
-	"github.com/sagecontinuum/ses/pkg/pluginctl"
 	"github.com/spf13/cobra"
+	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
+	"github.com/waggle-sensor/edge-scheduler/pkg/pluginctl"
 	"k8s.io/client-go/util/homedir"
 )
 

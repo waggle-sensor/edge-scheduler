@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/sagecontinuum/ses/cmd/pluginctl/cmd"
+	"github.com/waggle-sensor/edge-scheduler/cmd/pluginctl/cmd"
 )
 
 var Version = "0.0.0"
@@ -9,7 +9,7 @@ var Version = "0.0.0"
 // exec "k8s.io/kubectl/pkg/cmd/exec"
 // "k8s.io/kubectl/pkg/cmd/util"
 
-// import "github.com/sagecontinuum/ses/cmd/pluginctl/cmd"
+// import "github.com/waggle-sensor/edge-scheduler/cmd/pluginctl/cmd"
 
 // kubectl "k8s.io/kubectl/pkg/cmd"
 

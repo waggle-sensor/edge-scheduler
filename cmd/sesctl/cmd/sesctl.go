@@ -5,8 +5,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/sagecontinuum/ses/pkg/logger"
 	"github.com/spf13/cobra"
+	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
 )
 
 var (

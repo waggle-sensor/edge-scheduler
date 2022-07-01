@@ -1,0 +1,25 @@
+---
+name: myjob
+plugins:
+- name: myfirstapp
+  pluginSpec:
+    image: registry.sagecontinuum.org/theone/imagesampler:0.3.0
+    entrypoint: /bin/bash
+    args:
+    - -c
+    - "echo hello world; sleep 10; echo bye"
+- name: mysecondapp
+  pluginSpec:
+    image: registry.sagecontinuum.org/theone/imagesampler:0.3.0
+    entrypoint: /bin/bash
+    args:
+    - -c
+    - "echo hello world; sleep 5; echo bye"
+nodes:
+  W023:
+scienceRules:
+- "myfirstapp: True"
+- "mysecondapp: True"
+#- "myfirstapp: cronjob('myfirstapp', '0 * * * *')"
+successcriteria:
+- WallClock(1d)

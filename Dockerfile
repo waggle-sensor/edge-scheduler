@@ -21,7 +21,7 @@ RUN wget https://golang.org/dl/go1.17.6.linux-${TARGETARCH}.tar.gz \
   && rm go1.17.6.linux-${TARGETARCH}.tar.gz
 
 FROM base as builder
-WORKDIR $GOPATH/src/github.com/sagecontinuum/ses
+WORKDIR $GOPATH/src/github.com/waggle-sensor/edge-scheduler
 COPY . .
 ARG VERSION
 ENV VERSION=${VERSION}

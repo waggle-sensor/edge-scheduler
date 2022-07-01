@@ -7,9 +7,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/sagecontinuum/ses/pkg/logger"
-	"github.com/sagecontinuum/ses/pkg/pluginctl"
 	"github.com/spf13/cobra"
+	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
+	"github.com/waggle-sensor/edge-scheduler/pkg/pluginctl"
 	batchv1 "k8s.io/api/batch/v1"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/watch"

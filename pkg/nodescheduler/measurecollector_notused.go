@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/sagecontinuum/ses/pkg/logger"
 	"github.com/streadway/amqp"
+	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
 )
 
 var (

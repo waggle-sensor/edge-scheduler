@@ -3,8 +3,8 @@ package cloudscheduler
 import (
 	"fmt"
 
-	"github.com/sagecontinuum/ses/pkg/datatype"
-	"github.com/sagecontinuum/ses/pkg/logger"
+	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
+	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
 )
 
 const maxChannelBuffer = 100

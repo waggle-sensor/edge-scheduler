@@ -4,9 +4,9 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/sagecontinuum/ses/pkg/datatype"
-	"github.com/sagecontinuum/ses/pkg/interfacing"
-	"github.com/sagecontinuum/ses/pkg/nodescheduler/policy"
+	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
+	"github.com/waggle-sensor/edge-scheduler/pkg/interfacing"
+	"github.com/waggle-sensor/edge-scheduler/pkg/nodescheduler/policy"
 )
 
 // NOTE: I do not know why we need this if we can't vary arguments in the functions
@@ -24,13 +24,12 @@ type RealNodeScheduler struct {
 }
 
 func NewRealNodeSchedulerBuilder(nodeID string, version string) *RealNodeScheduler {
-	schedulingPolicy := policy.NewSimpleSchedulingPolicy()
 	return &RealNodeScheduler{
 		nodeScheduler: &NodeScheduler{
 			Version:                     version,
 			NodeID:                      strings.ToLower(nodeID),
 			Simulate:                    false,
-			SchedulingPolicy:            schedulingPolicy,
+			SchedulingPolicy:            policy.NewSimpleSchedulingPolicy(),
 			chanContextEventToScheduler: make(chan datatype.EventPluginContext, maxChannelBuffer),
 			chanFromGoalManager:         make(chan datatype.Event, maxChannelBuffer),
 			chanFromResourceManager:     make(chan datatype.Event, maxChannelBuffer),
@@ -41,6 +40,11 @@ func NewRealNodeSchedulerBuilder(nodeID string, version string) *RealNodeSchedul
 			chanAPIServerToGoalManager:  make(chan *datatype.ScienceGoal, maxChannelBuffer),
 		},
 	}
+}
+
+func (rns *RealNodeScheduler) AddSchedulingPolicy(policyName string) *RealNodeScheduler {
+	rns.nodeScheduler.SchedulingPolicy = policy.GetSchedulingPolicyByName(policyName)
+	return rns
 }
 
 func (rns *RealNodeScheduler) AddGoalManager(cloudschedulerURI string) *RealNodeScheduler {
@@ -109,13 +113,11 @@ type FakeNodeScheduler struct {
 }
 
 func NewFakeNodeSchedulerBuilder(nodeID string, version string) *FakeNodeScheduler {
-	schedulingPolicy := policy.NewSimpleSchedulingPolicy()
 	return &FakeNodeScheduler{
 		nodeScheduler: &NodeScheduler{
 			Version:                     version,
 			NodeID:                      strings.ToLower(nodeID),
 			Simulate:                    true,
-			SchedulingPolicy:            schedulingPolicy,
 			chanContextEventToScheduler: make(chan datatype.EventPluginContext, maxChannelBuffer),
 			chanFromGoalManager:         make(chan datatype.Event, maxChannelBuffer),
 			chanFromResourceManager:     make(chan datatype.Event, maxChannelBuffer),
@@ -126,6 +128,11 @@ func NewFakeNodeSchedulerBuilder(nodeID string, version string) *FakeNodeSchedul
 			chanAPIServerToGoalManager:  make(chan *datatype.ScienceGoal, maxChannelBuffer),
 		},
 	}
+}
+
+func (fns *FakeNodeScheduler) AddSchedulingPolicy(policyName string) *FakeNodeScheduler {
+	fns.nodeScheduler.SchedulingPolicy = policy.GetSchedulingPolicyByName(policyName)
+	return fns
 }
 
 func (fns *FakeNodeScheduler) AddGoalManager() *FakeNodeScheduler {

@@ -6,8 +6,8 @@ import (
 	"os"
 	"path"
 
-	"github.com/sagecontinuum/ses/pkg/datatype"
-	"github.com/sagecontinuum/ses/pkg/logger"
+	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
+	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
 )
 
 type JobValidator struct {
@@ -82,6 +82,9 @@ func (jv *JobValidator) LoadDatabase(basePath string) error {
 
 // GetNodeNamesByTags returns a list of node names matched with given tags
 func (jv *JobValidator) GetNodeNamesByTags(tags []string) (nodesFound []string) {
+	if len(tags) == 0 {
+		return
+	}
 	for _, node := range jv.Nodes {
 		if node.MatchTags(tags, true) {
 			nodesFound = append(nodesFound, node.Name)

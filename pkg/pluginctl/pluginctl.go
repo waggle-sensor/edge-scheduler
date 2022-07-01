@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sagecontinuum/ses/pkg/datatype"
-	"github.com/sagecontinuum/ses/pkg/logger"
-	"github.com/sagecontinuum/ses/pkg/nodescheduler"
+	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
+	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
+	"github.com/waggle-sensor/edge-scheduler/pkg/nodescheduler"
 	apiv1 "k8s.io/api/core/v1"
 )
 

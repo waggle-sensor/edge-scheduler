@@ -10,8 +10,8 @@ import (
 	"strconv"
 
 	"github.com/gorilla/mux"
-	"github.com/sagecontinuum/ses/pkg/datatype"
-	"github.com/sagecontinuum/ses/pkg/logger"
+	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
+	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
 	yaml "gopkg.in/yaml.v2"
 	// "github.com/urfave/negroni"
 )
