@@ -150,6 +150,10 @@ func securityContextForConfig(pluginSpec *datatype.PluginSpec) *apiv1.SecurityCo
 	return nil
 }
 
+func getPriorityClassName(pluginSpec *datatype.PluginSpec) string {
+	return "wes-plugin-default"
+}
+
 // CreatePluginCredential creates a credential inside RabbitMQ server for the plugin
 func (rm *ResourceManager) CreatePluginCredential(plugin *datatype.Plugin) (datatype.PluginCredential, error) {
 	// TODO: We will need to add instance of plugin as a aprt of Username
@@ -454,6 +458,11 @@ func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, err
 		Resources: apiv1.ResourceRequirements{
 			Limits:   apiv1.ResourceList{},
 			Requests: apiv1.ResourceList{},
+			// TODO: this should be revisited when talking about resource-aware scheduling
+			// Requests: apiv1.ResourceList{
+			// 	apiv1.ResourceCPU:    resource.MustParse("1500m"),
+			// 	apiv1.ResourceMemory: resource.MustParse("1.5Gi"),
+			// },
 		},
 		VolumeMounts: volumeMounts,
 	}
@@ -474,8 +483,10 @@ func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, err
 				Spec: apiv1.PodSpec{
 					NodeSelector:  nodeSelectorForConfig(plugin.PluginSpec),
 					RestartPolicy: apiv1.RestartPolicyNever,
-					Containers:    []apiv1.Container{container},
-					Volumes:       volumes,
+					// TODO: The priority class will be revisited when using resource metrics to schedule plugins
+					// PriorityClassName: getPriorityClassName(plugin.PluginSpec),
+					Containers: []apiv1.Container{container},
+					Volumes:    volumes,
 				},
 			},
 			BackoffLimit:            &backOffLimit,

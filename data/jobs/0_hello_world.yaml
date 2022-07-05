@@ -3,7 +3,7 @@ name: helloworld
 plugins:
 - name: myapp
   pluginSpec:
-    image: theone/imagesampler:0.3.0
+    image: registry.sagecontinuum.org/theone/imagesampler:0.3.0
     entrypoint: /bin/bash
     args:
     - -c

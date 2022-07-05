@@ -4,7 +4,7 @@ plugins:
 - name: avian-diversity-monitoring
   pluginSpec:
     image: dariodematties1/avian-diversity-monitoring:0.2.4
-nodesTags:
+nodeTags:
 - microphone
 scienceRules:
 - "avian-diversity-monitoring: cronjob('avian-diversity-monitoring', '*/10 * * * *')"

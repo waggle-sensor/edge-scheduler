@@ -22,7 +22,7 @@ plugins:
 - name: road-ice-detector
   pluginSpec:
     image: noimage
-nodesTags:
+nodeTags:
 - WSN
 - camera_bottom
 - urban

@@ -33,6 +33,7 @@ func main() {
 		rulecheckerURI    string
 		nodeID            string
 		incluster         bool
+		schedulingPolicy  string
 	)
 	flag.BoolVar(&simulate, "simulate", false, "Simulate the scheduler")
 	flag.StringVar(&nodeID, "nodeid", getenv("WAGGLE_NODE_ID", "000000000001"), "node ID")
@@ -49,12 +50,14 @@ func main() {
 	flag.StringVar(&rabbitmqPassword, "rabbitmq-password", getenv("RABBITMQ_PASSWORD", "service"), "RabbitMQ management password")
 	flag.StringVar(&cloudschedulerURI, "cloudscheduler-uri", "http://localhost:9770", "cloudscheduler URI")
 	flag.StringVar(&rulecheckerURI, "rulechecker-uri", "http://wes-sciencerule-checker:5000", "rulechecker URI")
+	flag.StringVar(&schedulingPolicy, "policy", "default", "Name of the scheduling policy")
 	flag.Parse()
 	logger.Info.Printf("Node scheduler (%q) starts...", nodeID)
 	var ns *nodescheduler.NodeScheduler
 	if simulate {
 		logger.Debug.Println("Creating scheduler for simulation...")
 		ns = nodescheduler.NewFakeNodeSchedulerBuilder(nodeID, Version).
+			AddSchedulingPolicy(schedulingPolicy).
 			AddGoalManager().
 			AddKnowledgebase().
 			AddResourceManager().
@@ -63,6 +66,7 @@ func main() {
 	} else {
 		logger.Debug.Println("Creating scheduler for real...")
 		ns = nodescheduler.NewRealNodeSchedulerBuilder(nodeID, Version).
+			AddSchedulingPolicy(schedulingPolicy).
 			AddGoalManager(cloudschedulerURI).
 			AddKnowledgebase(rulecheckerURI).
 			AddResourceManager(registry, incluster, kubeconfig).

@@ -4,15 +4,26 @@ import (
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
 )
 
-type SchedulingPolicy struct {
-	SimpleScheduler *SimpleSchedulingPolicy
+type SchedulingPolicy interface {
+	SelectBestPlugins(map[string]*datatype.ScienceGoal, datatype.Resource, string) ([]*datatype.Plugin, error)
+}
+
+func GetSchedulingPolicyByName(policyName string) SchedulingPolicy {
+	switch policyName {
+	case "default":
+		return NewSimpleSchedulingPolicy()
+	case "roundrobin":
+		return NewRoundRobinSchedulingPolicy()
+	default:
+		return NewSimpleSchedulingPolicy()
+	}
 }
 
 type SimpleSchedulingPolicy struct {
 }
 
-func NewSimpleSchedulingPolicy() *SchedulingPolicy {
-	return &SchedulingPolicy{SimpleScheduler: &SimpleSchedulingPolicy{}}
+func NewSimpleSchedulingPolicy() *SimpleSchedulingPolicy {
+	return &SimpleSchedulingPolicy{}
 }
 
 // SelectBestPlugins returns the best plugin to run at the time

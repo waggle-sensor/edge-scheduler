@@ -16,6 +16,7 @@ def load_nodes(filename) -> dict:
 def build_tags(spec: dict) -> list:
     tags = [
         spec.get("node_type", ""),
+        "raingauge" if spec.get("node_type") == "WSN" else "",
         spec.get("project", ""),
         "bme680 microphone" if spec.get("shield", False) == True else "",
         "camera" if any([

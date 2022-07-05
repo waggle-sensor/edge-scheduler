@@ -22,7 +22,7 @@ type NodeScheduler struct {
 	GoalManager                 *NodeGoalManager
 	APIServer                   *APIServer
 	Simulate                    bool
-	SchedulingPolicy            *policy.SchedulingPolicy
+	SchedulingPolicy            policy.SchedulingPolicy
 	LogToBeehive                *interfacing.RabbitMQHandler
 	chanContextEventToScheduler chan datatype.EventPluginContext
 	chanFromGoalManager         chan datatype.Event
@@ -159,6 +159,9 @@ func (ns *NodeScheduler) Run() {
 			case datatype.EventPluginStatusComplete:
 				// publish plugin completion message locally so that
 				// rule checker knows when the last execution was
+				// TODO: The message takes time to get into DB so the rule checker may not notice
+				//       it if the checker is called before the delivery. We will need to make sure
+				//       the message is delivered before triggering rule checking.
 				pluginName := event.GetPluginName()
 				message := datatype.NewMessage(
 					string(datatype.EventPluginLastExecution),
@@ -242,7 +245,7 @@ func (ns *NodeScheduler) Run() {
 			// 	}
 			// }
 			// Select the best task
-			plugins, err := ns.SchedulingPolicy.SimpleScheduler.SelectBestPlugins(
+			plugins, err := ns.SchedulingPolicy.SelectBestPlugins(
 				ns.GoalManager.ScienceGoals,
 				datatype.Resource{
 					CPU:       "999000m",
