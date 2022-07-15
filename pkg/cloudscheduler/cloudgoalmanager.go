@@ -153,6 +153,6 @@ func (cgm *CloudGoalManager) GenerateNewJobID() string {
 		intCounter, _ := strconv.Atoi(string(counter))
 		intCounter += 1
 		ioutil.WriteFile(filePath, []byte(fmt.Sprint(intCounter)), 0600)
-		return string(counter)
+		return strconv.Itoa(intCounter)
 	}
 }

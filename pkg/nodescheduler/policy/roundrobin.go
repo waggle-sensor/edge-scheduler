@@ -20,7 +20,7 @@ func (rs *RoundRobinSchedulingPolicy) SelectBestPlugins(scienceGoals map[string]
 		for _, plugin := range subGoal.Plugins {
 			// If any plugin is currently running, we don't return other plugins to schedule
 			if plugin.Status.SchedulingStatus == datatype.Running {
-				return pluginsToRun, nil
+				return
 			}
 			// Pick up the oldest Ready plugin
 			if plugin.Status.SchedulingStatus == datatype.Ready {
@@ -33,7 +33,10 @@ func (rs *RoundRobinSchedulingPolicy) SelectBestPlugins(scienceGoals map[string]
 			}
 		}
 	}
-	return []*datatype.Plugin{selectedPlugin}, nil
+	if selectedPlugin != nil {
+		pluginsToRun = append(pluginsToRun, selectedPlugin)
+	}
+	return
 }
 
 // func (ss *SimpleSchedulingPolicy) PromotePlugins(subGoal *datatype.SubGoal) (events []datatype.Event) {
