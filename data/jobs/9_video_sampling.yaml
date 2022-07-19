@@ -3,7 +3,7 @@ name: video-sampling
 plugins:
 - name: videosampler-left
   pluginSpec:
-    image: registry.sagecontinuum.org/theone/video-sampler:0.3.0
+    image: registry.sagecontinuum.org/theone/video-sampler:0.2.3
     args:
     - -stream
     - left

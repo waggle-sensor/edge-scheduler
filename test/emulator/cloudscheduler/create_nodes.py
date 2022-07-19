@@ -18,6 +18,7 @@ def build_tags(spec: dict) -> list:
         spec.get("node_type", ""),
         "raingauge" if spec.get("node_type") == "WSN" else "",
         spec.get("project", ""),
+        spec.get("focus", ""),
         "bme680 microphone" if spec.get("shield", False) == True else "",
         "camera" if any([
             spec.get("top_camera", "none") != "none",
