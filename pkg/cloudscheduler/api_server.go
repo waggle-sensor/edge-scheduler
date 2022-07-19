@@ -87,10 +87,39 @@ func (api *APIServer) handlerCreateJob(w http.ResponseWriter, r *http.Request) {
 
 func (api *APIServer) handlerEditJob(w http.ResponseWriter, r *http.Request) {
 	queries := r.URL.Query()
-	if _, exist := queries["name"]; !exist {
-		respondJSON(w, http.StatusBadRequest, []byte{})
+	if _, exist := queries["id"]; exist {
+		jobID := queries.Get("id")
+		_, err := api.cloudScheduler.GoalManager.GetJob(jobID)
+		if err != nil {
+			response := datatype.NewAPIMessageBuilder().AddError(err.Error()).Build()
+			respondJSON(w, http.StatusBadRequest, response.ToJson())
+			return
+		}
+		// TODO: the API always assumes that the body contains job content
+		updatedJob := datatype.NewJob("", "", "")
+		// The query includes a full job description
+		blob, err := io.ReadAll(r.Body)
+		if err != nil {
+			response := datatype.NewAPIMessageBuilder().AddError(err.Error()).Build()
+			respondJSON(w, http.StatusBadRequest, response.ToJson())
+			return
+		} else {
+			err = yaml.Unmarshal(blob, &updatedJob)
+			if err != nil {
+				response := datatype.NewAPIMessageBuilder().AddError(err.Error()).Build()
+				respondJSON(w, http.StatusBadRequest, response.ToJson())
+				return
+			}
+			updatedJob.JobID = jobID
+			api.cloudScheduler.GoalManager.UpdateJob(updatedJob, false)
+			response := datatype.NewAPIMessageBuilder().AddEntity("job_id", jobID).AddEntity("status", datatype.JobDrafted)
+			respondJSON(w, http.StatusOK, response.Build().ToJson())
+			return
+		}
 	} else {
-		respondJSON(w, http.StatusOK, []byte{})
+		response := datatype.NewAPIMessageBuilder().AddError("job_id is required").Build()
+		respondJSON(w, http.StatusBadRequest, response.ToJson())
+		return
 	}
 }
 
