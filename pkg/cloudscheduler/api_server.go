@@ -16,10 +16,37 @@ import (
 )
 
 type APIServer struct {
-	version        string
-	port           int
-	mainRouter     *mux.Router
-	cloudScheduler *CloudScheduler
+	version                string
+	port                   int
+	enablePushNotification bool
+	mainRouter             *mux.Router
+	cloudScheduler         *CloudScheduler
+	subscribers            map[string]map[chan *datatype.Event]bool
+}
+
+func (api *APIServer) subscribe(nodeName string, c chan *datatype.Event) {
+	if _, exist := api.subscribers[nodeName]; !exist {
+		api.subscribers[nodeName] = make(map[chan *datatype.Event]bool)
+	}
+	api.subscribers[nodeName][c] = true
+}
+
+func (api *APIServer) unsubscribe(nodeName string, c chan *datatype.Event) {
+	if _, exist := api.subscribers[nodeName]; exist {
+		delete(api.subscribers[nodeName], c)
+	}
+}
+
+func (api *APIServer) Push(nodeName string, event *datatype.Event) {
+	if _, exist := api.subscribers[nodeName]; exist {
+		for ch := range api.subscribers[nodeName] {
+			select {
+			case ch <- event:
+			default:
+				// (Sean) don't block on slow channels. assume they will drop and reconnect to fetch goal.
+			}
+		}
+	}
 }
 
 func (api *APIServer) Run() {
@@ -43,6 +70,10 @@ func (api *APIServer) Run() {
 	api_route.Handle("/jobs/{id}/rm", http.HandlerFunc(api.handlerJobRemove)).Methods(http.MethodGet)
 	// api.Handle("/goals", http.HandlerFunc(cs.handlerGoals)).Methods(http.MethodGet, http.MethodPost, http.MethodPut)
 	api_route.Handle("/goals/{nodeName}", http.HandlerFunc(api.handlerGoalForNode)).Methods(http.MethodGet)
+	if api.enablePushNotification {
+		logger.Info.Printf("Enabling push notification. Nodes can connect to /goals/{nodeName}/stream to get notification from the cloud scheduler.")
+		api_route.Handle("/goals/{nodeName}/stream", http.HandlerFunc(api.handlerGoalStreamForNode)).Methods(http.MethodGet)
+	}
 	logger.Info.Fatalln(http.ListenAndServe(api_address_port, api.mainRouter))
 }
 
@@ -411,6 +442,30 @@ func (api *APIServer) handlerGoalForNode(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	respondJSON(w, http.StatusOK, blob)
+}
+
+// handlerGoalStreamForNode uses server-sent events (SSE) to stream new goals to connected nodes
+// whenever goals are changed in cloud scheduler
+func (api *APIServer) handlerGoalStreamForNode(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	nodeName := vars["nodeName"]
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming is not supported", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Type", "text/event-stream")
+	c := make(chan *datatype.Event, 1)
+	api.subscribe(nodeName, c)
+	defer api.unsubscribe(nodeName, c)
+	for event := range c {
+		if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.ToString(), event.GetEntry("goals")); err != nil {
+			return
+		}
+		flusher.Flush()
+	}
 }
 
 func respondJSON(w http.ResponseWriter, statusCode int, data []byte) {

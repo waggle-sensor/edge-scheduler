@@ -11,14 +11,16 @@ import (
 )
 
 type JobValidator struct {
-	Plugins map[string]*datatype.PluginManifest
-	Nodes   map[string]*datatype.NodeManifest
+	dataPath string
+	Plugins  map[string]*datatype.PluginManifest
+	Nodes    map[string]*datatype.NodeManifest
 }
 
-func NewJobValidator() *JobValidator {
+func NewJobValidator(dataPath string) *JobValidator {
 	return &JobValidator{
-		Plugins: make(map[string]*datatype.PluginManifest),
-		Nodes:   make(map[string]*datatype.NodeManifest),
+		dataPath: dataPath,
+		Plugins:  make(map[string]*datatype.PluginManifest),
+		Nodes:    make(map[string]*datatype.NodeManifest),
 	}
 }
 
@@ -38,13 +40,13 @@ func (jv *JobValidator) GetPluginManifest(plugin *datatype.Plugin) *datatype.Plu
 	}
 }
 
-func (jv *JobValidator) LoadDatabase(basePath string) error {
-	nodeFiles, err := ioutil.ReadDir(path.Join(basePath, "nodes"))
+func (jv *JobValidator) LoadDatabase() error {
+	nodeFiles, err := ioutil.ReadDir(path.Join(jv.dataPath, "nodes"))
 	if err != nil {
 		return err
 	}
 	for _, nodeFile := range nodeFiles {
-		nodeFilePath := path.Join(basePath, "nodes", nodeFile.Name())
+		nodeFilePath := path.Join(jv.dataPath, "nodes", nodeFile.Name())
 		raw, err := os.ReadFile(nodeFilePath)
 		if err != nil {
 			logger.Debug.Printf("Failed to read %s:%s", nodeFilePath, err.Error())
@@ -58,12 +60,12 @@ func (jv *JobValidator) LoadDatabase(basePath string) error {
 		}
 		jv.Nodes[n.Name] = &n
 	}
-	pluginFiles, err := ioutil.ReadDir(path.Join(basePath, "plugins"))
+	pluginFiles, err := ioutil.ReadDir(path.Join(jv.dataPath, "plugins"))
 	if err != nil {
 		return err
 	}
 	for _, pluginFile := range pluginFiles {
-		pluginFilePath := path.Join(basePath, "plugins", pluginFile.Name())
+		pluginFilePath := path.Join(jv.dataPath, "plugins", pluginFile.Name())
 		raw, err := os.ReadFile(pluginFilePath)
 		if err != nil {
 			logger.Debug.Printf("Failed to read %s:%s", pluginFilePath, err.Error())
