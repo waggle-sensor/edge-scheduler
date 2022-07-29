@@ -1,6 +1,7 @@
 package cloudscheduler
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
@@ -13,6 +14,7 @@ const maxChannelBuffer = 100
 type CloudScheduler struct {
 	Name                string
 	Version             string
+	Config              *CloudSchedulerConfig
 	GoalManager         *CloudGoalManager
 	Validator           *JobValidator
 	APIServer           *APIServer
@@ -115,13 +117,27 @@ func (cs *CloudScheduler) Run() {
 		case event := <-cs.chanFromGoalManager:
 			logger.Debug.Printf("%s: %q", event.ToString(), event.GetGoalName())
 			switch event.Type {
-			case datatype.EventGoalStatusNew:
+			case datatype.EventGoalStatusSubmitted:
 				scienceGoal, err := cs.GoalManager.GetScienceGoal(event.GetGoalID())
 				if err != nil {
 					logger.Error.Printf("Failed to get science goal %q", event.GetGoalID())
 					break
 				}
-				logger.Info.Printf("New goal %q is submitted for job id %q.", scienceGoal.Name, scienceGoal.JobID)
+				logger.Info.Printf("Goal %q is submitted for job id %q.", scienceGoal.Name, scienceGoal.JobID)
+				for _, nodeName := range scienceGoal.GetSubjectNodes() {
+					var goals []*datatype.ScienceGoal
+					for _, g := range cs.GoalManager.GetScienceGoalsForNode(nodeName) {
+						goals = append(goals, g.ShowMyScienceGoal(nodeName))
+					}
+					blob, err := json.MarshalIndent(goals, "", "  ")
+					if err != nil {
+						logger.Error.Printf("Failed to compress goals for node %q before pushing", nodeName)
+					} else {
+						event := datatype.NewEventBuilder(datatype.EventGoalStatusUpdated).AddEntry("goals", string(blob)).Build()
+						cs.APIServer.Push(nodeName, &event)
+					}
+
+				}
 			}
 		}
 	}

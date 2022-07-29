@@ -54,7 +54,7 @@ func (cgm *CloudGoalManager) UpdateJob(job *datatype.Job, submit bool) {
 		job.UpdateStatus(datatype.JobSubmitted)
 		newScienceGoal := job.ScienceGoal
 		cgm.UpdateScienceGoal(newScienceGoal)
-		event := datatype.NewEventBuilder(datatype.EventGoalStatusNew).AddGoal(newScienceGoal).Build()
+		event := datatype.NewEventBuilder(datatype.EventGoalStatusSubmitted).AddGoal(newScienceGoal).Build()
 		cgm.Notifier.Notify(event)
 	}
 }
@@ -126,7 +126,7 @@ func (cgm *CloudGoalManager) GetScienceGoal(goalID string) (*datatype.ScienceGoa
 	return nil, fmt.Errorf("Failed to find goal %q", goalID)
 }
 
-// GetScienceGoalsForNode returns a list of goals associated to given node
+// GetScienceGoalsForNode returns a list of goals associated to given node.
 func (cgm *CloudGoalManager) GetScienceGoalsForNode(nodeName string) (goals []*datatype.ScienceGoal) {
 	for _, scienceGoal := range cgm.scienceGoals {
 		for _, subGoal := range scienceGoal.SubGoals {

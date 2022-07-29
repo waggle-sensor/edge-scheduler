@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/waggle-sensor/edge-scheduler/pkg/cloudscheduler"
-	"github.com/waggle-sensor/edge-scheduler/pkg/interfacing"
 	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
 )
 
@@ -19,41 +18,29 @@ func getenv(key string, def string) string {
 }
 
 func main() {
-	var (
-		name             string
-		noRabbitMQ       bool
-		rabbitmqURI      string
-		rabbitmqUsername string
-		rabbitmqPassword string
-		// ECRURL         string
-		port    int
-		dataDir string
-	)
-	flag.StringVar(&name, "name", "ses-sage", "Name of cloud scheduler")
+	var config cloudscheduler.CloudSchedulerConfig
+	config.Version = Version
+	flag.StringVar(&config.Name, "name", "cloudscheduler-sage", "Name of cloud scheduler")
 	// TODO: Add ECRURL to query meta information for plugins when validating a job
 	// flag.StringVar(&ECRURL, "ECRURL", "SOMEWHERE", "Path to ECR URL")
-	flag.IntVar(&port, "port", 9770, "Port to listen")
-	flag.StringVar(&dataDir, "data-dir", "data", "Path to meta directory")
+	flag.IntVar(&config.Port, "port", 9770, "Port to listen")
+	flag.StringVar(&config.DataDir, "data-dir", "data", "Path to meta directory")
 	// TODO: a RMQ client for goal manager will be needed
-	flag.BoolVar(&noRabbitMQ, "no-rabbitmq", false, "No RabbitMQ to talk to edge schedulers")
-	flag.StringVar(&rabbitmqURI, "rabbitmq-uri", getenv("RABBITMQ_URI", "rabbitmq:5672"), "RabbitMQ management uri")
-	flag.StringVar(&rabbitmqUsername, "rabbitmq-username", getenv("RABBITMQ_USERNAME", "guest"), "RabbitMQ management username")
-	flag.StringVar(&rabbitmqPassword, "rabbitmq-password", getenv("RABBITMQ_PASSWORD", "guest"), "RabbitMQ management password")
+	flag.BoolVar(&config.NoRabbitMQ, "no-rabbitmq", false, "No RabbitMQ to talk to edge schedulers")
+	flag.StringVar(&config.RabbitmqURI, "rabbitmq-uri", getenv("RABBITMQ_URI", "rabbitmq:5672"), "RabbitMQ management uri")
+	flag.StringVar(&config.RabbitmqUsername, "rabbitmq-username", getenv("RABBITMQ_USERNAME", "guest"), "RabbitMQ management username")
+	flag.StringVar(&config.RabbitmqPassword, "rabbitmq-password", getenv("RABBITMQ_PASSWORD", "guest"), "RabbitMQ management password")
+	flag.BoolVar(&config.NoPushNotification, "no-push-notification", true, "Disable HTTP push notification for science goals")
 	flag.Parse()
 
-	logger.Info.Printf("Cloud scheduler (%s) starts...", name)
+	logger.Info.Printf("Cloud scheduler (%s) starts...", config.Name)
 
-	cs := cloudscheduler.NewRealCloudSchedulerBuilder(name, Version).
+	cs := cloudscheduler.NewRealCloudSchedulerBuilder(&config).
 		AddGoalManager().
-		AddAPIServer(port).
+		AddAPIServer().
 		Build()
 
-	if !noRabbitMQ {
-		logger.Info.Printf("Using RabbitMQ at %s with user %s", rabbitmqURI, rabbitmqUsername)
-		rmqHandler := interfacing.NewRabbitMQHandler(rabbitmqURI, rabbitmqUsername, rabbitmqPassword, "")
-		cs.GoalManager.SetRMQHandler(rmqHandler)
-	}
-	err := cs.Validator.LoadDatabase(dataDir)
+	err := cs.Validator.LoadDatabase()
 	if err != nil {
 		panic(err)
 	}

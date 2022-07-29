@@ -155,7 +155,7 @@ type EventType string
 const (
 	// EventSchedulingDecisionScheduled EventType = "sys.scheduler.decision.scheduled"
 	EventJobStatusSuspended     EventType = "sys.scheduler.status.job.suspended"
-	EventGoalStatusNew          EventType = "sys.scheduler.status.goal.new"
+	EventGoalStatusSubmitted    EventType = "sys.scheduler.status.goal.submitted"
 	EventGoalStatusUpdated      EventType = "sys.scheduler.status.goal.updated"
 	EventGoalStatusReceived     EventType = "sys.scheduler.status.goal.received"
 	EventGoalStatusReceivedBulk EventType = "sys.scheduler.status.goal.received.bulk"
