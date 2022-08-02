@@ -31,7 +31,7 @@ pluginctl run $(pluginctl build my-plugin)`,
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		path, err := filepath.Abs(args[0])
 		if err != nil {
-			return fmt.Errorf("invalid path: %s", err.Error())
+			return fmt.Errorf("invalid plugin path: %s", err.Error())
 		}
 		name := filepath.Base(path)
 		image := fmt.Sprintf("%s/%s/%s", registry, namespace, name)
