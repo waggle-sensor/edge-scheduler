@@ -31,7 +31,7 @@ func init() {
 		name := filepath.Base(path)
 
 		if *tag == "" {
-			*tag = fmt.Sprintf("10.31.81.1:5000/waggle/%s", name)
+			*tag = fmt.Sprintf("10.31.81.1:5000/local/%s", name)
 		}
 
 		// build and push to local registry. all output goes to stderr to allow easy piping
