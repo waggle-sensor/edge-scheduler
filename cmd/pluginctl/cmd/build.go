@@ -18,8 +18,14 @@ func init() {
 
 	cmd := &cobra.Command{
 		Use:   "build PLUGIN_DIR",
-		Short: "Build plugin from directory",
-		Args:  cobra.ExactArgs(1),
+		Short: "Build plugin",
+		Long:  "Build a plugin contained in a directory.",
+		Example: `# clone plugin repo
+git clone https://github.com/my-username/my-plugin
+
+# build and run plugin in cloned directory
+pluginctl run $(pluginctl build my-plugin)`,
+		Args: cobra.ExactArgs(1),
 	}
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
