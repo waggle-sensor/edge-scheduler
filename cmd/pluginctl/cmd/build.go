@@ -22,14 +22,6 @@ func init() {
 	flags := cmd.Flags()
 	tag := flags.String("t", "", "image tag")
 
-	/*
-		example
-		# cloned plugin-test-pipeline, cd'd in, made small code change
-		docker build -t 10.31.81.1:5000/seanshahkarami/plugin-test-pipeline .
-		docker push -10.31.81.1:5000/seanshahkarami/plugin-test-pipeline
-		pluginctl run -n plugin-test-pipeline 10.31.81.1:5000/seanshahkarami/plugin-test-pipeline
-	*/
-
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		path, err := filepath.Abs(args[0])
 		if err != nil {
