@@ -42,6 +42,7 @@ func init() {
 			*tag = fmt.Sprintf("10.31.81.1:5000/waggle/%s", name)
 		}
 
+		// build and push to local registry. all output goes to stderr to allow easy piping
 		ctx, _ := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 
 		if err := runCommandContextStderr(ctx, "docker", "build", "-t", *tag, path); err != nil {
@@ -54,7 +55,7 @@ func init() {
 
 		fmt.Fprintf(os.Stderr, "successfully build image!\n\n")
 
-		// print tag to stdout to make pipeable into other commands: pluginctl run -n my-plugin $(pluginctl build .)
+		// print tag to stdout to allow piping into other commands: pluginctl run -n my-plugin $(pluginctl build .)
 		fmt.Printf("%s\n", *tag)
 
 		return nil
