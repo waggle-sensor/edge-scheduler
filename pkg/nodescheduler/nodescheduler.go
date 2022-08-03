@@ -17,11 +17,11 @@ const (
 type NodeScheduler struct {
 	Version                     string
 	NodeID                      string
+	Config                      *NodeSchedulerConfig
 	ResourceManager             *ResourceManager
 	Knowledgebase               *KnowledgeBase
 	GoalManager                 *NodeGoalManager
 	APIServer                   *APIServer
-	Simulate                    bool
 	SchedulingPolicy            policy.SchedulingPolicy
 	LogToBeehive                *interfacing.RabbitMQHandler
 	chanContextEventToScheduler chan datatype.EventPluginContext
@@ -59,7 +59,11 @@ type NodeScheduler struct {
 //
 // - "wes-ses-goal" configmap that accepts user goals
 func (ns *NodeScheduler) Configure() (err error) {
-	if ns.Simulate {
+	if ns.Config.Simulate {
+		return
+	}
+	err = ns.ResourceManager.ConfigureKubernetes(ns.Config.InCluster, ns.Config.Kubeconfig)
+	if err != nil {
 		return
 	}
 	err = ns.ResourceManager.Configure()

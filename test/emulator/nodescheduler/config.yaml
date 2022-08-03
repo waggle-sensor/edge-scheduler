@@ -1,0 +1,10 @@
+---
+nodeName: w000
+noRabbitMQ: true
+rabbimqURI: ""
+rabbitMQUsername: ""
+rabbitMQPassword: ""
+Kubeconfig: "/path/to/kubeconfig"
+InCluster: false
+RuleCheckerURI: ""
+CloudschedulerURI: ""

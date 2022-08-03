@@ -27,17 +27,6 @@ type NodeGoalManager struct {
 	GoalWatcher           watch.Interface
 }
 
-// NewGoalManager creates and returns an instance of goal manager
-func NewNodeGoalManager(cloudSchedulerURL string, nodeID string, simulate bool) (*NodeGoalManager, error) {
-	return &NodeGoalManager{
-		ScienceGoals:          make(map[string]*datatype.ScienceGoal),
-		cloudSchedulerBaseURL: cloudSchedulerURL,
-		NodeID:                nodeID,
-		Simulate:              simulate,
-		chanGoalQueue:         make(chan *datatype.ScienceGoal, 100),
-	}, nil
-}
-
 // GetScienceGoalByID returns the goal of given goal name
 func (ngm *NodeGoalManager) GetScienceGoalByID(goalID string) (*datatype.ScienceGoal, error) {
 	if goal, exist := ngm.ScienceGoals[goalID]; exist {

@@ -25,6 +25,10 @@ scheduler-arm64:
 	GOOS=linux GOARCH=arm64 go build -o ./out/cloudscheduler-arm64 cmd/cloudscheduler/main.go
 	GOOS=linux GOARCH=arm64 go build -o ./out/nodescheduler-arm64 cmd/nodescheduler/main.go
 
+scheduler:
+	go build -o ./out/cloudscheduler -ldflags "-X main.Version=${VERSION}" ./cmd/cloudscheduler
+	go build -o ./out/nodescheduler -ldflags "-X main.Version=${VERSION}" ./cmd/nodescheduler
+
 docker:
 	docker buildx build -t waggle/scheduler:${VERSION} --build-arg VERSION=${VERSION} --platform linux/amd64,linux/arm64 --push .
 
