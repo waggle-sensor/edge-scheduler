@@ -24,7 +24,7 @@ func init() {
 git clone https://github.com/my-username/my-plugin
 
 # build and run plugin in cloned directory
-pluginctl run $(pluginctl build my-plugin)`,
+pluginctl run -n my-plugin $(pluginctl build my-plugin)`,
 		Args: cobra.ExactArgs(1),
 	}
 
