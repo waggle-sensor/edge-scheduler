@@ -16,6 +16,7 @@ func init() {
 	var (
 		jobID   string
 		outPath string
+		showAll bool
 	)
 	cmdStat := &cobra.Command{
 		Use:              "stat [FLAGS]",
@@ -77,6 +78,11 @@ func init() {
 					if err != nil {
 						return err
 					}
+					if !showAll {
+						if job.Status == datatype.JobRemoved || job.Status == datatype.JobComplete {
+							continue
+						}
+					}
 					var name string
 					if len(job.Name) > maxLengthName {
 						name = job.Name[:maxLengthName-1] + "..."
@@ -99,5 +105,6 @@ func init() {
 	flags := cmdStat.Flags()
 	flags.StringVarP(&jobID, "job-id", "j", "", "Job ID")
 	flags.StringVarP(&outPath, "out", "o", "", "Path to save output")
+	flags.BoolVarP(&showAll, "show-all", "A", false, "Show all jobs including removed and completed jobs")
 	rootCmd.AddCommand(cmdStat)
 }

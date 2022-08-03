@@ -137,7 +137,7 @@ func (ns *NodeScheduler) Run() {
 					ns.chanNeedScheduling <- event
 					go ns.LogToBeehive.SendWaggleMessage(event.ToWaggleMessage(), "all")
 				}
-			case datatype.EventGoalStatusDeleted:
+			case datatype.EventGoalStatusRemoved:
 				// ns.ResourceManager.CleanUp()
 				go ns.LogToBeehive.SendWaggleMessage(event.ToWaggleMessage(), "all")
 			}

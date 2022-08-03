@@ -75,7 +75,7 @@ func (ngm *NodeGoalManager) DropGoalByName(goalName string) error {
 func (ngm *NodeGoalManager) DropGoal(goalID string) error {
 	if g, exist := ngm.ScienceGoals[goalID]; exist {
 		delete(ngm.ScienceGoals, goalID)
-		ngm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventGoalStatusDeleted).AddGoal(g).Build())
+		ngm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventGoalStatusRemoved).AddGoal(g).Build())
 		return nil
 	} else {
 		return fmt.Errorf("Failed to find goal by ID %s", goalID)

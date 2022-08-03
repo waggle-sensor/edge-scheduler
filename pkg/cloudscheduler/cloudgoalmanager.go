@@ -77,8 +77,11 @@ func (cgm *CloudGoalManager) RemoveJob(jobID string, force bool) error {
 		if job.Status == datatype.JobRunning && !force {
 			return fmt.Errorf("Failed to remove job %q as it is in running state. Suspend it first or specify force=true", jobID)
 		}
-		delete(cgm.jobs, job.JobID)
-		cgm.RemoveScienceGoal(job.ScienceGoal.ID)
+		job.UpdateStatus(datatype.JobRemoved)
+		event := datatype.NewEventBuilder(datatype.EventJobStatusRemoved).
+			AddJob(job).
+			Build()
+		cgm.Notifier.Notify(event)
 		return nil
 	} else {
 		return fmt.Errorf("Failed to find job %q to remove", jobID)
