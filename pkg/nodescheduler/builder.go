@@ -38,6 +38,7 @@ func NewNodeSchedulerBuilder(config *NodeSchedulerConfig) *NodeSchedulerBuilder 
 			chanContextEventToScheduler: make(chan datatype.EventPluginContext, maxChannelBuffer),
 			chanFromGoalManager:         make(chan datatype.Event, maxChannelBuffer),
 			chanFromResourceManager:     make(chan datatype.Event, maxChannelBuffer),
+			chanFromCloudScheduler:      make(chan *datatype.Event, maxChannelBuffer),
 			chanRunGoal:                 make(chan *datatype.ScienceGoal, maxChannelBuffer),
 			chanStopPlugin:              make(chan *datatype.Plugin, maxChannelBuffer),
 			chanPluginToResourceManager: make(chan *datatype.Plugin, maxChannelBuffer),
@@ -49,12 +50,11 @@ func NewNodeSchedulerBuilder(config *NodeSchedulerConfig) *NodeSchedulerBuilder 
 
 func (nsb *NodeSchedulerBuilder) AddGoalManager(appID string) *NodeSchedulerBuilder {
 	nsb.nodeScheduler.GoalManager = &NodeGoalManager{
-		ScienceGoals:          make(map[string]*datatype.ScienceGoal),
-		cloudSchedulerBaseURL: nsb.nodeScheduler.Config.CloudschedulerURI,
-		NodeID:                nsb.nodeScheduler.NodeID,
-		chanGoalQueue:         make(chan *datatype.ScienceGoal, 100),
-		Simulate:              nsb.nodeScheduler.Config.Simulate,
-		Notifier:              interfacing.NewNotifier(),
+		ScienceGoals:  make(map[string]*datatype.ScienceGoal),
+		NodeID:        nsb.nodeScheduler.NodeID,
+		chanGoalQueue: make(chan *datatype.ScienceGoal, 100),
+		Simulate:      nsb.nodeScheduler.Config.Simulate,
+		Notifier:      interfacing.NewNotifier(),
 	}
 	if !nsb.nodeScheduler.Config.NoRabbitMQ {
 		logger.Info.Printf("Using RabbitMQ at %s with user %s", nsb.nodeScheduler.Config.RabbitmqURI, nsb.nodeScheduler.Config.RabbitmqUsername)

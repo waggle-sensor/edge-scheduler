@@ -2,29 +2,22 @@ package nodescheduler
 
 import (
 	"fmt"
-	"io/ioutil"
-	"net/http"
-	"net/url"
-	"path"
-	"time"
 
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
 	"github.com/waggle-sensor/edge-scheduler/pkg/interfacing"
 	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
-	yaml "gopkg.in/yaml.v2"
 	"k8s.io/apimachinery/pkg/watch"
 )
 
 // GoalManager structs a goal manager for nodescheduler
 type NodeGoalManager struct {
-	ScienceGoals          map[string]*datatype.ScienceGoal
-	cloudSchedulerBaseURL string
-	NodeID                string
-	Notifier              *interfacing.Notifier
-	Simulate              bool
-	chanGoalQueue         chan *datatype.ScienceGoal
-	rmqHandler            *interfacing.RabbitMQHandler
-	GoalWatcher           watch.Interface
+	ScienceGoals  map[string]*datatype.ScienceGoal
+	NodeID        string
+	Notifier      *interfacing.Notifier
+	Simulate      bool
+	chanGoalQueue chan *datatype.ScienceGoal
+	rmqHandler    *interfacing.RabbitMQHandler
+	GoalWatcher   watch.Interface
 }
 
 // GetScienceGoalByID returns the goal of given goal name
@@ -100,16 +93,6 @@ func (ngm *NodeGoalManager) SetGoals(goals [](datatype.ScienceGoal)) {
 // RunGoalManager handles goal related events from both cloud and local
 // and keeps goals managed up-to-date with the help from the events
 func (ngm *NodeGoalManager) Run(chanToScheduler chan datatype.Event) {
-	// NOTE: use RabbitMQ to receive goals if set
-	// var useRabbitMQ bool
-	// if ngm.rmqHandler != nil {
-	// 	useRabbitMQ = true
-	// } else {
-	// 	useRabbitMQ = false
-	// }
-	if !ngm.Simulate {
-		// go ngm.pullGoalsFromCloudScheduler(useRabbitMQ)
-	}
 	for {
 		select {
 		case scienceGoal := <-ngm.chanGoalQueue:
@@ -129,64 +112,63 @@ func (ngm *NodeGoalManager) Run(chanToScheduler chan datatype.Event) {
 			}
 		}
 	}
-}
 
-// pullingGoalsFromCloudScheduler periodically pulls goals from the cloud scheduler
-func (gm *NodeGoalManager) pullGoalsFromCloudScheduler(useRabbitMQ bool) {
-	if useRabbitMQ {
-		for {
-			logger.Info.Printf("SES endpoint: %s", gm.rmqHandler.RabbitmqURI)
-			gm.rmqHandler.DeclareQueueAndConnectToExchange("scheduler", gm.NodeID)
-			msgs, err := gm.rmqHandler.GetReceiver(gm.NodeID)
-			if err != nil {
-				logger.Error.Printf("%s", err)
-				time.Sleep(5 * time.Second)
-				continue
-			}
-			for d := range msgs {
-				var pulledGoals []datatype.ScienceGoal
-				err = yaml.Unmarshal(d.Body, &pulledGoals)
-				if err != nil {
-					logger.Error.Printf("%s", err)
-				}
-				logger.Info.Printf("%v", pulledGoals)
-				// TODO: this does not account for goal status change
-				//       from SES -- may or may not happen
-				// for _, goal := range pulledGoals {
-				// 	if _, exist := gm.scienceGoals[goal.ID]; !exist {
-				// 		gm.chanNewGoalToGoalManager <- &goal
-				// 	}
-				// }
-			}
-		}
-	} else {
-		queryURL, _ := url.Parse(gm.cloudSchedulerBaseURL)
-		queryURL.Path = path.Join(queryURL.Path, "api/v1/goals/", gm.NodeID)
-		logger.Info.Printf("SES endpoint: %s", queryURL.String())
-		for {
-			time.Sleep(5 * time.Second)
-			resp, err := http.Get(queryURL.String())
-			if err != nil {
-				logger.Error.Printf("%s", err)
-				continue
-			}
-			defer resp.Body.Close()
+	// pullingGoalsFromCloudScheduler periodically pulls goals from the cloud scheduler
+	// func (gm *NodeGoalManager) pullGoalsFromCloudScheduler(useRabbitMQ bool) {
+	// 	if useRabbitMQ {
+	// 		for {
+	// 			logger.Info.Printf("SES endpoint: %s", gm.rmqHandler.RabbitmqURI)
+	// 			gm.rmqHandler.DeclareQueueAndConnectToExchange("scheduler", gm.NodeID)
+	// 			msgs, err := gm.rmqHandler.GetReceiver(gm.NodeID)
+	// 			if err != nil {
+	// 				logger.Error.Printf("%s", err)
+	// 				time.Sleep(5 * time.Second)
+	// 				continue
+	// 			}
+	// 			for d := range msgs {
+	// 				var pulledGoals []datatype.ScienceGoal
+	// 				err = yaml.Unmarshal(d.Body, &pulledGoals)
+	// 				if err != nil {
+	// 					logger.Error.Printf("%s", err)
+	// 				}
+	// 				logger.Info.Printf("%v", pulledGoals)
+	// 				// TODO: this does not account for goal status change
+	// 				//       from SES -- may or may not happen
+	// 				// for _, goal := range pulledGoals {
+	// 				// 	if _, exist := gm.scienceGoals[goal.ID]; !exist {
+	// 				// 		gm.chanNewGoalToGoalManager <- &goal
+	// 				// 	}
+	// 				// }
+	// 			}
+	// 		}
+	// 	} else {
+	// 		queryURL, _ := url.Parse(gm.cloudSchedulerBaseURL)
+	// 		queryURL.Path = path.Join(queryURL.Path, "/api/v1/goals/W023/stream", gm.NodeID)
+	// 		logger.Info.Printf("SES endpoint: %s", queryURL.String())
+	// 		for {
+	// 			time.Sleep(5 * time.Second)
+	// 			resp, err := http.Get(queryURL.String())
+	// 			if err != nil {
+	// 				logger.Error.Printf("%s", err)
+	// 				continue
+	// 			}
+	// 			defer resp.Body.Close()
 
-			body, err := ioutil.ReadAll(resp.Body)
-			if err != nil {
-				logger.Error.Printf("%s", err)
-				continue
-			}
-			var pulledGoals []datatype.ScienceGoal
-			_ = yaml.Unmarshal(body, &pulledGoals)
+	// 			body, err := ioutil.ReadAll(resp.Body)
+	// 			if err != nil {
+	// 				logger.Error.Printf("%s", err)
+	// 				continue
+	// 			}
+	// 			var pulledGoals []datatype.ScienceGoal
+	// 			_ = yaml.Unmarshal(body, &pulledGoals)
 
-			// TODO: this does not account for goal status change
-			//       from SES -- may or may not happen
-			// for _, goal := range pulledGoals {
-			// 	if _, exist := gm.scienceGoals[goal.ID]; !exist {
-			// 		gm.chanNewGoalToGoalManager <- &goal
-			// 	}
-			// }
-		}
-	}
+	// 			// TODO: this does not account for goal status change
+	// 			//       from SES -- may or may not happen
+	// 			// for _, goal := range pulledGoals {
+	// 			// 	if _, exist := gm.scienceGoals[goal.ID]; !exist {
+	// 			// 		gm.chanNewGoalToGoalManager <- &goal
+	// 			// 	}
+	// 			// }
+	// 		}
+	// 	}
 }

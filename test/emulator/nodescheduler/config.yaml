@@ -4,7 +4,7 @@ noRabbitMQ: true
 rabbimqURI: ""
 rabbitMQUsername: ""
 rabbitMQPassword: ""
-Kubeconfig: "/path/to/kubeconfig"
-InCluster: false
-RuleCheckerURI: ""
-CloudschedulerURI: ""
+kubeConfig: "/path/to/kubeconfig"
+inCluster: false
+ruleCheckerURI: ""
+cloudSchedulerURI: ""

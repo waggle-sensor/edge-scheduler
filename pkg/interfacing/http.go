@@ -1,6 +1,7 @@
 package interfacing
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -9,6 +10,12 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"regexp"
+	"strings"
+
+	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
+	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
+	"gopkg.in/cenkalti/backoff.v1"
 )
 
 type HTTPRequest struct {
@@ -85,4 +92,85 @@ func (r *HTTPRequest) ParseJSONHTTPResponse(resp *http.Response) (body map[strin
 	}
 	// body["StatusCode"] = resp.StatusCode
 	return body, nil
+}
+
+func (r *HTTPRequest) Subscribe(streamPath string, ch chan *datatype.Event, keepRetry bool) error {
+	operation := func() error {
+		resp, err := r.RequestGet(streamPath, map[string][]string{})
+		if err != nil {
+			return err
+		}
+		if resp.StatusCode != 200 {
+			return fmt.Errorf("could not connect to stream: %s", http.StatusText(resp.StatusCode))
+		}
+		defer resp.Body.Close()
+		// patternEvent := regexp.MustCompile(`event:(.*?)\n`)
+		patternData := regexp.MustCompile(`data:(.*?)\n`)
+		reader := bufio.NewScanner(resp.Body)
+		reader.Split(ScanEvent)
+		// var e *datatype.Event
+		for {
+			if reader.Scan() {
+				line := reader.Text()
+				eStart := strings.Index(line, "event:")
+				eEnd := strings.Index(line, "data:")
+				e := line[eStart+6 : eEnd]
+				d := line[eEnd+4:]
+				fmt.Printf("event; %s", strings.Trim(e, " "))
+				fmt.Printf("data; %s", strings.Trim(d, " "))
+				// if match := patternEvent.FindStringSubmatch(line); len(match) > 0 {
+				// 	// if e != nil {
+				// 	// 	fmt.Println("something is wrong")
+				// 	// }
+				// 	fmt.Printf("%s", match[1])
+				// }
+				if match := patternData.FindStringSubmatch(line); len(match) > 0 {
+					// if e != nil {
+					// 	fmt.Println("something is wrong")
+					// }
+					fmt.Printf("%s", match[1])
+				}
+			}
+			event := reader.Text()
+			fmt.Printf("event received: %s", event)
+			// for _, line := range strings.Split(event, "\n") {
+			// 	if strings.
+			// }
+			// line, _ := reader.ReadSlice("\n\n")
+			// fmt.Printf("event received: %s", line)
+		}
+		return nil
+	}
+	go func() {
+		err := backoff.Retry(operation, backoff.NewExponentialBackOff())
+		logger.Error.Printf("Failed to subscribe %q: %s", streamPath, err.Error())
+	}()
+	return nil
+}
+
+func ScanEvent(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	patEols := regexp.MustCompile(`[\r\n]+`)
+	pat2Eols := regexp.MustCompile(`[\r\n]{2}`)
+	if atEOF && len(data) == 0 {
+		return 0, nil, nil
+	}
+
+	if loc := pat2Eols.FindIndex(data); loc != nil && loc[0] >= 0 {
+		// Replace newlines within string with a space
+		s := patEols.ReplaceAll(data[0:loc[0]+1], []byte(" "))
+		// Trim spaces and newlines from string
+		s = bytes.Trim(s, "\n ")
+		return loc[1], s, nil
+	}
+
+	if atEOF {
+		// Replace newlines within string with a space
+		s := patEols.ReplaceAll(data, []byte(" "))
+		// Trim spaces and newlines from string
+		s = bytes.Trim(s, "\r\n ")
+		return len(data), s, nil
+	}
+
+	// Request more data.
+	return 0, nil, nil
 }
