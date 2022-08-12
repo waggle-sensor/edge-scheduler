@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	rabbithole "github.com/michaelklishin/rabbit-hole"
+	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
 	"github.com/waggle-sensor/edge-scheduler/pkg/runplugin"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -98,17 +99,19 @@ func main() {
 		log.Fatal(err)
 	}
 
-	spec := &runplugin.Spec{
-		Privileged: privileged,
-		Node:       node,
-		Image:      args[0],
-		Args:       args[1:],
-		Job:        job,
-		Name:       name,
-		Selector:   selector,
+	plugin := &datatype.Plugin{
+		Name: name,
+		PluginSpec: &datatype.PluginSpec{
+			Privileged: privileged,
+			Node:       node,
+			Image:      args[0],
+			Args:       args[1:],
+			Job:        job,
+			Selector:   selector,
+		},
 	}
 
-	if err := sch.RunPlugin(spec); err != nil {
+	if err := sch.RunPlugin(plugin); err != nil {
 		log.Fatal(err)
 	}
 }
