@@ -1,18 +1,25 @@
 package main
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
+	"path"
 	"path/filepath"
+	"regexp"
+	"strings"
+	"time"
 
-	rabbithole "github.com/michaelklishin/rabbit-hole"
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
-	"github.com/waggle-sensor/edge-scheduler/pkg/runplugin"
+	"github.com/waggle-sensor/edge-scheduler/pkg/nodescheduler"
+	v1 "k8s.io/api/apps/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
 )
 
@@ -35,24 +42,14 @@ func detectDefaultKubeconfig() string {
 	return ""
 }
 
-func detectDefaultRabbitmqURI() string {
-	if b, err := exec.Command("kubectl", "get", "svc", "wes-rabbitmq", "-o", "jsonpath=http://{.spec.clusterIP}:15672").CombinedOutput(); err == nil {
-		return string(b)
-	}
-	return "http://localhost:15672"
-}
-
 func main() {
 	var (
-		privileged                 bool
-		job                        string
-		name                       string
-		node                       string
-		selectorStr                string
-		kubeconfig                 string
-		rabbitmqManagementURI      string
-		rabbitmqManagementUsername string
-		rabbitmqManagementPassword string
+		privileged  bool
+		job         string
+		name        string
+		node        string
+		selectorStr string
+		kubeconfig  string
 	)
 
 	flag.BoolVar(&privileged, "privileged", false, "run as privileged plugin")
@@ -61,9 +58,6 @@ func main() {
 	flag.StringVar(&node, "node", "", "run plugin on node")
 	flag.StringVar(&selectorStr, "selector", "", "selector specifying where plugin can run")
 	flag.StringVar(&kubeconfig, "kubeconfig", getenv("KUBECONFIG", detectDefaultKubeconfig()), "path to the kubeconfig file")
-	flag.StringVar(&rabbitmqManagementURI, "rabbitmq-management-uri", getenv("RABBITMQ_MANAGEMENT_URI", detectDefaultRabbitmqURI()), "rabbitmq management uri")
-	flag.StringVar(&rabbitmqManagementUsername, "rabbitmq-management-username", getenv("RABBITMQ_MANAGEMENT_USERNAME", "admin"), "rabbitmq management username")
-	flag.StringVar(&rabbitmqManagementPassword, "rabbitmq-management-password", getenv("RABBITMQ_MANAGEMENT_PASSWORD", "admin"), "rabbitmq management password")
 	flag.Parse()
 
 	if flag.NArg() == 0 {
@@ -72,31 +66,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+	resourceManager, err := nodescheduler.NewK3SResourceManager("", false, kubeconfig, "runplugin", false)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("nodescheduler.NewK3SResourceManager: %s", err.Error())
 	}
-
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	rmqclient, err := rabbithole.NewClient(rabbitmqManagementURI, rabbitmqManagementUsername, rabbitmqManagementPassword)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	sch := &runplugin.Scheduler{
-		KubernetesClientset: clientset,
-		RabbitMQClient:      rmqclient,
-	}
+	resourceManager.Namespace = "default"
 
 	args := flag.Args()
 
 	selector, err := parseSelector(selectorStr)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("parseSelector: %s", err.Error())
 	}
 
 	plugin := &datatype.Plugin{
@@ -111,7 +91,89 @@ func main() {
 		},
 	}
 
-	if err := sch.RunPlugin(plugin); err != nil {
-		log.Fatal(err)
+	if err := runPlugin(resourceManager, plugin); err != nil {
+		log.Fatalf("runPlugin: %s", err.Error())
+	}
+}
+
+var validNamePattern = regexp.MustCompile("^[a-z0-9-]+$")
+
+// generatePluginNameForSpec generates a consistent name for a Spec.
+//
+// Very important note from: https://pkg.go.dev/encoding/json#Marshal
+//
+// Map values encode as JSON objects. The map's key type must either be a string, an integer type,
+// or implement encoding.TextMarshaler. The map keys are sorted and used as JSON object keys by applying
+// the following rules, subject to the UTF-8 coercion described for string values above:
+//
+// The "map keys are sorted" bit is important for us as it allows us to ensure the hash is consistent.
+func generatePluginNameForSpec(spec *datatype.PluginSpec) (string, error) {
+	specjson, err := json.Marshal(spec)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(specjson)
+	instance := hex.EncodeToString(sum[:])[:8]
+	parts := strings.Split(path.Base(spec.Image), ":")
+	if len(parts) != 2 {
+		return "", fmt.Errorf("invalid plugin name %q", spec.Image)
+	}
+	return strings.Join([]string{parts[0], strings.ReplaceAll(parts[1], ".", "-"), instance}, "-"), nil
+}
+
+// runPlugin prepares to run a plugin image
+// TODO wrap k8s and rmq clients into single config struct
+func runPlugin(resourceManager *nodescheduler.ResourceManager, plugin *datatype.Plugin) error {
+	spec := plugin.PluginSpec
+	// split name:version from image string
+	parts := strings.Split(path.Base(spec.Image), ":")
+	if len(parts) != 2 {
+		return fmt.Errorf("invalid plugin name %q", spec.Image)
+	}
+
+	// generate name if given name is empty
+	if plugin.Name == "" {
+		name, err := generatePluginNameForSpec(plugin.PluginSpec)
+		if err != nil {
+			return fmt.Errorf("failed to generate name: %s", err.Error())
+		}
+		plugin.Name = name
+	}
+
+	// validate plugin name
+	if !validNamePattern.MatchString(plugin.Name) {
+		return fmt.Errorf("plugin name must consist of alphanumeric characters with '-' RFC1123")
+	}
+
+	log.Printf("plugin name is %s", plugin.Name)
+
+	deployment, err := resourceManager.CreateDeployment(plugin)
+	if err != nil {
+		return fmt.Errorf("resourceManager.CreateDeployment: %s", err.Error())
+	}
+
+	log.Printf("updating kubernetes deployment for %q", spec.Image)
+	if err := updateDeployment(resourceManager.Clientset, deployment); err != nil {
+		return fmt.Errorf("updateDeployment: %s", err.Error())
+	}
+
+	log.Printf("plugin ready %q", spec.Image)
+
+	return nil
+}
+
+func updateDeployment(clientset *kubernetes.Clientset, deployment *v1.Deployment) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	deployments := clientset.AppsV1().Deployments("default")
+
+	// if deployment exists, then update it, else create it
+	if _, err := deployments.Get(ctx, deployment.Name, metav1.GetOptions{}); err == nil {
+		_, err := deployments.Update(ctx, deployment, metav1.UpdateOptions{})
+		return err
+	} else {
+		_, err := deployments.Create(ctx, deployment, metav1.CreateOptions{})
+		return err
 	}
 }

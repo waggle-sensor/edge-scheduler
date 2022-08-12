@@ -66,7 +66,7 @@ type ResourceManager struct {
 }
 
 // NewResourceManager returns an instance of ResourceManager
-func NewK3SResourceManager(registry string, incluster bool, kubeconfig string, simulate bool) (rm *ResourceManager, err error) {
+func NewK3SResourceManager(registry string, incluster bool, kubeconfig string, runner string, simulate bool) (rm *ResourceManager, err error) {
 	if simulate {
 		return &ResourceManager{
 			Namespace:     namespace,
@@ -76,6 +76,7 @@ func NewK3SResourceManager(registry string, incluster bool, kubeconfig string, s
 			Simulate:      simulate,
 			Plugins:       make([]*datatype.Plugin, 0),
 			reserved:      false,
+			runner:        runner,
 		}, nil
 	}
 	registryAddress, err := url.Parse(registry)
@@ -96,6 +97,7 @@ func NewK3SResourceManager(registry string, incluster bool, kubeconfig string, s
 		Clientset:     k3sClient,
 		MetricsClient: metricsClient,
 		Simulate:      simulate,
+		runner:        runner,
 	}, nil
 }
 
@@ -108,12 +110,12 @@ func generatePassword() string {
 	return hex.EncodeToString(b)
 }
 
-func labelsForPlugin(plugin *datatype.Plugin) map[string]string {
+func (rm *ResourceManager) labelsForPlugin(plugin *datatype.Plugin) map[string]string {
 	labels := map[string]string{
 		"app":                           plugin.Name,
 		"app.kubernetes.io/name":        plugin.Name,
-		"app.kubernetes.io/managed-by":  "pluginctl",
-		"app.kubernetes.io/created-by":  "pluginctl",
+		"app.kubernetes.io/managed-by":  rm.runner,
+		"app.kubernetes.io/created-by":  rm.runner,
 		"sagecontinuum.org/plugin-job":  plugin.PluginSpec.Job,
 		"sagecontinuum.org/plugin-task": plugin.Name,
 	}
@@ -122,7 +124,7 @@ func labelsForPlugin(plugin *datatype.Plugin) map[string]string {
 	// this is intended to do things like:
 	// * allow developers to initially pull from github and add packages
 	// * allow interfacing with devices in wan subnet until we add site specific exceptions
-	if plugin.PluginSpec.DevelopMode == false {
+	if !plugin.PluginSpec.DevelopMode {
 		labels["role"] = "plugin"
 		labels["sagecontinuum.org/role"] = "plugin"
 	}
@@ -316,7 +318,7 @@ func (rm *ResourceManager) WatchJobs(namespace string) (watch.Interface, error) 
 	return watcher, err
 }
 
-func CreatePodTemplateSpecForPlugin(plugin *datatype.Plugin) v1.PodTemplateSpec {
+func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugin) v1.PodTemplateSpec {
 	envs := []apiv1.EnvVar{
 		{
 			Name:  "PULSE_SERVER",
@@ -518,7 +520,7 @@ func CreatePodTemplateSpecForPlugin(plugin *datatype.Plugin) v1.PodTemplateSpec 
 
 	return v1.PodTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{
-			Labels: labelsForPlugin(plugin),
+			Labels: rm.labelsForPlugin(plugin),
 		},
 		Spec: apiv1.PodSpec{
 			NodeSelector: nodeSelectorForConfig(plugin.PluginSpec),
@@ -538,7 +540,7 @@ func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, err
 		return nil, err
 	}
 
-	template := CreatePodTemplateSpecForPlugin(plugin)
+	template := rm.createPodTemplateSpecForPlugin(plugin)
 	template.Spec.RestartPolicy = apiv1.RestartPolicyNever
 
 	return &batchv1.Job{
@@ -556,11 +558,13 @@ func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, err
 
 // CreateDeployment creates and returns a Kubernetes deployment object of the plugin
 // It also embeds a K3S configmap for plugin if needed
-func (rm *ResourceManager) CreateDeployment(plugin *datatype.Plugin, credential datatype.PluginCredential) (*appsv1.Deployment, error) {
+func (rm *ResourceManager) CreateDeployment(plugin *datatype.Plugin) (*appsv1.Deployment, error) {
 	name, err := pluginNameForSpec(plugin)
 	if err != nil {
 		return nil, err
 	}
+
+	template := rm.createPodTemplateSpecForPlugin(plugin)
 
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -569,11 +573,9 @@ func (rm *ResourceManager) CreateDeployment(plugin *datatype.Plugin, credential 
 		},
 		Spec: appsv1.DeploymentSpec{
 			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{
-					"app": name,
-				},
+				MatchLabels: template.Labels,
 			},
-			Template: CreatePodTemplateSpecForPlugin(plugin),
+			Template: template,
 		},
 	}, nil
 }
