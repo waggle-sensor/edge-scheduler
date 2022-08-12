@@ -441,6 +441,24 @@ func CreatePodTemplateSpecForPlugin(plugin *datatype.Plugin) v1.PodTemplateSpec 
 		})
 	}
 
+	appMeta := struct {
+		Host  string `json:"host"`
+		Job   string `json:"job"`
+		Task  string `json:"task"`
+		Image string `json:"image"`
+	}{
+		Host:  "$(HOST)",
+		Task:  plugin.Name,
+		Job:   plugin.PluginSpec.Job,
+		Image: plugin.PluginSpec.Image,
+	}
+
+	appMetaData, err := json.Marshal(appMeta)
+	if err != nil {
+		// since we control the contents, this should never fail
+		panic(err)
+	}
+
 	initContainers := []apiv1.Container{
 		{
 			Name:  "init-app-meta-cache",
@@ -450,8 +468,8 @@ func CreatePodTemplateSpecForPlugin(plugin *datatype.Plugin) v1.PodTemplateSpec 
 				"-h",
 				"wes-app-meta-cache",
 				"SET",
-				"app.$(UID)",
-				`{"uid": "$(UID)", "host": "$(HOST)", "job": "$(JOB)", "task": "$(TASK)", "image": "$(IMAGE)}"`,
+				"app-meta.$(UID)",
+				string(appMetaData),
 			},
 			Env: []apiv1.EnvVar{
 				{
@@ -469,18 +487,6 @@ func CreatePodTemplateSpecForPlugin(plugin *datatype.Plugin) v1.PodTemplateSpec 
 							FieldPath: "spec.nodeName",
 						},
 					},
-				},
-				{
-					Name:  "IMAGE",
-					Value: plugin.PluginSpec.Image,
-				},
-				{
-					Name:  "JOB",
-					Value: plugin.PluginSpec.Job,
-				},
-				{
-					Name:  "TASK",
-					Value: plugin.Name,
 				},
 			},
 		},
