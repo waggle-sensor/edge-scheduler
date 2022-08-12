@@ -547,6 +547,7 @@ func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, err
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: rm.Namespace,
+			Labels:    template.Labels,
 		},
 		Spec: batchv1.JobSpec{
 			Template:                template,
@@ -570,6 +571,7 @@ func (rm *ResourceManager) CreateDeployment(plugin *datatype.Plugin) (*appsv1.De
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: rm.Namespace,
+			Labels:    template.Labels,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Selector: &metav1.LabelSelector{
