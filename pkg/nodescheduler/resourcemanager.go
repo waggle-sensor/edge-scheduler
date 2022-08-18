@@ -444,15 +444,15 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 	}
 
 	appMeta := struct {
-		Host  string `json:"host"`
-		Job   string `json:"job"`
-		Task  string `json:"task"`
-		Image string `json:"image"`
+		Host   string `json:"host"`
+		Job    string `json:"job"`
+		Task   string `json:"task"`
+		Plugin string `json:"plugin"`
 	}{
-		Host:  "$(HOST)",
-		Task:  plugin.Name,
-		Job:   plugin.PluginSpec.Job,
-		Image: plugin.PluginSpec.Image,
+		Host:   "$(HOST)",
+		Task:   plugin.Name,
+		Job:    plugin.PluginSpec.Job,
+		Plugin: plugin.PluginSpec.Image,
 	}
 
 	appMetaData, err := json.Marshal(appMeta)
