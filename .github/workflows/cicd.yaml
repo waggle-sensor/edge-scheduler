@@ -12,9 +12,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
       - name: Run tests
-        # TODO move to running full test suite.
-        # run: go test ./...
-        run: go test ./pkg/runplugin
+        run: go test -v ./...
       - name: Get release version
         if: startsWith(github.ref, 'refs/tags/')
         run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
