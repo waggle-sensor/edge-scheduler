@@ -318,7 +318,18 @@ func (rm *ResourceManager) WatchJobs(namespace string) (watch.Interface, error) 
 	return watcher, err
 }
 
+func generateUID() string {
+	var b [24]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// we cannot recover from this error, so bail out now!
+		panic(err)
+	}
+	return hex.EncodeToString(b[:])
+}
+
 func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugin) v1.PodTemplateSpec {
+	uid := generateUID()
+
 	envs := []apiv1.EnvVar{
 		{
 			Name:  "PULSE_SERVER",
@@ -342,12 +353,8 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 		},
 		// NOTE WAGGLE_APP_ID is used to bind plugin <-> Pod identities.
 		{
-			Name: "WAGGLE_APP_ID",
-			ValueFrom: &apiv1.EnvVarSource{
-				FieldRef: &apiv1.ObjectFieldSelector{
-					FieldPath: "metadata.uid",
-				},
-			},
+			Name:  "WAGGLE_APP_ID",
+			Value: uid,
 		},
 		// Set pod IP for use by ROS clients.
 		{
@@ -470,18 +477,10 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 				"-h",
 				"wes-app-meta-cache",
 				"SET",
-				"app-meta.$(UID)",
+				"app-meta." + uid,
 				string(appMetaData),
 			},
 			Env: []apiv1.EnvVar{
-				{
-					Name: "UID",
-					ValueFrom: &apiv1.EnvVarSource{
-						FieldRef: &apiv1.ObjectFieldSelector{
-							FieldPath: "metadata.uid",
-						},
-					},
-				},
 				{
 					Name: "HOST",
 					ValueFrom: &apiv1.EnvVarSource{
