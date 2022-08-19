@@ -535,7 +535,7 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 
 // CreateK3SJob creates and returns a Kubernetes job object of the pllugin
 func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, error) {
-	name, err := pluginNameForSpec(plugin)
+	name, err := pluginNameForSpecJob(plugin)
 	if err != nil {
 		return nil, err
 	}
@@ -560,7 +560,7 @@ func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, err
 // CreateDeployment creates and returns a Kubernetes deployment object of the plugin
 // It also embeds a K3S configmap for plugin if needed
 func (rm *ResourceManager) CreateDeployment(plugin *datatype.Plugin) (*appsv1.Deployment, error) {
-	name, err := pluginNameForSpec(plugin)
+	name, err := pluginNameForSpecDeployment(plugin)
 	if err != nil {
 		return nil, err
 	}
@@ -1152,7 +1152,7 @@ func (w *AdvancedWatcher) Run() {
 
 var validNamePattern = regexp.MustCompile("^[a-z0-9-]+$")
 
-func pluginNameForSpec(plugin *datatype.Plugin) (string, error) {
+func pluginNameForSpecJob(plugin *datatype.Plugin) (string, error) {
 	// if no given name for the plugin, use PLUGIN-VERSION-INSTANCE format for name
 	// INSTANCE is calculated as Sha256("DOMAIN/PLUGIN:VERSION&ARGUMENTS") and
 	// take the first 8 hex letters.
@@ -1166,6 +1166,24 @@ func pluginNameForSpec(plugin *datatype.Plugin) (string, error) {
 			return "", fmt.Errorf("plugin name must consist of alphanumeric characters with '-' RFC1123")
 		}
 		return jobName, nil
+	}
+	return generateJobNameForSpec(plugin.PluginSpec)
+}
+
+// TODO(sean) consolidate with other name setup
+func pluginNameForSpecDeployment(plugin *datatype.Plugin) (string, error) {
+	// if no given name for the plugin, use PLUGIN-VERSION-INSTANCE format for name
+	// INSTANCE is calculated as Sha256("DOMAIN/PLUGIN:VERSION&ARGUMENTS") and
+	// take the first 8 hex letters.
+	// NOTE: if multiple plugins with the same version and arguments are given for
+	//       the same domain, only one deployment will be applied to the cluster
+	// NOTE2: To comply with RFC 1123 for Kubernetes object name, only lower alphanumeric
+	//        characters with '-' is allowed
+	if plugin.Name != "" {
+		if !validNamePattern.MatchString(plugin.Name) {
+			return "", fmt.Errorf("plugin name must consist of alphanumeric characters with '-' RFC1123")
+		}
+		return plugin.Name, nil
 	}
 	return generateJobNameForSpec(plugin.PluginSpec)
 }
