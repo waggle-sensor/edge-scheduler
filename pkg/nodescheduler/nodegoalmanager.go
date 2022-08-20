@@ -56,6 +56,7 @@ func (ngm *NodeGoalManager) DropGoalByName(goalName string) error {
 
 func (ngm *NodeGoalManager) DropGoal(goalID string) error {
 	if g, exist := ngm.ScienceGoals[goalID]; exist {
+		// TODO: Before deleing the goal, we should clean up all running plugins on the goal
 		delete(ngm.ScienceGoals, goalID)
 		ngm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventGoalStatusRemoved).AddGoal(g).Build())
 		return nil

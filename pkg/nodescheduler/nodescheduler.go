@@ -151,6 +151,7 @@ func (ns *NodeScheduler) Run() {
 					go ns.LogToBeehive.SendWaggleMessage(event.ToWaggleMessage(), "all")
 				}
 			case datatype.EventGoalStatusRemoved:
+				// TODO: Clean up plugins associated to the goal
 				go ns.LogToBeehive.SendWaggleMessage(event.ToWaggleMessage(), "all")
 			}
 		case event := <-ns.chanFromResourceManager:
@@ -246,6 +247,16 @@ func (ns *NodeScheduler) Run() {
 			// 	}
 		case event := <-ns.chanFromCloudScheduler:
 			logger.Debug.Printf("%s", event.ToString())
+			// TODO: The CleanUp should be replaced with clean-ups of individual plugin
+			ns.ResourceManager.CleanUp()
+			data := event.GetEntry("goals")
+			var goals []datatype.ScienceGoal
+			err := json.Unmarshal([]byte(data), &goals)
+			if err != nil {
+				logger.Error.Printf("Failed to load bulk goals %q", err.Error())
+			} else {
+				ns.GoalManager.SetGoals(goals)
+			}
 		case event := <-ns.chanNeedScheduling:
 			logger.Debug.Printf("Reason for (re)scheduling %q", event.Type)
 			// Main logic: round robin + FIFO

@@ -105,34 +105,36 @@ func (r *HTTPRequest) Subscribe(streamPath string, ch chan *datatype.Event, keep
 		}
 		defer resp.Body.Close()
 		// patternEvent := regexp.MustCompile(`event:(.*?)\n`)
-		patternData := regexp.MustCompile(`data:(.*?)\n`)
+		// patternData := regexp.MustCompile(`data:(.*?)\n`)
 		reader := bufio.NewScanner(resp.Body)
 		reader.Split(ScanEvent)
 		// var e *datatype.Event
 		for {
 			if reader.Scan() {
 				line := reader.Text()
+				logger.Debug.Printf("stream received: %s", line)
 				eStart := strings.Index(line, "event:")
 				eEnd := strings.Index(line, "data:")
 				e := line[eStart+6 : eEnd]
-				d := line[eEnd+4:]
-				fmt.Printf("event; %s", strings.Trim(e, " "))
-				fmt.Printf("data; %s", strings.Trim(d, " "))
+				e = strings.Trim(e, " ")
+				d := line[eEnd+5:]
+				event := datatype.NewEventBuilder(datatype.EventType(e)).AddEntry("goals", d).Build()
+				ch <- &event
 				// if match := patternEvent.FindStringSubmatch(line); len(match) > 0 {
 				// 	// if e != nil {
 				// 	// 	fmt.Println("something is wrong")
 				// 	// }
 				// 	fmt.Printf("%s", match[1])
 				// }
-				if match := patternData.FindStringSubmatch(line); len(match) > 0 {
-					// if e != nil {
-					// 	fmt.Println("something is wrong")
-					// }
-					fmt.Printf("%s", match[1])
-				}
+				// if match := patternData.FindStringSubmatch(line); len(match) > 0 {
+				// 	// if e != nil {
+				// 	// 	fmt.Println("something is wrong")
+				// 	// }
+				// 	fmt.Printf("%s", match[1])
+				// }
 			}
-			event := reader.Text()
-			fmt.Printf("event received: %s", event)
+			// event := reader.Text()
+			// fmt.Printf("event received: %s", event)
 			// for _, line := range strings.Split(event, "\n") {
 			// 	if strings.
 			// }
