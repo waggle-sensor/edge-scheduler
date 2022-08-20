@@ -102,12 +102,12 @@ func generatePassword() string {
 	return hex.EncodeToString(b)
 }
 
-func (rm *ResourceManager) labelsForConfig(plugin *datatype.Plugin) map[string]string {
+func (rm *ResourceManager) labelsForPlugin(plugin *datatype.Plugin) map[string]string {
 	labels := map[string]string{
 		"app":                           plugin.Name,
-		"role":                          "plugin",  // TODO drop in place of sagecontinuum.org/role
-		"sagecontinuum.org/runner":      rm.runner, // This indicates which tool is creating the object
-		"sagecontinuum.org/role":        "plugin",
+		"app.kubernetes.io/name":        plugin.Name,
+		"app.kubernetes.io/managed-by":  rm.runner,
+		"app.kubernetes.io/created-by":  rm.runner,
 		"sagecontinuum.org/plugin-job":  plugin.PluginSpec.Job,
 		"sagecontinuum.org/plugin-task": plugin.Name,
 	}
@@ -116,9 +116,9 @@ func (rm *ResourceManager) labelsForConfig(plugin *datatype.Plugin) map[string]s
 	// this is intended to do things like:
 	// * allow developers to initially pull from github and add packages
 	// * allow interfacing with devices in wan subnet until we add site specific exceptions
-	if plugin.PluginSpec.DevelopMode {
-		delete(labels, "role")
-		delete(labels, "sagecontinuum.org/role")
+	if !plugin.PluginSpec.DevelopMode {
+		labels["role"] = "plugin"
+		labels["sagecontinuum.org/role"] = "plugin"
 	}
 
 	return labels
@@ -324,12 +324,17 @@ func (rm *ResourceManager) WatchJobs(namespace string) (watch.Interface, error) 
 	return watcher, err
 }
 
-// CreateK3SJob creates and returns a Kubernetes job object of the pllugin
-func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, error) {
-	name, err := pluginNameForSpec(plugin)
-	if err != nil {
-		return nil, err
+func generateUID() string {
+	var b [24]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// we cannot recover from this error, so bail out now!
+		panic(err)
 	}
+	return hex.EncodeToString(b[:])
+}
+
+func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugin) v1.PodTemplateSpec {
+	uid := generateUID()
 
 	envs := []apiv1.EnvVar{
 		{
@@ -354,12 +359,8 @@ func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, err
 		},
 		// NOTE WAGGLE_APP_ID is used to bind plugin <-> Pod identities.
 		{
-			Name: "WAGGLE_APP_ID",
-			ValueFrom: &apiv1.EnvVarSource{
-				FieldRef: &apiv1.ObjectFieldSelector{
-					FieldPath: "metadata.uid",
-				},
-			},
+			Name:  "WAGGLE_APP_ID",
+			Value: uid,
 		},
 		// Set pod IP for use by ROS clients.
 		{
@@ -455,46 +456,106 @@ func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, err
 		})
 	}
 
-	container := apiv1.Container{
-		SecurityContext: securityContextForConfig(plugin.PluginSpec),
-		Name:            plugin.Name,
-		Image:           plugin.PluginSpec.Image,
-		Args:            plugin.PluginSpec.Args,
-		Env:             envs,
-		Resources: apiv1.ResourceRequirements{
-			Limits:   apiv1.ResourceList{},
-			Requests: apiv1.ResourceList{},
-			// TODO: this should be revisited when talking about resource-aware scheduling
-			// Requests: apiv1.ResourceList{
-			// 	apiv1.ResourceCPU:    resource.MustParse("1500m"),
-			// 	apiv1.ResourceMemory: resource.MustParse("1.5Gi"),
-			// },
+	appMeta := struct {
+		Host   string `json:"host"`
+		Job    string `json:"job"`
+		Task   string `json:"task"`
+		Plugin string `json:"plugin"`
+	}{
+		Host:   "$(HOST)",
+		Task:   plugin.Name,
+		Job:    plugin.PluginSpec.Job,
+		Plugin: plugin.PluginSpec.Image,
+	}
+
+	appMetaData, err := json.Marshal(appMeta)
+	if err != nil {
+		// since we control the contents, this should never fail
+		panic(err)
+	}
+
+	initContainers := []apiv1.Container{
+		{
+			Name:  "init-app-meta-cache",
+			Image: "redis:7.0.4",
+			Command: []string{
+				"redis-cli",
+				"-h",
+				"wes-app-meta-cache",
+				"SET",
+				"app-meta." + uid,
+				string(appMetaData),
+			},
+			Env: []apiv1.EnvVar{
+				{
+					Name: "HOST",
+					ValueFrom: &apiv1.EnvVarSource{
+						FieldRef: &apiv1.ObjectFieldSelector{
+							FieldPath: "spec.nodeName",
+						},
+					},
+				},
+			},
 		},
-		VolumeMounts: volumeMounts,
 	}
+
+	containers := []apiv1.Container{
+		{
+			SecurityContext: securityContextForConfig(plugin.PluginSpec),
+			Name:            plugin.Name,
+			Image:           plugin.PluginSpec.Image,
+			Args:            plugin.PluginSpec.Args,
+			Env:             envs,
+			Resources: apiv1.ResourceRequirements{
+				Limits:   apiv1.ResourceList{},
+				Requests: apiv1.ResourceList{},
+				// TODO: this should be revisited when talking about resource-aware scheduling
+				// Requests: apiv1.ResourceList{
+				// 	apiv1.ResourceCPU:    resource.MustParse("1500m"),
+				// 	apiv1.ResourceMemory: resource.MustParse("1.5Gi"),
+				// },
+			},
+			VolumeMounts: volumeMounts,
+		},
+	}
+
 	if plugin.PluginSpec.Entrypoint != "" {
-		container.Command = []string{plugin.PluginSpec.Entrypoint}
+		containers[0].Command = []string{plugin.PluginSpec.Entrypoint}
 	}
+
+	return v1.PodTemplateSpec{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels: rm.labelsForPlugin(plugin),
+		},
+		Spec: apiv1.PodSpec{
+			NodeSelector: nodeSelectorForConfig(plugin.PluginSpec),
+			// TODO: The priority class will be revisited when using resource metrics to schedule plugins
+			// PriorityClassName: getPriorityClassName(plugin.PluginSpec),
+			InitContainers: initContainers,
+			Containers:     containers,
+			Volumes:        volumes,
+		},
+	}
+}
+
+// CreateK3SJob creates and returns a Kubernetes job object of the pllugin
+func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, error) {
+	name, err := pluginNameForSpecJob(plugin)
+	if err != nil {
+		return nil, err
+	}
+
+	template := rm.createPodTemplateSpecForPlugin(plugin)
+	template.Spec.RestartPolicy = apiv1.RestartPolicyNever
 
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: rm.Namespace,
+			Labels:    template.Labels,
 		},
 		Spec: batchv1.JobSpec{
-			Template: v1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: rm.labelsForConfig(plugin),
-				},
-				Spec: apiv1.PodSpec{
-					NodeSelector:  nodeSelectorForConfig(plugin.PluginSpec),
-					RestartPolicy: apiv1.RestartPolicyNever,
-					// TODO: The priority class will be revisited when using resource metrics to schedule plugins
-					// PriorityClassName: getPriorityClassName(plugin.PluginSpec),
-					Containers: []apiv1.Container{container},
-					Volumes:    volumes,
-				},
-			},
+			Template:                template,
 			BackoffLimit:            &backOffLimit,
 			TTLSecondsAfterFinished: &ttlSecondsAfterFinished,
 		},
@@ -503,137 +564,27 @@ func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, err
 
 // CreateDeployment creates and returns a Kubernetes deployment object of the plugin
 // It also embeds a K3S configmap for plugin if needed
-func (rm *ResourceManager) CreateDeployment(plugin *datatype.Plugin, credential datatype.PluginCredential) (*appsv1.Deployment, error) {
-	// k3s does not accept uppercase letters as container name
-	pluginNameInLowcase := strings.ToLower(plugin.Name)
-
-	// Apply dataupload
-	var hostPathDirectoryOrCreate = apiv1.HostPathDirectoryOrCreate
-	specVolumes := []apiv1.Volume{
-		{
-			Name: "uploads",
-			VolumeSource: apiv1.VolumeSource{
-				HostPath: &apiv1.HostPathVolumeSource{
-					Path: path.Join("/media/plugin-data/uploads", pluginNameInLowcase, plugin.PluginSpec.GetImageVersion()),
-					Type: &hostPathDirectoryOrCreate,
-				},
-			},
-		},
-	}
-	containerVoumeMounts := []apiv1.VolumeMount{
-		{
-			Name:      "uploads",
-			MountPath: "/run/waggle/uploads",
-		},
+func (rm *ResourceManager) CreateDeployment(plugin *datatype.Plugin) (*appsv1.Deployment, error) {
+	name, err := pluginNameForSpecDeployment(plugin)
+	if err != nil {
+		return nil, err
 	}
 
-	// Apply datashim for the plugin if needed
-	if plugin.DataShims != nil && len(plugin.DataShims) > 0 {
-		configMapName := strings.ToLower("waggle-data-config-" + pluginNameInLowcase)
-		err := rm.CreateDataConfigMap(configMapName, plugin.DataShims)
-		if err != nil {
-			return nil, err
-		}
-		// Create a volume for Spec
-		var configMap apiv1.ConfigMapVolumeSource
-		configMap.Name = configMapName
-		volume := apiv1.Volume{
-			Name: "waggle-data-config",
-		}
-		volume.ConfigMap = &configMap
-		specVolumes = append(specVolumes, volume)
-		// Create a volume mount for container
-		containerVoumeMounts = append(containerVoumeMounts, apiv1.VolumeMount{
-			Name:      "waggle-data-config",
-			MountPath: "/run/waggle",
-			SubPath:   "data-config.json",
-		})
-	}
-	//TODO: Think about how to apply arguments and environments into k3s deployment
-	//      This is related to performance related and unrelated knobs
-	// if len(plugin.Args) > 0 {
-	// 	container.Args = plugin.Args
-	// }
+	template := rm.createPodTemplateSpecForPlugin(plugin)
 
-	deployment := &appsv1.Deployment{
+	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      pluginNameInLowcase,
+			Name:      name,
 			Namespace: rm.Namespace,
+			Labels:    template.Labels,
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: int32Ptr(1),
 			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{
-					"app": pluginNameInLowcase,
-				},
+				MatchLabels: template.Labels,
 			},
-			Template: apiv1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						"app":  pluginNameInLowcase,
-						"role": "plugin",
-					},
-				},
-				Spec: apiv1.PodSpec{
-					Containers: []apiv1.Container{
-						{
-							Name:  pluginNameInLowcase,
-							Image: plugin.PluginSpec.Image,
-							// Args: plugin.Args,
-							Env: []apiv1.EnvVar{
-								{
-									Name:  "WAGGLE_PLUGIN_NAME",
-									Value: strings.Join([]string{plugin.Name, plugin.PluginSpec.GetImageVersion()}, ":"),
-								},
-								{
-									Name:  "WAGGLE_PLUGIN_VERSION",
-									Value: plugin.PluginSpec.GetImageVersion(),
-								},
-								{
-									Name:  "WAGGLE_PLUGIN_USERNAME",
-									Value: credential.Username,
-								},
-								{
-									Name:  "WAGGLE_PLUGIN_PASSWORD",
-									Value: credential.Password,
-								},
-								{
-									Name:  "WAGGLE_PLUGIN_HOST",
-									Value: "wes-rabbitmq",
-								},
-								{
-									Name:  "WAGGLE_PLUGIN_PORT",
-									Value: "5672",
-								},
-								// plugin.Envs..., TODO: if more envs need to be included
-							},
-							EnvFrom: []apiv1.EnvFromSource{
-								{
-									ConfigMapRef: &apiv1.ConfigMapEnvSource{
-										LocalObjectReference: apiv1.LocalObjectReference{
-											Name: "waggle-config",
-										},
-									},
-								},
-							},
-							Resources: apiv1.ResourceRequirements{
-								Limits:   apiv1.ResourceList{},
-								Requests: apiv1.ResourceList{},
-							},
-							VolumeMounts: containerVoumeMounts,
-						},
-					},
-					Volumes: specVolumes,
-				},
-			},
+			Template: template,
 		},
-	}
-
-	// d, _ := yaml.Marshal(&deployment)
-	// fmt.Printf("--- t dump:\n%s\n\n", string(d))
-	// fmt.Printf("%v", pod)
-
-	return deployment, nil
+	}, nil
 }
 
 // CreateDataConfigMap creates a K3S configmap object
@@ -1206,7 +1157,7 @@ func (w *AdvancedWatcher) Run() {
 
 var validNamePattern = regexp.MustCompile("^[a-z0-9-]+$")
 
-func pluginNameForSpec(plugin *datatype.Plugin) (string, error) {
+func pluginNameForSpecJob(plugin *datatype.Plugin) (string, error) {
 	// if no given name for the plugin, use PLUGIN-VERSION-INSTANCE format for name
 	// INSTANCE is calculated as Sha256("DOMAIN/PLUGIN:VERSION&ARGUMENTS") and
 	// take the first 8 hex letters.
@@ -1220,6 +1171,24 @@ func pluginNameForSpec(plugin *datatype.Plugin) (string, error) {
 			return "", fmt.Errorf("plugin name must consist of alphanumeric characters with '-' RFC1123")
 		}
 		return jobName, nil
+	}
+	return generateJobNameForSpec(plugin.PluginSpec)
+}
+
+// TODO(sean) consolidate with other name setup
+func pluginNameForSpecDeployment(plugin *datatype.Plugin) (string, error) {
+	// if no given name for the plugin, use PLUGIN-VERSION-INSTANCE format for name
+	// INSTANCE is calculated as Sha256("DOMAIN/PLUGIN:VERSION&ARGUMENTS") and
+	// take the first 8 hex letters.
+	// NOTE: if multiple plugins with the same version and arguments are given for
+	//       the same domain, only one deployment will be applied to the cluster
+	// NOTE2: To comply with RFC 1123 for Kubernetes object name, only lower alphanumeric
+	//        characters with '-' is allowed
+	if plugin.Name != "" {
+		if !validNamePattern.MatchString(plugin.Name) {
+			return "", fmt.Errorf("plugin name must consist of alphanumeric characters with '-' RFC1123")
+		}
+		return plugin.Name, nil
 	}
 	return generateJobNameForSpec(plugin.PluginSpec)
 }
