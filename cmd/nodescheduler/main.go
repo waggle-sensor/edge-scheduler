@@ -2,12 +2,13 @@ package main
 
 import (
 	"flag"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 
-	"github.com/waggle-sensor/edge-scheduler/pkg/interfacing"
 	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
 	"github.com/waggle-sensor/edge-scheduler/pkg/nodescheduler"
+	"gopkg.in/yaml.v2"
 	"k8s.io/client-go/util/homedir"
 )
 
@@ -21,64 +22,47 @@ func getenv(key string, def string) string {
 var Version = "0.0.0"
 
 func main() {
-	var (
-		simulate          bool
-		noRabbitMQ        bool
-		rabbitmqURI       string
-		rabbitmqUsername  string
-		rabbitmqPassword  string
-		kubeconfig        string
-		registry          string
-		cloudschedulerURI string
-		rulecheckerURI    string
-		nodeID            string
-		incluster         bool
-		schedulingPolicy  string
-	)
-	flag.BoolVar(&simulate, "simulate", false, "Simulate the scheduler")
-	flag.StringVar(&nodeID, "nodeid", getenv("WAGGLE_NODE_ID", "000000000001"), "node ID")
+	var config nodescheduler.NodeSchedulerConfig
+	var configPath string
+	config.Version = Version
+	flag.StringVar(&configPath, "config", "", "Path to config file")
+	flag.BoolVar(&config.Simulate, "simulate", false, "Simulate the scheduler")
+	flag.StringVar(&config.Name, "nodename", getenv("WAGGLE_NODE_VSN", "W000"), "node name (VSN)")
 	if home := homedir.HomeDir(); home != "" {
-		flag.StringVar(&kubeconfig, "kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
+		flag.StringVar(&config.Kubeconfig, "kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
 	} else {
-		flag.StringVar(&kubeconfig, "kubeconfig", "", "absolute path to the kubeconfig file")
+		flag.StringVar(&config.Kubeconfig, "kubeconfig", "", "absolute path to the kubeconfig file")
 	}
-	flag.BoolVar(&incluster, "in-cluster", false, "A flag indicating a k3s service account is used")
-	flag.StringVar(&registry, "registry", "waggle/", "Path to ECR registry")
-	flag.BoolVar(&noRabbitMQ, "no-rabbitmq", false, "No RabbitMQ to talk to the cloud scheduler")
-	flag.StringVar(&rabbitmqURI, "rabbitmq-uri", getenv("RABBITMQ_URI", "wes-rabbitmq:5672"), "RabbitMQ management uri")
-	flag.StringVar(&rabbitmqUsername, "rabbitmq-username", getenv("RABBITMQ_USERNAME", "service"), "RabbitMQ management username")
-	flag.StringVar(&rabbitmqPassword, "rabbitmq-password", getenv("RABBITMQ_PASSWORD", "service"), "RabbitMQ management password")
-	flag.StringVar(&cloudschedulerURI, "cloudscheduler-uri", "http://localhost:9770", "cloudscheduler URI")
-	flag.StringVar(&rulecheckerURI, "rulechecker-uri", "http://wes-sciencerule-checker:5000", "rulechecker URI")
-	flag.StringVar(&schedulingPolicy, "policy", "default", "Name of the scheduling policy")
+	flag.BoolVar(&config.InCluster, "in-cluster", false, "A flag indicating a k3s service account is used")
+	flag.BoolVar(&config.NoRabbitMQ, "no-rabbitmq", false, "No RabbitMQ to talk to the cloud scheduler")
+	flag.StringVar(&config.RabbitmqURI, "rabbitmq-uri", getenv("RABBITMQ_URI", "wes-rabbitmq:5672"), "RabbitMQ management uri")
+	flag.StringVar(&config.RabbitmqUsername, "rabbitmq-username", getenv("RABBITMQ_USERNAME", "service"), "RabbitMQ management username")
+	flag.StringVar(&config.RabbitmqPassword, "rabbitmq-password", getenv("RABBITMQ_PASSWORD", "service"), "RabbitMQ management password")
+	flag.StringVar(&config.CloudschedulerURI, "cloudscheduler-uri", "", "cloudscheduler URI")
+	flag.StringVar(&config.RuleCheckerURI, "rulechecker-uri", "http://wes-sciencerule-checker:5000", "rulechecker URI")
+	flag.StringVar(&config.SchedulingPolicy, "policy", "default", "Name of the scheduling policy")
 	flag.Parse()
-	logger.Info.Printf("Node scheduler (%q) starts...", nodeID)
-	var ns *nodescheduler.NodeScheduler
-	if simulate {
-		logger.Debug.Println("Creating scheduler for simulation...")
-		ns = nodescheduler.NewFakeNodeSchedulerBuilder(nodeID, Version).
-			AddSchedulingPolicy(schedulingPolicy).
-			AddGoalManager().
-			AddKnowledgebase().
-			AddResourceManager().
-			AddAPIServer().
-			Build()
-	} else {
-		logger.Debug.Println("Creating scheduler for real...")
-		ns = nodescheduler.NewRealNodeSchedulerBuilder(nodeID, Version).
-			AddSchedulingPolicy(schedulingPolicy).
-			AddGoalManager(cloudschedulerURI).
-			AddKnowledgebase(rulecheckerURI).
-			AddResourceManager(registry, incluster, kubeconfig).
-			AddAPIServer().
-			AddLoggerToBeehive(rabbitmqURI, rabbitmqUsername, rabbitmqPassword, getenv("WAGGLE_APP_ID", "")).
-			Build()
+	logger.Info.Printf("Node scheduler (%q) starts...", config.Name)
+	if configPath != "" {
+		logger.Info.Printf("Config file (%s) provided. Loading configs...", configPath)
+		blob, err := ioutil.ReadFile(configPath)
+		if err != nil {
+			panic(err)
+		}
+		err = yaml.Unmarshal(blob, &config)
+		if err != nil {
+			panic(err)
+		}
 	}
-	if !noRabbitMQ {
-		logger.Info.Printf("Using RabbitMQ at %s with user %s", rabbitmqURI, rabbitmqUsername)
-		rmqHandler := interfacing.NewRabbitMQHandler(rabbitmqURI, rabbitmqUsername, rabbitmqPassword, getenv("WAGGLE_APP_ID", ""))
-		ns.GoalManager.SetRMQHandler(rmqHandler)
-	}
+	logger.Debug.Printf("Creating node scheduler (%q)...", config.Name)
+	appID := getenv("WAGGLE_APP_ID", "")
+	ns := nodescheduler.NewNodeSchedulerBuilder(&config).
+		AddGoalManager(appID).
+		AddKnowledgebase().
+		AddResourceManager().
+		AddAPIServer().
+		AddLoggerToBeehive(appID).
+		Build()
 	err := ns.Configure()
 	if err != nil {
 		panic(err)

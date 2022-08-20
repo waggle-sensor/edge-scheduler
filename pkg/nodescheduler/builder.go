@@ -1,38 +1,44 @@
 package nodescheduler
 
 import (
-	"net/url"
 	"strings"
 
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
 	"github.com/waggle-sensor/edge-scheduler/pkg/interfacing"
+	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
 	"github.com/waggle-sensor/edge-scheduler/pkg/nodescheduler/policy"
 )
 
-// NOTE: I do not know why we need this if we can't vary arguments in the functions
-//       for multiple builders
-// type NodeSchedulerBuilder interface {
-// 	AddGoalManager() NodeSchedulerBuilder
-// 	AddResourceManager() NodeSchedulerBuilder
-// 	AddKnowledgebase() NodeSchedulerBuilder
-// 	AddAPIServer() NodeSchedulerBuilder
-// 	Build() *NodeScheduler
-// }
+type NodeSchedulerConfig struct {
+	Name              string `json:"nodename" yaml:"nodeName"`
+	Version           string
+	NoRabbitMQ        bool   `json:"no_rabbitmq" yaml:"noRabbitMQ"`
+	RabbitmqURI       string `json:"rabbitmq_uri" yaml:"rabbimqURI"`
+	RabbitmqUsername  string `json:"rabbitmq_username" yaml:"rabbitMQUsername"`
+	RabbitmqPassword  string `json:"rabbitmq_password" yaml:"rabbitMQPassword"`
+	Kubeconfig        string `json:"kubeconfig" yaml:"kubeConfig"`
+	InCluster         bool   `json:"in_cluster" yaml:"inCluster"`
+	RuleCheckerURI    string `json:"rulechecker_uri" yaml:"ruleCheckerURI"`
+	Simulate          bool   `json:"simulate" yaml:"simulate"`
+	CloudschedulerURI string `json:"cloudscheduler_URI" yaml:"cloudSchedulerURI"`
+	SchedulingPolicy  string `json:"policy" yaml:"policy"`
+}
 
-type RealNodeScheduler struct {
+type NodeSchedulerBuilder struct {
 	nodeScheduler *NodeScheduler
 }
 
-func NewRealNodeSchedulerBuilder(nodeID string, version string) *RealNodeScheduler {
-	return &RealNodeScheduler{
+func NewNodeSchedulerBuilder(config *NodeSchedulerConfig) *NodeSchedulerBuilder {
+	return &NodeSchedulerBuilder{
 		nodeScheduler: &NodeScheduler{
-			Version:                     version,
-			NodeID:                      strings.ToLower(nodeID),
-			Simulate:                    false,
-			SchedulingPolicy:            policy.NewSimpleSchedulingPolicy(),
+			Version:                     config.Version,
+			NodeID:                      strings.ToLower(config.Name),
+			Config:                      config,
+			SchedulingPolicy:            policy.GetSchedulingPolicyByName(config.SchedulingPolicy),
 			chanContextEventToScheduler: make(chan datatype.EventPluginContext, maxChannelBuffer),
 			chanFromGoalManager:         make(chan datatype.Event, maxChannelBuffer),
 			chanFromResourceManager:     make(chan datatype.Event, maxChannelBuffer),
+			chanFromCloudScheduler:      make(chan *datatype.Event, maxChannelBuffer),
 			chanRunGoal:                 make(chan *datatype.ScienceGoal, maxChannelBuffer),
 			chanStopPlugin:              make(chan *datatype.Plugin, maxChannelBuffer),
 			chanPluginToResourceManager: make(chan *datatype.Plugin, maxChannelBuffer),
@@ -42,139 +48,67 @@ func NewRealNodeSchedulerBuilder(nodeID string, version string) *RealNodeSchedul
 	}
 }
 
-func (rns *RealNodeScheduler) AddSchedulingPolicy(policyName string) *RealNodeScheduler {
-	rns.nodeScheduler.SchedulingPolicy = policy.GetSchedulingPolicyByName(policyName)
-	return rns
-}
-
-func (rns *RealNodeScheduler) AddGoalManager(cloudschedulerURI string) *RealNodeScheduler {
-	rns.nodeScheduler.GoalManager = &NodeGoalManager{
-		ScienceGoals:          make(map[string]*datatype.ScienceGoal),
-		cloudSchedulerBaseURL: cloudschedulerURI,
-		NodeID:                rns.nodeScheduler.NodeID,
-		chanGoalQueue:         make(chan *datatype.ScienceGoal, 100),
-		Simulate:              false,
-		Notifier:              interfacing.NewNotifier(),
-	}
-	rns.nodeScheduler.GoalManager.Notifier.Subscribe(rns.nodeScheduler.chanFromGoalManager)
-	return rns
-}
-
-func (rns *RealNodeScheduler) AddResourceManager(registry string, incluster bool, kubeconfig string) *RealNodeScheduler {
-	registryAddress, err := url.Parse(registry)
-	if err != nil {
-		panic(err)
-	}
-	k3sClient, err := GetK3SClient(incluster, kubeconfig)
-	if err != nil {
-		panic(err)
-	}
-	metricsClient, err := GetK3SMetricsClient(incluster, kubeconfig)
-	if err != nil {
-		panic(err)
-	}
-	rns.nodeScheduler.ResourceManager = &ResourceManager{
-		Namespace:     "ses",
-		ECRRegistry:   registryAddress,
-		Clientset:     k3sClient,
-		MetricsClient: metricsClient,
-		Simulate:      false,
+func (nsb *NodeSchedulerBuilder) AddGoalManager(appID string) *NodeSchedulerBuilder {
+	nsb.nodeScheduler.GoalManager = &NodeGoalManager{
+		ScienceGoals:  make(map[string]*datatype.ScienceGoal),
+		NodeID:        nsb.nodeScheduler.NodeID,
+		chanGoalQueue: make(chan *datatype.ScienceGoal, 100),
+		Simulate:      nsb.nodeScheduler.Config.Simulate,
 		Notifier:      interfacing.NewNotifier(),
-		runner:        "nodescheduler",
 	}
-	rns.nodeScheduler.ResourceManager.Notifier.Subscribe(rns.nodeScheduler.chanFromResourceManager)
-	return rns
-}
-
-func (rns *RealNodeScheduler) AddKnowledgebase(ruleCheckerURI string) *RealNodeScheduler {
-	rns.nodeScheduler.Knowledgebase = NewKnowledgeBase(rns.nodeScheduler.NodeID, ruleCheckerURI)
-	return rns
-}
-
-func (rns *RealNodeScheduler) AddAPIServer() *RealNodeScheduler {
-	rns.nodeScheduler.APIServer = &APIServer{
-		version:       rns.nodeScheduler.Version,
-		nodeScheduler: rns.nodeScheduler,
+	if !nsb.nodeScheduler.Config.NoRabbitMQ {
+		logger.Info.Printf("Using RabbitMQ at %s with user %s", nsb.nodeScheduler.Config.RabbitmqURI, nsb.nodeScheduler.Config.RabbitmqUsername)
+		nsb.nodeScheduler.GoalManager.SetRMQHandler(interfacing.NewRabbitMQHandler(
+			nsb.nodeScheduler.Config.RabbitmqURI,
+			nsb.nodeScheduler.Config.RabbitmqUsername,
+			nsb.nodeScheduler.Config.RabbitmqPassword,
+			appID),
+		)
 	}
-	return rns
+	nsb.nodeScheduler.GoalManager.Notifier.Subscribe(nsb.nodeScheduler.chanFromGoalManager)
+	return nsb
 }
 
-func (rns *RealNodeScheduler) AddLoggerToBeehive(rabbitmqURI string, rabbitmqUsername string, rabbitmqPassword string, appID string) *RealNodeScheduler {
-	rns.nodeScheduler.LogToBeehive = interfacing.NewRabbitMQHandler(rabbitmqURI, rabbitmqUsername, rabbitmqPassword, appID)
-	return rns
-}
-
-func (rns *RealNodeScheduler) Build() *NodeScheduler {
-	return rns.nodeScheduler
-}
-
-type FakeNodeScheduler struct {
-	nodeScheduler *NodeScheduler
-}
-
-func NewFakeNodeSchedulerBuilder(nodeID string, version string) *FakeNodeScheduler {
-	return &FakeNodeScheduler{
-		nodeScheduler: &NodeScheduler{
-			Version:                     version,
-			NodeID:                      strings.ToLower(nodeID),
-			Simulate:                    true,
-			chanContextEventToScheduler: make(chan datatype.EventPluginContext, maxChannelBuffer),
-			chanFromGoalManager:         make(chan datatype.Event, maxChannelBuffer),
-			chanFromResourceManager:     make(chan datatype.Event, maxChannelBuffer),
-			chanRunGoal:                 make(chan *datatype.ScienceGoal, maxChannelBuffer),
-			chanStopPlugin:              make(chan *datatype.Plugin, maxChannelBuffer),
-			chanPluginToResourceManager: make(chan *datatype.Plugin, maxChannelBuffer),
-			chanNeedScheduling:          make(chan datatype.Event, maxChannelBuffer),
-			chanAPIServerToGoalManager:  make(chan *datatype.ScienceGoal, maxChannelBuffer),
-		},
-	}
-}
-
-func (fns *FakeNodeScheduler) AddSchedulingPolicy(policyName string) *FakeNodeScheduler {
-	fns.nodeScheduler.SchedulingPolicy = policy.GetSchedulingPolicyByName(policyName)
-	return fns
-}
-
-func (fns *FakeNodeScheduler) AddGoalManager() *FakeNodeScheduler {
-	fns.nodeScheduler.GoalManager = &NodeGoalManager{
-		ScienceGoals:          make(map[string]*datatype.ScienceGoal),
-		cloudSchedulerBaseURL: "",
-		NodeID:                fns.nodeScheduler.NodeID,
-		chanGoalQueue:         make(chan *datatype.ScienceGoal, 100),
-		Simulate:              true,
-		Notifier:              interfacing.NewNotifier(),
-	}
-	fns.nodeScheduler.GoalManager.Notifier.Subscribe(fns.nodeScheduler.chanFromGoalManager)
-	return fns
-}
-
-func (fns *FakeNodeScheduler) AddResourceManager() *FakeNodeScheduler {
-	fns.nodeScheduler.ResourceManager = &ResourceManager{
+func (nsb *NodeSchedulerBuilder) AddResourceManager() *NodeSchedulerBuilder {
+	nsb.nodeScheduler.ResourceManager = &ResourceManager{
 		Namespace:     "ses",
-		ECRRegistry:   nil,
 		Clientset:     nil,
 		MetricsClient: nil,
-		Simulate:      true,
+		Simulate:      nsb.nodeScheduler.Config.Simulate,
 		Notifier:      interfacing.NewNotifier(),
 		runner:        "nodescheduler",
 	}
-	fns.nodeScheduler.ResourceManager.Notifier.Subscribe(fns.nodeScheduler.chanFromResourceManager)
-	return fns
+	nsb.nodeScheduler.ResourceManager.Notifier.Subscribe(nsb.nodeScheduler.chanFromResourceManager)
+	return nsb
 }
 
-func (fns *FakeNodeScheduler) AddKnowledgebase() *FakeNodeScheduler {
-	fns.nodeScheduler.Knowledgebase = NewKnowledgeBase(fns.nodeScheduler.NodeID, "")
-	return fns
-}
-
-func (fns *FakeNodeScheduler) AddAPIServer() *FakeNodeScheduler {
-	fns.nodeScheduler.APIServer = &APIServer{
-		version:       fns.nodeScheduler.Version,
-		nodeScheduler: fns.nodeScheduler,
+func (nsb *NodeSchedulerBuilder) AddKnowledgebase() *NodeSchedulerBuilder {
+	nsb.nodeScheduler.Knowledgebase = &KnowledgeBase{
+		nodeID:         nsb.nodeScheduler.Config.Name,
+		rules:          make(map[string][]string),
+		measures:       map[string]interface{}{},
+		ruleCheckerURI: nsb.nodeScheduler.Config.RuleCheckerURI,
 	}
-	return fns
+	return nsb
 }
 
-func (fns *FakeNodeScheduler) Build() *NodeScheduler {
-	return fns.nodeScheduler
+func (nsb *NodeSchedulerBuilder) AddAPIServer() *NodeSchedulerBuilder {
+	nsb.nodeScheduler.APIServer = &APIServer{
+		version:       nsb.nodeScheduler.Config.Version,
+		nodeScheduler: nsb.nodeScheduler,
+	}
+	return nsb
+}
+
+func (nsb *NodeSchedulerBuilder) AddLoggerToBeehive(appID string) *NodeSchedulerBuilder {
+	nsb.nodeScheduler.LogToBeehive = interfacing.NewRabbitMQHandler(
+		nsb.nodeScheduler.Config.RabbitmqURI,
+		nsb.nodeScheduler.Config.RabbitmqUsername,
+		nsb.nodeScheduler.Config.RabbitmqPassword,
+		appID)
+	return nsb
+}
+
+func (nsb *NodeSchedulerBuilder) Build() *NodeScheduler {
+	return nsb.nodeScheduler
 }

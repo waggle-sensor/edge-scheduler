@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -53,7 +52,6 @@ var (
 // ResourceManager structs a resource manager talking to a local computing cluster to schedule plugins
 type ResourceManager struct {
 	Namespace     string
-	ECRRegistry   *url.URL
 	Clientset     *kubernetes.Clientset
 	MetricsClient *metrics.Clientset
 	RMQManagement *RMQManagement
@@ -66,11 +64,10 @@ type ResourceManager struct {
 }
 
 // NewResourceManager returns an instance of ResourceManager
-func NewK3SResourceManager(registry string, incluster bool, kubeconfig string, runner string, simulate bool) (rm *ResourceManager, err error) {
+func NewK3SResourceManager(incluster bool, kubeconfig string, runner string, simulate bool) (rm *ResourceManager, err error) {
 	if simulate {
 		return &ResourceManager{
 			Namespace:     namespace,
-			ECRRegistry:   nil,
 			Clientset:     nil,
 			MetricsClient: nil,
 			Simulate:      simulate,
@@ -78,10 +75,6 @@ func NewK3SResourceManager(registry string, incluster bool, kubeconfig string, r
 			reserved:      false,
 			runner:        runner,
 		}, nil
-	}
-	registryAddress, err := url.Parse(registry)
-	if err != nil {
-		return
 	}
 	k3sClient, err := GetK3SClient(incluster, kubeconfig)
 	if err != nil {
@@ -93,7 +86,6 @@ func NewK3SResourceManager(registry string, incluster bool, kubeconfig string, r
 	}
 	return &ResourceManager{
 		Namespace:     namespace,
-		ECRRegistry:   registryAddress,
 		Clientset:     k3sClient,
 		MetricsClient: metricsClient,
 		Simulate:      simulate,
@@ -152,6 +144,20 @@ func securityContextForConfig(pluginSpec *datatype.PluginSpec) *apiv1.SecurityCo
 
 func getPriorityClassName(pluginSpec *datatype.PluginSpec) string {
 	return "wes-plugin-default"
+}
+
+func (rm *ResourceManager) ConfigureKubernetes(inCluster bool, kubeconfig string) error {
+	k3sClient, err := GetK3SClient(inCluster, kubeconfig)
+	if err != nil {
+		return err
+	}
+	rm.Clientset = k3sClient
+	metricsClient, err := GetK3SMetricsClient(inCluster, kubeconfig)
+	if err != nil {
+		return err
+	}
+	rm.MetricsClient = metricsClient
+	return nil
 }
 
 // CreatePluginCredential creates a credential inside RabbitMQ server for the plugin
@@ -571,11 +577,8 @@ func (rm *ResourceManager) CreateDeployment(plugin *datatype.Plugin, credential 
 				Spec: apiv1.PodSpec{
 					Containers: []apiv1.Container{
 						{
-							Name: pluginNameInLowcase,
-							Image: path.Join(
-								rm.ECRRegistry.Path,
-								plugin.PluginSpec.Image,
-							),
+							Name:  pluginNameInLowcase,
+							Image: plugin.PluginSpec.Image,
 							// Args: plugin.Args,
 							Env: []apiv1.EnvVar{
 								{

@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
@@ -25,6 +26,7 @@ type APIServer struct {
 }
 
 func (api *APIServer) subscribe(nodeName string, c chan *datatype.Event) {
+	nodeName = strings.ToLower(nodeName)
 	if _, exist := api.subscribers[nodeName]; !exist {
 		api.subscribers[nodeName] = make(map[chan *datatype.Event]bool)
 	}
@@ -32,12 +34,14 @@ func (api *APIServer) subscribe(nodeName string, c chan *datatype.Event) {
 }
 
 func (api *APIServer) unsubscribe(nodeName string, c chan *datatype.Event) {
+	nodeName = strings.ToLower(nodeName)
 	if _, exist := api.subscribers[nodeName]; exist {
 		delete(api.subscribers[nodeName], c)
 	}
 }
 
 func (api *APIServer) Push(nodeName string, event *datatype.Event) {
+	nodeName = strings.ToLower(nodeName)
 	if _, exist := api.subscribers[nodeName]; exist {
 		for ch := range api.subscribers[nodeName] {
 			select {
@@ -460,6 +464,24 @@ func (api *APIServer) handlerGoalStreamForNode(w http.ResponseWriter, r *http.Re
 	c := make(chan *datatype.Event, 1)
 	api.subscribe(nodeName, c)
 	defer api.unsubscribe(nodeName, c)
+	var goals []*datatype.ScienceGoal
+	for _, g := range api.cloudScheduler.GoalManager.GetScienceGoalsForNode(nodeName) {
+		goals = append(goals, g.ShowMyScienceGoal(nodeName))
+	}
+	// if no science goal is assigned to the node return an empty list []
+	// returning null may raise an exception in edge scheduler
+	if len(goals) > 0 {
+		blob, err := json.MarshalIndent(goals, "", "  ")
+		if err != nil {
+			logger.Error.Printf("Failed to compress goals for node %q before pushing", nodeName)
+		} else {
+			event := datatype.NewEventBuilder(datatype.EventGoalStatusUpdated).AddEntry("goals", string(blob)).Build()
+			if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.ToString(), event.GetEntry("goals")); err != nil {
+				return
+			}
+			flusher.Flush()
+		}
+	}
 	for event := range c {
 		if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.ToString(), event.GetEntry("goals")); err != nil {
 			return

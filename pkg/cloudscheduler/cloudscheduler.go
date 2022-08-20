@@ -109,6 +109,27 @@ func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(jobID string, dryrun b
 	return nil
 }
 
+func (cs *CloudScheduler) updateNodes(scienceGoal *datatype.ScienceGoal) {
+	for _, nodeName := range scienceGoal.GetSubjectNodes() {
+		var goals []*datatype.ScienceGoal
+		for _, g := range cs.GoalManager.GetScienceGoalsForNode(nodeName) {
+			goals = append(goals, g.ShowMyScienceGoal(nodeName))
+		}
+		// if no science goal is assigned to the node return an empty list []
+		// returning null may raise an exception in edge scheduler
+		if len(goals) < 1 {
+			goals = make([]*datatype.ScienceGoal, 0)
+		}
+		blob, err := json.MarshalIndent(goals, "", "  ")
+		if err != nil {
+			logger.Error.Printf("Failed to compress goals for node %q before pushing", nodeName)
+		} else {
+			event := datatype.NewEventBuilder(datatype.EventGoalStatusUpdated).AddEntry("goals", string(blob)).Build()
+			cs.APIServer.Push(nodeName, &event)
+		}
+	}
+}
+
 func (cs *CloudScheduler) Run() {
 	go cs.APIServer.Run()
 	logger.Info.Printf("Cloud Scheduler %s starts...", cs.Name)
@@ -117,6 +138,26 @@ func (cs *CloudScheduler) Run() {
 		case event := <-cs.chanFromGoalManager:
 			logger.Debug.Printf("%s: %q", event.ToString(), event.GetGoalName())
 			switch event.Type {
+			case datatype.EventJobStatusRemoved:
+				job, err := cs.GoalManager.GetJob(event.GetJobID())
+				if err != nil {
+					logger.Error.Printf("Failed to get job %q", event.GetJobID())
+					break
+				}
+				// The job is removed. Corresponding science goal should also be removed
+				if job.ScienceGoal != nil {
+					scienceGoal, err := cs.GoalManager.GetScienceGoal(job.ScienceGoal.ID)
+					if err != nil {
+						logger.Error.Printf("Failed to get science goal %q", job.ScienceGoal.ID)
+						break
+					}
+					if err = cs.GoalManager.RemoveScienceGoal(scienceGoal.ID); err != nil {
+						logger.Error.Printf("Failed to remove science goal %q", scienceGoal.ID)
+						break
+					}
+					logger.Info.Printf("Goal %q is removed for job %q.", scienceGoal.Name, scienceGoal.JobID)
+					cs.updateNodes(scienceGoal)
+				}
 			case datatype.EventGoalStatusSubmitted:
 				scienceGoal, err := cs.GoalManager.GetScienceGoal(event.GetGoalID())
 				if err != nil {
@@ -124,20 +165,7 @@ func (cs *CloudScheduler) Run() {
 					break
 				}
 				logger.Info.Printf("Goal %q is submitted for job id %q.", scienceGoal.Name, scienceGoal.JobID)
-				for _, nodeName := range scienceGoal.GetSubjectNodes() {
-					var goals []*datatype.ScienceGoal
-					for _, g := range cs.GoalManager.GetScienceGoalsForNode(nodeName) {
-						goals = append(goals, g.ShowMyScienceGoal(nodeName))
-					}
-					blob, err := json.MarshalIndent(goals, "", "  ")
-					if err != nil {
-						logger.Error.Printf("Failed to compress goals for node %q before pushing", nodeName)
-					} else {
-						event := datatype.NewEventBuilder(datatype.EventGoalStatusUpdated).AddEntry("goals", string(blob)).Build()
-						cs.APIServer.Push(nodeName, &event)
-					}
-
-				}
+				cs.updateNodes(scienceGoal)
 			}
 		}
 	}
