@@ -165,7 +165,6 @@ func (ns *NodeScheduler) Run() {
 					pluginName := event.GetPluginName()
 					plugin := scienceGoal.GetMySubGoal(ns.NodeID).GetPlugin(pluginName)
 					if plugin != nil {
-
 						go ns.LogToBeehive.SendWaggleMessage(event.ToWaggleMessage(), "all")
 					}
 				}
@@ -247,15 +246,15 @@ func (ns *NodeScheduler) Run() {
 			// 	}
 		case event := <-ns.chanFromCloudScheduler:
 			logger.Debug.Printf("%s", event.ToString())
-			// TODO: The CleanUp should be replaced with clean-ups of individual plugin
-			ns.ResourceManager.CleanUp()
-			data := event.GetEntry("goals")
-			var goals []datatype.ScienceGoal
-			err := json.Unmarshal([]byte(data), &goals)
+			goals := event.GetEntry("goals")
+			err := ns.ResourceManager.CreateConfigMap(
+				configMapNameForGoals,
+				map[string]string{"goals": goals},
+				"default",
+				true,
+			)
 			if err != nil {
-				logger.Error.Printf("Failed to load bulk goals %q", err.Error())
-			} else {
-				ns.GoalManager.SetGoals(goals)
+				logger.Error.Printf("Failed to update goals for event %q", event.Type)
 			}
 		case event := <-ns.chanNeedScheduling:
 			logger.Debug.Printf("Reason for (re)scheduling %q", event.Type)

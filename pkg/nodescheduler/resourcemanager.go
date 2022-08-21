@@ -540,7 +540,7 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 
 // CreateK3SJob creates and returns a Kubernetes job object of the pllugin
 func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, error) {
-	name, err := pluginNameForSpecJob(plugin)
+	name, err := pluginNameForSpecDeployment(plugin)
 	if err != nil {
 		return nil, err
 	}
@@ -594,7 +594,6 @@ func (rm *ResourceManager) CreateDataConfigMap(configName string, datashims []*d
 	if err != nil {
 		return err
 	}
-
 	for _, c := range configMaps.Items {
 		if c.Name == configName {
 			// TODO: May want to renew the existing one
@@ -606,7 +605,6 @@ func (rm *ResourceManager) CreateDataConfigMap(configName string, datashims []*d
 	if err != nil {
 		return err
 	}
-
 	var config apiv1.ConfigMap
 	config.Name = configName
 	config.Data = make(map[string]string)
@@ -805,6 +803,7 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 		return
 	}
 	_, err = rm.RunPlugin(job)
+	defer rm.TerminateJob(job.Name)
 	if err != nil {
 		logger.Error.Printf("Failed to run %q: %q", job.Name, err.Error())
 		rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason(err.Error()).AddPluginMeta(plugin).Build())
@@ -901,7 +900,7 @@ func (rm *ResourceManager) Configure() (err error) {
 	if err != nil {
 		return
 	}
-	servicesToBringUp := []string{"wes-rabbitmq", "wes-audio-server", "wes-scoreboard"}
+	servicesToBringUp := []string{"wes-rabbitmq", "wes-audio-server", "wes-scoreboard", "wes-app-meta-cache"}
 	for _, service := range servicesToBringUp {
 		err = rm.ForwardService(service, "default", "ses")
 		if err != nil {

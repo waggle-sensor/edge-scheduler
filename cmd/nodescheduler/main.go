@@ -42,7 +42,6 @@ func main() {
 	flag.StringVar(&config.RuleCheckerURI, "rulechecker-uri", "http://wes-sciencerule-checker:5000", "rulechecker URI")
 	flag.StringVar(&config.SchedulingPolicy, "policy", "default", "Name of the scheduling policy")
 	flag.Parse()
-	logger.Info.Printf("Node scheduler (%q) starts...", config.Name)
 	if configPath != "" {
 		logger.Info.Printf("Config file (%s) provided. Loading configs...", configPath)
 		blob, err := ioutil.ReadFile(configPath)
@@ -54,7 +53,8 @@ func main() {
 			panic(err)
 		}
 	}
-	logger.Debug.Printf("Creating node scheduler (%q)...", config.Name)
+	logger.Info.Printf("Node scheduler (%q) starts...", config.Name)
+	logger.Debug.Print("Creating node scheduler...")
 	appID := getenv("WAGGLE_APP_ID", "")
 	ns := nodescheduler.NewNodeSchedulerBuilder(&config).
 		AddGoalManager(appID).

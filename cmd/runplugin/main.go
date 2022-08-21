@@ -66,7 +66,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	resourceManager, err := nodescheduler.NewK3SResourceManager("", false, kubeconfig, "runplugin", false)
+	resourceManager, err := nodescheduler.NewK3SResourceManager(false, kubeconfig, "runplugin", false)
 	if err != nil {
 		log.Fatalf("nodescheduler.NewK3SResourceManager: %s", err.Error())
 	}
