@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -53,7 +52,6 @@ var (
 // ResourceManager structs a resource manager talking to a local computing cluster to schedule plugins
 type ResourceManager struct {
 	Namespace     string
-	ECRRegistry   *url.URL
 	Clientset     *kubernetes.Clientset
 	MetricsClient *metrics.Clientset
 	RMQManagement *RMQManagement
@@ -66,11 +64,10 @@ type ResourceManager struct {
 }
 
 // NewResourceManager returns an instance of ResourceManager
-func NewK3SResourceManager(registry string, incluster bool, kubeconfig string, runner string, simulate bool) (rm *ResourceManager, err error) {
+func NewK3SResourceManager(incluster bool, kubeconfig string, runner string, simulate bool) (rm *ResourceManager, err error) {
 	if simulate {
 		return &ResourceManager{
 			Namespace:     namespace,
-			ECRRegistry:   nil,
 			Clientset:     nil,
 			MetricsClient: nil,
 			Simulate:      simulate,
@@ -78,10 +75,6 @@ func NewK3SResourceManager(registry string, incluster bool, kubeconfig string, r
 			reserved:      false,
 			runner:        runner,
 		}, nil
-	}
-	registryAddress, err := url.Parse(registry)
-	if err != nil {
-		return
 	}
 	k3sClient, err := GetK3SClient(incluster, kubeconfig)
 	if err != nil {
@@ -93,7 +86,6 @@ func NewK3SResourceManager(registry string, incluster bool, kubeconfig string, r
 	}
 	return &ResourceManager{
 		Namespace:     namespace,
-		ECRRegistry:   registryAddress,
 		Clientset:     k3sClient,
 		MetricsClient: metricsClient,
 		Simulate:      simulate,
@@ -152,6 +144,20 @@ func securityContextForConfig(pluginSpec *datatype.PluginSpec) *apiv1.SecurityCo
 
 func getPriorityClassName(pluginSpec *datatype.PluginSpec) string {
 	return "wes-plugin-default"
+}
+
+func (rm *ResourceManager) ConfigureKubernetes(inCluster bool, kubeconfig string) error {
+	k3sClient, err := GetK3SClient(inCluster, kubeconfig)
+	if err != nil {
+		return err
+	}
+	rm.Clientset = k3sClient
+	metricsClient, err := GetK3SMetricsClient(inCluster, kubeconfig)
+	if err != nil {
+		return err
+	}
+	rm.MetricsClient = metricsClient
+	return nil
 }
 
 // CreatePluginCredential creates a credential inside RabbitMQ server for the plugin
@@ -534,7 +540,7 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 
 // CreateK3SJob creates and returns a Kubernetes job object of the pllugin
 func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, error) {
-	name, err := pluginNameForSpecJob(plugin)
+	name, err := pluginNameForSpecDeployment(plugin)
 	if err != nil {
 		return nil, err
 	}
@@ -588,7 +594,6 @@ func (rm *ResourceManager) CreateDataConfigMap(configName string, datashims []*d
 	if err != nil {
 		return err
 	}
-
 	for _, c := range configMaps.Items {
 		if c.Name == configName {
 			// TODO: May want to renew the existing one
@@ -600,7 +605,6 @@ func (rm *ResourceManager) CreateDataConfigMap(configName string, datashims []*d
 	if err != nil {
 		return err
 	}
-
 	var config apiv1.ConfigMap
 	config.Name = configName
 	config.Data = make(map[string]string)
@@ -799,6 +803,7 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 		return
 	}
 	_, err = rm.RunPlugin(job)
+	defer rm.TerminateJob(job.Name)
 	if err != nil {
 		logger.Error.Printf("Failed to run %q: %q", job.Name, err.Error())
 		rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason(err.Error()).AddPluginMeta(plugin).Build())
@@ -895,7 +900,7 @@ func (rm *ResourceManager) Configure() (err error) {
 	if err != nil {
 		return
 	}
-	servicesToBringUp := []string{"wes-rabbitmq", "wes-audio-server", "wes-scoreboard"}
+	servicesToBringUp := []string{"wes-rabbitmq", "wes-audio-server", "wes-scoreboard", "wes-app-meta-cache"}
 	for _, service := range servicesToBringUp {
 		err = rm.ForwardService(service, "default", "ses")
 		if err != nil {

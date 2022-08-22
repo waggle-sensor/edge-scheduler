@@ -75,6 +75,14 @@ func (g *ScienceGoal) ShowMyScienceGoal(nodeName string) *ScienceGoal {
 	}
 }
 
+// GetSubjectNodes returns a list of nodes subject to run this science goal
+func (g *ScienceGoal) GetSubjectNodes() (nodes []string) {
+	for _, subGoal := range g.SubGoals {
+		nodes = append(nodes, subGoal.Name)
+	}
+	return
+}
+
 // SubGoal structs node-specific goal along with conditions and rules
 type SubGoal struct {
 	Name         string    `json:"name" yaml:"name"`

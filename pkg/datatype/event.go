@@ -40,6 +40,10 @@ func (eb *EventBuilder) AddJob(j *Job) *EventBuilder {
 	return eb
 }
 
+func (e *Event) GetJobID() string {
+	return e.get("job_id")
+}
+
 func (eb *EventBuilder) AddGoal(goal *ScienceGoal) *EventBuilder {
 	eb.e.Meta["goal_name"] = goal.Name
 	eb.e.Meta["goal_id"] = goal.ID
@@ -155,11 +159,12 @@ type EventType string
 const (
 	// EventSchedulingDecisionScheduled EventType = "sys.scheduler.decision.scheduled"
 	EventJobStatusSuspended     EventType = "sys.scheduler.status.job.suspended"
-	EventGoalStatusNew          EventType = "sys.scheduler.status.goal.new"
+	EventJobStatusRemoved       EventType = "sys.scheduler.status.job.removed"
+	EventGoalStatusSubmitted    EventType = "sys.scheduler.status.goal.submitted"
 	EventGoalStatusUpdated      EventType = "sys.scheduler.status.goal.updated"
 	EventGoalStatusReceived     EventType = "sys.scheduler.status.goal.received"
 	EventGoalStatusReceivedBulk EventType = "sys.scheduler.status.goal.received.bulk"
-	EventGoalStatusDeleted      EventType = "sys.scheduler.status.goal.deleted"
+	EventGoalStatusRemoved      EventType = "sys.scheduler.status.goal.removed"
 	EventPluginStatusPromoted   EventType = "sys.scheduler.status.plugin.promoted"
 	EventPluginStatusScheduled  EventType = "sys.scheduler.status.plugin.scheduled"
 	EventPluginStatusLaunched   EventType = "sys.scheduler.status.plugin.launched"

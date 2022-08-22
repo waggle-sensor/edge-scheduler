@@ -22,6 +22,7 @@ RUN wget https://golang.org/dl/go1.17.6.linux-${TARGETARCH}.tar.gz \
 
 FROM base as builder
 WORKDIR $GOPATH/src/github.com/waggle-sensor/edge-scheduler
+ARG TARGETARCH
 COPY . .
 ARG VERSION
 ENV VERSION=${VERSION}
@@ -33,6 +34,7 @@ RUN export PATH=$PATH:/usr/local/go/bin:/usr/bin/pkg-config \
   && cp -r pkg/knowledgebase/util /app/
 
 FROM base
+ARG TARGETARCH
 COPY requirements.txt /app/
 RUN pip3 install -r /app/requirements.txt
 

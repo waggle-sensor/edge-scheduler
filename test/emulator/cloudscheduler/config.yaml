@@ -1,0 +1,10 @@
+---
+name: cloudscheduler-waggle
+noRabbitMQ: true
+rabbimqURI: ""
+rabbitMQUsername: ""
+rabbitMQPassword: ""
+ecrURI: "waggle/"
+port: 9770
+dataDir: "/path/to/datadir"
+PushNotification: true

@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -17,15 +18,18 @@ func init() {
 	const namespace = "local"
 
 	cmd := &cobra.Command{
-		Use:   "build PLUGIN_DIR",
+		Use:   "build PLUGIN_DIR [-- BUILD ARGUMENTS]",
 		Short: "Build plugin",
 		Long:  "Build a plugin contained in a directory.",
 		Example: `# clone plugin repo
 git clone https://github.com/my-username/my-plugin
 
 # build and run plugin in cloned directory
-pluginctl run -n my-plugin $(pluginctl build my-plugin)`,
-		Args: cobra.ExactArgs(1),
+pluginctl run -n my-plugin $(pluginctl build my-plugin)
+
+# build with parameters that work on container builder (i.e., Docker)
+pluginctl build my-plugin -- --build-arg=MY_VAR="hello"`,
+		Args: cobra.MinimumNArgs(1),
 	}
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
@@ -39,7 +43,7 @@ pluginctl run -n my-plugin $(pluginctl build my-plugin)`,
 		// build and push to local registry. all output goes to stderr to allow easy piping
 		ctx, _ := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 
-		if err := runCommandContextStderr(ctx, "docker", "build", "-t", image, path); err != nil {
+		if err := runCommandContextStderr(ctx, "docker", "build", "-t", image, strings.Join(args[1:], " "), path); err != nil {
 			return err
 		}
 

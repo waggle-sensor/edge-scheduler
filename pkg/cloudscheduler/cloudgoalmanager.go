@@ -54,7 +54,7 @@ func (cgm *CloudGoalManager) UpdateJob(job *datatype.Job, submit bool) {
 		job.UpdateStatus(datatype.JobSubmitted)
 		newScienceGoal := job.ScienceGoal
 		cgm.UpdateScienceGoal(newScienceGoal)
-		event := datatype.NewEventBuilder(datatype.EventGoalStatusNew).AddGoal(newScienceGoal).Build()
+		event := datatype.NewEventBuilder(datatype.EventGoalStatusSubmitted).AddGoal(newScienceGoal).Build()
 		cgm.Notifier.Notify(event)
 	}
 }
@@ -77,8 +77,11 @@ func (cgm *CloudGoalManager) RemoveJob(jobID string, force bool) error {
 		if job.Status == datatype.JobRunning && !force {
 			return fmt.Errorf("Failed to remove job %q as it is in running state. Suspend it first or specify force=true", jobID)
 		}
-		delete(cgm.jobs, job.JobID)
-		cgm.RemoveScienceGoal(job.ScienceGoal.ID)
+		job.UpdateStatus(datatype.JobRemoved)
+		event := datatype.NewEventBuilder(datatype.EventJobStatusRemoved).
+			AddJob(job).
+			Build()
+		cgm.Notifier.Notify(event)
 		return nil
 	} else {
 		return fmt.Errorf("Failed to find job %q to remove", jobID)
@@ -126,7 +129,7 @@ func (cgm *CloudGoalManager) GetScienceGoal(goalID string) (*datatype.ScienceGoa
 	return nil, fmt.Errorf("Failed to find goal %q", goalID)
 }
 
-// GetScienceGoalsForNode returns a list of goals associated to given node
+// GetScienceGoalsForNode returns a list of goals associated to given node.
 func (cgm *CloudGoalManager) GetScienceGoalsForNode(nodeName string) (goals []*datatype.ScienceGoal) {
 	for _, scienceGoal := range cgm.scienceGoals {
 		for _, subGoal := range scienceGoal.SubGoals {
