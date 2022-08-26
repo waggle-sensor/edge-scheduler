@@ -18,7 +18,7 @@ func init() {
 	const namespace = "local"
 
 	cmd := &cobra.Command{
-		Use:   "build PLUGIN_DIR [-- BUILD ARGUMENTS]",
+		Use:   "build PLUGIN_DIR [FLAGS] [-- BUILD ARGUMENTS]",
 		Short: "Build plugin",
 		Long:  "Build a plugin contained in a directory.",
 		Example: `# clone plugin repo
@@ -42,9 +42,14 @@ pluginctl build my-plugin -- --build-arg=MY_VAR="hello"`,
 
 		// build and push to local registry. all output goes to stderr to allow easy piping
 		ctx, _ := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-
-		if err := runCommandContextStderr(ctx, "docker", "build", "-t", image, strings.Join(args[1:], " "), path); err != nil {
-			return err
+		if len(args[1:]) < 1 {
+			if err := runCommandContextStderr(ctx, "docker", "build", "-t", image, path); err != nil {
+				return err
+			}
+		} else {
+			if err := runCommandContextStderr(ctx, "docker", "build", "-t", image, strings.Join(args[1:], " "), path); err != nil {
+				return err
+			}
 		}
 
 		if err := runCommandContextStderr(ctx, "docker", "push", image); err != nil {
