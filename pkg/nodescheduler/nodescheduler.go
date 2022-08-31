@@ -78,7 +78,7 @@ func (ns *NodeScheduler) Configure() (err error) {
 		if err != nil {
 			return err
 		}
-		s := interfacing.NewHTTPRequest(u.Host)
+		s := interfacing.NewHTTPRequest(u.Scheme + "://" + u.Host)
 		s.Subscribe(u.Path, ns.chanFromCloudScheduler, true)
 	}
 	return
