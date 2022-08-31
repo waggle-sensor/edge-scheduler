@@ -529,7 +529,8 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 			Labels: rm.labelsForPlugin(plugin),
 		},
 		Spec: apiv1.PodSpec{
-			NodeSelector: nodeSelectorForConfig(plugin.PluginSpec),
+			PriorityClassName: "wes-app-priority",
+			NodeSelector:      nodeSelectorForConfig(plugin.PluginSpec),
 			// TODO: The priority class will be revisited when using resource metrics to schedule plugins
 			// PriorityClassName: getPriorityClassName(plugin.PluginSpec),
 			InitContainers: initContainers,
