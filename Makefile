@@ -35,3 +35,7 @@ docker:
 docker-pre-arm64:
 	docker build -t waggle/scheduler:${VERSION}-pre --build-arg VERSION=${VERSION}-pre --build-arg TARGETARCH=arm64 .
 	docker push waggle/scheduler:${VERSION}-pre
+
+docker-pre-amd64:
+	docker build -t waggle/scheduler:${VERSION}-pre --build-arg VERSION=${VERSION}-pre --build-arg TARGETARCH=amd64 .
+	docker push waggle/scheduler:${VERSION}-pre

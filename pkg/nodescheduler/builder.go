@@ -10,18 +10,18 @@ import (
 )
 
 type NodeSchedulerConfig struct {
-	Name              string `json:"nodename" yaml:"nodeName"`
-	Version           string
-	NoRabbitMQ        bool   `json:"no_rabbitmq" yaml:"noRabbitMQ"`
-	RabbitmqURI       string `json:"rabbitmq_uri" yaml:"rabbimqURI"`
-	RabbitmqUsername  string `json:"rabbitmq_username" yaml:"rabbitMQUsername"`
-	RabbitmqPassword  string `json:"rabbitmq_password" yaml:"rabbitMQPassword"`
-	Kubeconfig        string `json:"kubeconfig" yaml:"kubeConfig"`
-	InCluster         bool   `json:"in_cluster" yaml:"inCluster"`
-	RuleCheckerURI    string `json:"rulechecker_uri" yaml:"ruleCheckerURI"`
-	Simulate          bool   `json:"simulate" yaml:"simulate"`
-	CloudschedulerURI string `json:"cloudscheduler_URI" yaml:"cloudSchedulerURI"`
-	SchedulingPolicy  string `json:"policy" yaml:"policy"`
+	Name             string `json:"nodename" yaml:"nodeName"`
+	Version          string
+	NoRabbitMQ       bool   `json:"no_rabbitmq" yaml:"noRabbitMQ"`
+	RabbitmqURI      string `json:"rabbitmq_uri" yaml:"rabbimqURI"`
+	RabbitmqUsername string `json:"rabbitmq_username" yaml:"rabbitMQUsername"`
+	RabbitmqPassword string `json:"rabbitmq_password" yaml:"rabbitMQPassword"`
+	Kubeconfig       string `json:"kubeconfig" yaml:"kubeConfig"`
+	InCluster        bool   `json:"in_cluster" yaml:"inCluster"`
+	RuleCheckerURI   string `json:"rulechecker_uri" yaml:"ruleCheckerURI"`
+	Simulate         bool   `json:"simulate" yaml:"simulate"`
+	GoalStreamURL    string `json:"goalstream_URI" yaml:"goalStreamURL"`
+	SchedulingPolicy string `json:"policy" yaml:"policy"`
 }
 
 type NodeSchedulerBuilder struct {

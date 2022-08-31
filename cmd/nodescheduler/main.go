@@ -38,7 +38,7 @@ func main() {
 	flag.StringVar(&config.RabbitmqURI, "rabbitmq-uri", getenv("RABBITMQ_URI", "wes-rabbitmq:5672"), "RabbitMQ management uri")
 	flag.StringVar(&config.RabbitmqUsername, "rabbitmq-username", getenv("RABBITMQ_USERNAME", "service"), "RabbitMQ management username")
 	flag.StringVar(&config.RabbitmqPassword, "rabbitmq-password", getenv("RABBITMQ_PASSWORD", "service"), "RabbitMQ management password")
-	flag.StringVar(&config.CloudschedulerURI, "cloudscheduler-uri", "", "cloudscheduler URI")
+	flag.StringVar(&config.GoalStreamURL, "goalstream-url", "", "URL to receive goal stream")
 	flag.StringVar(&config.RuleCheckerURI, "rulechecker-uri", "http://wes-sciencerule-checker:5000", "rulechecker URI")
 	flag.StringVar(&config.SchedulingPolicy, "policy", "default", "Name of the scheduling policy")
 	flag.Parse()
