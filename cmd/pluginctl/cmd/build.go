@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -42,14 +41,17 @@ pluginctl build my-plugin -- --build-arg=MY_VAR="hello"`,
 
 		// build and push to local registry. all output goes to stderr to allow easy piping
 		ctx, _ := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-		if len(args[1:]) < 1 {
-			if err := runCommandContextStderr(ctx, "docker", "build", "-t", image, path); err != nil {
-				return err
-			}
-		} else {
-			if err := runCommandContextStderr(ctx, "docker", "build", "-t", image, strings.Join(args[1:], " "), path); err != nil {
-				return err
-			}
+		dockerArgs := []string{
+			"build",
+			"-t",
+			image,
+		}
+		if len(args[1:]) > 0 {
+			dockerArgs = append(dockerArgs, args[1:]...)
+		}
+		dockerArgs = append(dockerArgs, path)
+		if err := runCommandContextStderr(ctx, "docker", dockerArgs...); err != nil {
+			return err
 		}
 
 		if err := runCommandContextStderr(ctx, "docker", "push", image); err != nil {
