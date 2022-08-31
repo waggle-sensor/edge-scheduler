@@ -109,8 +109,8 @@ func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(jobID string, dryrun b
 	return nil
 }
 
-func (cs *CloudScheduler) updateNodes(scienceGoal *datatype.ScienceGoal) {
-	for _, nodeName := range scienceGoal.GetSubjectNodes() {
+func (cs *CloudScheduler) updateNodes(nodes []string) {
+	for _, nodeName := range nodes {
 		var goals []*datatype.ScienceGoal
 		for _, g := range cs.GoalManager.GetScienceGoalsForNode(nodeName) {
 			goals = append(goals, g.ShowMyScienceGoal(nodeName))
@@ -151,12 +151,13 @@ func (cs *CloudScheduler) Run() {
 						logger.Error.Printf("Failed to get science goal %q", job.ScienceGoal.ID)
 						break
 					}
+					NodesToUpdate := scienceGoal.GetSubjectNodes()
 					if err = cs.GoalManager.RemoveScienceGoal(scienceGoal.ID); err != nil {
 						logger.Error.Printf("Failed to remove science goal %q", scienceGoal.ID)
 						break
 					}
 					logger.Info.Printf("Goal %q is removed for job %q.", scienceGoal.Name, scienceGoal.JobID)
-					cs.updateNodes(scienceGoal)
+					cs.updateNodes(NodesToUpdate)
 				}
 			case datatype.EventGoalStatusSubmitted:
 				scienceGoal, err := cs.GoalManager.GetScienceGoal(event.GetGoalID())
@@ -165,7 +166,8 @@ func (cs *CloudScheduler) Run() {
 					break
 				}
 				logger.Info.Printf("Goal %q is submitted for job id %q.", scienceGoal.Name, scienceGoal.JobID)
-				cs.updateNodes(scienceGoal)
+				NodesToUpdate := scienceGoal.GetSubjectNodes()
+				cs.updateNodes(NodesToUpdate)
 			}
 		}
 	}
