@@ -142,10 +142,6 @@ func securityContextForConfig(pluginSpec *datatype.PluginSpec) *apiv1.SecurityCo
 	return nil
 }
 
-func getPriorityClassName(pluginSpec *datatype.PluginSpec) string {
-	return "wes-plugin-default"
-}
-
 func (rm *ResourceManager) ConfigureKubernetes(inCluster bool, kubeconfig string) error {
 	k3sClient, err := GetK3SClient(inCluster, kubeconfig)
 	if err != nil {
@@ -532,7 +528,6 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 			PriorityClassName: "wes-app-priority",
 			NodeSelector:      nodeSelectorForConfig(plugin.PluginSpec),
 			// TODO: The priority class will be revisited when using resource metrics to schedule plugins
-			// PriorityClassName: getPriorityClassName(plugin.PluginSpec),
 			InitContainers: initContainers,
 			Containers:     containers,
 			Volumes:        volumes,
