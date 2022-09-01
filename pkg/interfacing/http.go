@@ -134,6 +134,10 @@ func (r *HTTPRequest) Subscribe(streamPath string, ch chan *datatype.Event, keep
 				// 	fmt.Printf("%s", match[1])
 				// }
 			}
+			if err := reader.Err(); err != nil {
+				// reader.Scan returned false indicating an error
+				return fmt.Errorf("Streaming encountered EOF or an error and considered as closed")
+			}
 			// event := reader.Text()
 			// fmt.Printf("event received: %s", event)
 			// for _, line := range strings.Split(event, "\n") {
