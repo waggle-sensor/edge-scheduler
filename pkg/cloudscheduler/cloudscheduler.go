@@ -21,6 +21,18 @@ type CloudScheduler struct {
 	chanFromGoalManager chan datatype.Event
 }
 
+func (cs *CloudScheduler) Configure() error {
+	// Loading job database
+	if err := cs.GoalManager.OpenJobDB(); err != nil {
+		return err
+	}
+	// Loading node and plugin database
+	if err := cs.Validator.LoadDatabase(); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(jobID string, dryrun bool) (errorList []error) {
 	job, err := cs.GoalManager.GetJob(jobID)
 	if err != nil {
@@ -157,6 +169,27 @@ func (cs *CloudScheduler) Run() {
 						break
 					}
 					logger.Info.Printf("Goal %q is removed for job %q.", scienceGoal.Name, scienceGoal.JobID)
+					cs.updateNodes(NodesToUpdate)
+				}
+			case datatype.EventJobStatusSuspended:
+				job, err := cs.GoalManager.GetJob(event.GetJobID())
+				if err != nil {
+					logger.Error.Printf("Failed to get job %q", event.GetJobID())
+					break
+				}
+				// The job is removed. Corresponding science goal should also be removed
+				if job.ScienceGoal != nil {
+					scienceGoal, err := cs.GoalManager.GetScienceGoal(job.ScienceGoal.ID)
+					if err != nil {
+						logger.Error.Printf("Failed to get science goal %q", job.ScienceGoal.ID)
+						break
+					}
+					NodesToUpdate := scienceGoal.GetSubjectNodes()
+					if err = cs.GoalManager.RemoveScienceGoal(scienceGoal.ID); err != nil {
+						logger.Error.Printf("Failed to remove science goal %q", scienceGoal.ID)
+						break
+					}
+					logger.Info.Printf("Goal %q is suspended for job %q.", scienceGoal.Name, scienceGoal.JobID)
 					cs.updateNodes(NodesToUpdate)
 				}
 			case datatype.EventGoalStatusSubmitted:

@@ -339,8 +339,8 @@ func (api *APIServer) handlerJobs(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 		jobs := api.cloudScheduler.GoalManager.GetJobs()
 		response := datatype.NewAPIMessageBuilder()
-		for jobName, job := range jobs {
-			response.AddEntity(jobName, job)
+		for _, job := range jobs {
+			response.AddEntity(job.JobID, job)
 		}
 		respondJSON(w, http.StatusOK, response.Build().ToJson())
 	}
@@ -349,7 +349,6 @@ func (api *APIServer) handlerJobs(w http.ResponseWriter, r *http.Request) {
 func (api *APIServer) handlerJobStatus(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	if r.Method == http.MethodGet {
-		log.Printf("hit GET")
 		logger.Debug.Printf("API call on Job status of %s", vars["id"])
 		// if goal, err := cs.GoalManager.GetScienceGoal(vars["id"]); err == nil {
 		// 	respondJSON(w, http.StatusOK, goal)

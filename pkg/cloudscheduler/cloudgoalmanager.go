@@ -1,25 +1,32 @@
 package cloudscheduler
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/boltdb/bolt"
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
 	"github.com/waggle-sensor/edge-scheduler/pkg/interfacing"
 )
+
+const jobBucketName = "jobs"
 
 // CloudGoalManager structs a goal manager for cloudscheduler
 type CloudGoalManager struct {
 	scienceGoals map[string]*datatype.ScienceGoal
 	rmqHandler   *interfacing.RabbitMQHandler
 	Notifier     *interfacing.Notifier
-	jobs         map[string]*datatype.Job
 	mu           sync.Mutex
+	dataPath     string
+	jobDB        *bolt.DB
 }
 
 // SetRMQHandler sets a RabbitMQ handler used for transferring goals to edge schedulers
@@ -29,63 +36,155 @@ func (cgm *CloudGoalManager) SetRMQHandler(rmqHandler *interfacing.RabbitMQHandl
 }
 
 func (cgm *CloudGoalManager) AddJob(job *datatype.Job) string {
-	newJobID := cgm.GenerateNewJobID()
-	job.JobID = newJobID
 	job.UpdateStatus(datatype.JobCreated)
-	cgm.jobs[job.JobID] = job
-	return newJobID
+	cgm.jobDB.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(jobBucketName))
+		if b == nil {
+			return fmt.Errorf("Bucket %s does not exist", jobBucketName)
+		}
+		jobID, _ := b.NextSequence()
+		job.JobID = fmt.Sprintf("%d", int(jobID))
+		buf, err := json.Marshal(job)
+		if err != nil {
+			return err
+		}
+		b.Put([]byte(job.JobID), []byte(buf))
+		return nil
+	})
+	return job.JobID
 }
 
-func (cgm *CloudGoalManager) GetJobs() map[string]*datatype.Job {
-	return cgm.jobs
+func (cgm *CloudGoalManager) GetJobs() (jobs []*datatype.Job) {
+	cgm.jobDB.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(jobBucketName))
+		if b == nil {
+			return fmt.Errorf("Bucket %s does not exist", jobBucketName)
+		}
+		return b.ForEach(func(k, v []byte) error {
+			var j datatype.Job
+			if err := json.Unmarshal(v, &j); err != nil {
+				return err
+			}
+			jobs = append(jobs, &j)
+			return nil
+		})
+	})
+	return
 }
 
-func (cgm *CloudGoalManager) GetJob(jobID string) (*datatype.Job, error) {
-	if job, exist := cgm.jobs[jobID]; exist {
-		return job, nil
-	} else {
-		return nil, fmt.Errorf("Job ID %q does not exist", jobID)
-	}
+func (cgm *CloudGoalManager) GetJob(jobID string) (job *datatype.Job, err error) {
+	err = cgm.jobDB.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(jobBucketName))
+		if b == nil {
+			return fmt.Errorf("Bucket %s does not exist", jobBucketName)
+		}
+		v := b.Get([]byte(jobID))
+		if v == nil {
+			return fmt.Errorf("Job ID %q does not exist", jobID)
+		}
+		var j datatype.Job
+		if err := json.Unmarshal(v, &j); err != nil {
+			return err
+		}
+		job = &j
+		return nil
+	})
+	return
 }
 
-func (cgm *CloudGoalManager) UpdateJob(job *datatype.Job, submit bool) {
-	cgm.jobs[job.JobID] = job
+func (cgm *CloudGoalManager) UpdateJob(job *datatype.Job, submit bool) (err error) {
+	// update the status before puting the job to the database
 	if submit {
 		job.UpdateStatus(datatype.JobSubmitted)
+	}
+	err = cgm.jobDB.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(jobBucketName))
+		if b == nil {
+			return fmt.Errorf("Bucket %s does not exist", jobBucketName)
+		}
+		buf, err := json.Marshal(job)
+		if err != nil {
+			return err
+		}
+		b.Put([]byte(job.JobID), []byte(buf))
+		return nil
+	})
+	if err != nil {
+		return
+	}
+	// send an event for scheduling the science goal
+	if submit {
 		newScienceGoal := job.ScienceGoal
 		cgm.UpdateScienceGoal(newScienceGoal)
 		event := datatype.NewEventBuilder(datatype.EventGoalStatusSubmitted).AddGoal(newScienceGoal).Build()
 		cgm.Notifier.Notify(event)
 	}
+	return
 }
 
-func (cgm *CloudGoalManager) SuspendJob(jobID string) error {
-	if job, exist := cgm.jobs[jobID]; exist {
+func (cgm *CloudGoalManager) SuspendJob(jobID string) (err error) {
+	var job datatype.Job
+	err = cgm.jobDB.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(jobBucketName))
+		if b == nil {
+			return fmt.Errorf("Bucket %s does not exist", jobBucketName)
+		}
+		v := b.Get([]byte(jobID))
+		if v == nil {
+			return fmt.Errorf("Job ID %q does not exist", jobID)
+		}
+		if err := json.Unmarshal(v, &job); err != nil {
+			return err
+		}
 		job.UpdateStatus(datatype.JobSuspended)
-		event := datatype.NewEventBuilder(datatype.EventJobStatusSuspended).
-			AddJob(job).
-			AddReason("Suspended by user").Build()
-		cgm.Notifier.Notify(event)
-		return nil
-	} else {
-		return fmt.Errorf("Failed to find job %q to suspend", jobID)
+		buf, err := json.Marshal(job)
+		if err != nil {
+			return err
+		}
+		return b.Put([]byte(job.JobID), []byte(buf))
+	})
+	if err != nil {
+		return
 	}
+	event := datatype.NewEventBuilder(datatype.EventJobStatusSuspended).
+		AddJob(&job).
+		AddReason("Suspended by user").Build()
+	cgm.Notifier.Notify(event)
+	return
 }
 
-func (cgm *CloudGoalManager) RemoveJob(jobID string, force bool) error {
-	if job, exist := cgm.jobs[jobID]; exist {
+func (cgm *CloudGoalManager) RemoveJob(jobID string, force bool) (err error) {
+	var job datatype.Job
+	err = cgm.jobDB.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(jobBucketName))
+		if b == nil {
+			return fmt.Errorf("Bucket %s does not exist", jobBucketName)
+		}
+		v := b.Get([]byte(jobID))
+		if v == nil {
+			return fmt.Errorf("Job ID %q does not exist", jobID)
+		}
+		if err := json.Unmarshal(v, &job); err != nil {
+			return err
+		}
 		if job.Status == datatype.JobRunning && !force {
 			return fmt.Errorf("Failed to remove job %q as it is in running state. Suspend it first or specify force=true", jobID)
 		}
 		job.UpdateStatus(datatype.JobRemoved)
-		event := datatype.NewEventBuilder(datatype.EventJobStatusRemoved).
-			AddJob(job).
-			Build()
-		cgm.Notifier.Notify(event)
-		return nil
-	} else {
-		return fmt.Errorf("Failed to find job %q to remove", jobID)
+		buf, err := json.Marshal(job)
+		if err != nil {
+			return err
+		}
+		return b.Put([]byte(job.JobID), []byte(buf))
+	})
+	if err != nil {
+		return
 	}
+	event := datatype.NewEventBuilder(datatype.EventJobStatusRemoved).
+		AddJob(&job).
+		Build()
+	cgm.Notifier.Notify(event)
+	return
 }
 
 func (cgm *CloudGoalManager) RemoveScienceGoal(goalID string) error {
@@ -141,21 +240,39 @@ func (cgm *CloudGoalManager) GetScienceGoalsForNode(nodeName string) (goals []*d
 	return
 }
 
+// WARNING: deprecated as the jobDB database controls job IDs
 func (cgm *CloudGoalManager) GenerateNewJobID() string {
 	cgm.mu.Lock()
 	defer cgm.mu.Unlock()
-	filePath := "/tmp/jobcounter"
-	if _, err := os.Stat(filePath); errors.Is(err, os.ErrNotExist) {
-		ioutil.WriteFile(filePath, []byte("1"), 0600)
+	jobCounterPath := path.Join(cgm.dataPath, "jobcounter")
+	if _, err := os.Stat(jobCounterPath); errors.Is(err, os.ErrNotExist) {
+		ioutil.WriteFile(jobCounterPath, []byte("1"), 0600)
 		return "1"
 	} else {
-		counter, err := ioutil.ReadFile(filePath)
+		counter, err := ioutil.ReadFile(jobCounterPath)
 		if err != nil {
 			panic(err)
 		}
 		intCounter, _ := strconv.Atoi(string(counter))
 		intCounter += 1
-		ioutil.WriteFile(filePath, []byte(fmt.Sprint(intCounter)), 0600)
+		ioutil.WriteFile(jobCounterPath, []byte(fmt.Sprint(intCounter)), 0600)
 		return strconv.Itoa(intCounter)
 	}
+}
+
+func (cgm *CloudGoalManager) OpenJobDB() error {
+	db, err := bolt.Open(path.Join(cgm.dataPath, "job.db"), 0600, &bolt.Options{Timeout: 1 * time.Second})
+	if err != nil {
+		return err
+	}
+	cgm.jobDB = db
+	cgm.jobDB.Update(func(tx *bolt.Tx) error {
+		_, err := tx.CreateBucketIfNotExists([]byte(jobBucketName))
+		return err
+	})
+	return nil
+}
+
+func (cgm *CloudGoalManager) sync(job *datatype.Job) {
+
 }

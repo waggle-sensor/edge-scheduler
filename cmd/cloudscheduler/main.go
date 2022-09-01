@@ -53,7 +53,7 @@ func main() {
 		AddAPIServer().
 		Build()
 
-	err := cs.Validator.LoadDatabase()
+	err := cs.Configure()
 	if err != nil {
 		panic(err)
 	}
