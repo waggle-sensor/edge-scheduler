@@ -158,10 +158,15 @@ func (rm *ResourceManager) ConfigureKubernetes(inCluster bool, kubeconfig string
 
 // CreatePluginCredential creates a credential inside RabbitMQ server for the plugin
 func (rm *ResourceManager) CreatePluginCredential(plugin *datatype.Plugin) (datatype.PluginCredential, error) {
+	tag, err := plugin.PluginSpec.GetImageTag()
+	if err != nil {
+		return datatype.PluginCredential{}, err
+	}
+
 	// TODO: We will need to add instance of plugin as a aprt of Username
 	// username should follow "plugin.NAME:VERSION" format to publish messages via WES
 	credential := datatype.PluginCredential{
-		Username: fmt.Sprint("plugin.", strings.ToLower(plugin.Name), ":", plugin.PluginSpec.GetImageVersion()),
+		Username: fmt.Sprint("plugin.", strings.ToLower(plugin.Name), ":", tag),
 		Password: generatePassword(),
 	}
 	return credential, nil
@@ -320,7 +325,7 @@ func (rm *ResourceManager) WatchJobs(namespace string) (watch.Interface, error) 
 	return watcher, err
 }
 
-func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugin) v1.PodTemplateSpec {
+func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugin) (v1.PodTemplateSpec, error) {
 	envs := []apiv1.EnvVar{
 		{
 			Name:  "PULSE_SERVER",
@@ -379,12 +384,17 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 		})
 	}
 
+	tag, err := plugin.PluginSpec.GetImageTag()
+	if err != nil {
+		return v1.PodTemplateSpec{}, err
+	}
+
 	volumes := []apiv1.Volume{
 		{
 			Name: "uploads",
 			VolumeSource: apiv1.VolumeSource{
 				HostPath: &apiv1.HostPathVolumeSource{
-					Path: path.Join("/media/plugin-data/uploads", plugin.PluginSpec.Job, plugin.Name, plugin.PluginSpec.GetImageVersion()),
+					Path: path.Join("/media/plugin-data/uploads", plugin.PluginSpec.Job, plugin.Name, tag),
 					Type: &hostPathDirectoryOrCreate,
 				},
 			},
@@ -532,7 +542,7 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 			Containers:     containers,
 			Volumes:        volumes,
 		},
-	}
+	}, nil
 }
 
 // CreateK3SJob creates and returns a Kubernetes job object of the pllugin
@@ -542,7 +552,10 @@ func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, err
 		return nil, err
 	}
 
-	template := rm.createPodTemplateSpecForPlugin(plugin)
+	template, err := rm.createPodTemplateSpecForPlugin(plugin)
+	if err != nil {
+		return nil, err
+	}
 	template.Spec.RestartPolicy = apiv1.RestartPolicyNever
 
 	return &batchv1.Job{
@@ -567,7 +580,10 @@ func (rm *ResourceManager) CreateDeployment(plugin *datatype.Plugin) (*appsv1.De
 		return nil, err
 	}
 
-	template := rm.createPodTemplateSpecForPlugin(plugin)
+	template, err := rm.createPodTemplateSpecForPlugin(plugin)
+	if err != nil {
+		return nil, err
+	}
 
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
