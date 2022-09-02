@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/gorilla/mux"
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
@@ -23,25 +24,31 @@ type APIServer struct {
 	mainRouter             *mux.Router
 	cloudScheduler         *CloudScheduler
 	subscribers            map[string]map[chan *datatype.Event]bool
+	subscriberMutex        sync.Mutex
 }
 
 func (api *APIServer) subscribe(nodeName string, c chan *datatype.Event) {
 	nodeName = strings.ToLower(nodeName)
+	api.subscriberMutex.Lock()
 	if _, exist := api.subscribers[nodeName]; !exist {
 		api.subscribers[nodeName] = make(map[chan *datatype.Event]bool)
 	}
 	api.subscribers[nodeName][c] = true
+	api.subscriberMutex.Unlock()
 }
 
 func (api *APIServer) unsubscribe(nodeName string, c chan *datatype.Event) {
 	nodeName = strings.ToLower(nodeName)
+	api.subscriberMutex.Lock()
 	if _, exist := api.subscribers[nodeName]; exist {
 		delete(api.subscribers[nodeName], c)
 	}
+	api.subscriberMutex.Unlock()
 }
 
 func (api *APIServer) Push(nodeName string, event *datatype.Event) {
 	nodeName = strings.ToLower(nodeName)
+	api.subscriberMutex.Lock()
 	if _, exist := api.subscribers[nodeName]; exist {
 		for ch := range api.subscribers[nodeName] {
 			select {
@@ -51,6 +58,7 @@ func (api *APIServer) Push(nodeName string, event *datatype.Event) {
 			}
 		}
 	}
+	api.subscriberMutex.Unlock()
 }
 
 func (api *APIServer) Run() {
