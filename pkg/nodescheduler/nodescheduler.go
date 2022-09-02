@@ -2,7 +2,7 @@ package nodescheduler
 
 import (
 	"encoding/json"
-	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
@@ -72,16 +72,20 @@ func (ns *NodeScheduler) Configure() (err error) {
 	if err != nil {
 		return
 	}
+	if ns.Config.GoalStreamURL != "" {
+		logger.Info.Printf("Subscribing goal downstream from %s", ns.Config.GoalStreamURL)
+		u, err := url.Parse(ns.Config.GoalStreamURL)
+		if err != nil {
+			return err
+		}
+		s := interfacing.NewHTTPRequest(u.Scheme + "://" + u.Host)
+		s.Subscribe(u.Path, ns.chanFromCloudScheduler, true)
+	}
 	return
 }
 
 // Run handles communications between components for scheduling
 func (ns *NodeScheduler) Run() {
-	if ns.Config.CloudschedulerURI != "" {
-		logger.Info.Printf("Starting cloudscheduler's downstream using %s...", ns.Config.CloudschedulerURI)
-		s := interfacing.NewHTTPRequest(ns.Config.CloudschedulerURI)
-		s.Subscribe(fmt.Sprintf("api/v1/goals/%s/stream", ns.NodeID), ns.chanFromCloudScheduler, true)
-	}
 	go ns.GoalManager.Run(ns.chanFromGoalManager)
 	// go ns.Knowledgebase.Run()
 	go ns.ResourceManager.Run(ns.chanPluginToResourceManager)

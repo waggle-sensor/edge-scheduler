@@ -12,6 +12,7 @@ import (
 	"path"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
 	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
@@ -133,6 +134,10 @@ func (r *HTTPRequest) Subscribe(streamPath string, ch chan *datatype.Event, keep
 				// 	fmt.Printf("%s", match[1])
 				// }
 			}
+			if err := reader.Err(); err != nil {
+				// reader.Scan returned false indicating an error
+				return fmt.Errorf("Streaming encountered EOF or an error and considered as closed")
+			}
 			// event := reader.Text()
 			// fmt.Printf("event received: %s", event)
 			// for _, line := range strings.Split(event, "\n") {
@@ -141,11 +146,15 @@ func (r *HTTPRequest) Subscribe(streamPath string, ch chan *datatype.Event, keep
 			// line, _ := reader.ReadSlice("\n\n")
 			// fmt.Printf("event received: %s", line)
 		}
-		return nil
 	}
 	go func() {
-		err := backoff.Retry(operation, backoff.NewExponentialBackOff())
-		logger.Error.Printf("Failed to subscribe %q: %s", streamPath, err.Error())
+		for {
+			err := backoff.Retry(operation, backoff.NewExponentialBackOff())
+			logger.Error.Printf("Failed to subscribe %q: %s", streamPath, err.Error())
+			time.Sleep(5 * time.Second)
+			logger.Info.Printf("Retrying to connect to %q in 5 seconds...", streamPath)
+		}
+
 	}()
 	return nil
 }

@@ -39,7 +39,7 @@ func (csb *CloudSchedulerBuilder) AddGoalManager() *CloudSchedulerBuilder {
 	csb.cloudScheduler.GoalManager = &CloudGoalManager{
 		scienceGoals: make(map[string]*datatype.ScienceGoal),
 		Notifier:     interfacing.NewNotifier(),
-		jobs:         make(map[string]*datatype.Job),
+		dataPath:     csb.cloudScheduler.Config.DataDir,
 	}
 	if !csb.cloudScheduler.Config.NoRabbitMQ {
 		logger.Info.Printf(
