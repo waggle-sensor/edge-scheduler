@@ -44,10 +44,15 @@ func init() {
 							return err
 						}
 					} else {
-						fmt.Printf("%s\n", jobBlob)
+						var job datatype.Job
+						err := json.Unmarshal(jobBlob, &job)
+						if err != nil {
+							return err
+						}
+						fmt.Print(printJob(&job))
 					}
 				} else {
-					fmt.Printf("%v\n", body)
+					return fmt.Errorf("Failed to get the job %q: Job does not exist", jobID)
 				}
 			} else {
 				resp, err := r.RequestGet("api/v1/jobs", nil)
@@ -59,14 +64,15 @@ func init() {
 					return err
 				}
 				var (
-					maxLengthID        int = 5
-					maxLengthName      int = 6
-					maxLengthUser      int = 8
-					maxLengthStatus    int = len("complete")
-					maxLengthStartTime int = len("mm/dd/yyyy hh:MM:ss")
-					maxLengthDuration  int = len("mm/dd/yyyy hh:MM:ss")
+					maxLengthID     int = 5
+					maxLengthName   int = 26
+					maxLengthUser   int = 8
+					maxLengthStatus int = len("complete")
+					maxAge          int = 5
+					// maxLengthStartTime int = len("mm/dd/yyyy hh:MM:ss")
+					// maxLengthDuration  int = len("mm/dd/yyyy hh:MM:ss")
 				)
-				formattedList := fmt.Sprintf("%-*s%-*s%-*s%-*s%-*s%-*s\n", maxLengthID+3, "JOB_ID", maxLengthName+3, "NAME", maxLengthUser+3, "USER", maxLengthStatus+3, "STATUS", maxLengthStartTime+3, "START_TIME", maxLengthDuration+3, "RUNNING_TIME")
+				formattedList := fmt.Sprintf("%-*s%-*s%-*s%-*s%-*s\n", maxLengthID+3, "JOB_ID", maxLengthName+3, "NAME", maxLengthUser+3, "USER", maxLengthStatus+3, "STATUS", maxAge+3, "AGE")
 				formattedList += strings.Repeat("=", len(formattedList)) + "\n"
 				for _, blob := range body {
 					jobBlob, err := json.Marshal(blob)
@@ -91,10 +97,12 @@ func init() {
 					}
 					switch job.Status {
 					case datatype.JobSubmitted, datatype.JobRunning, datatype.JobComplete:
-						formattedList += fmt.Sprintf("%-*s%-*s%-*s%-*s%-*s%-*s\n", maxLengthID+3, job.JobID, maxLengthName+3, name, maxLengthUser+3, job.User, maxLengthStatus+3, job.Status, maxLengthStartTime+3, job.LastUpdated.Format("01/02/2006 15:04:05"), maxLengthDuration+3, time.Since(job.LastUpdated))
+						t := time.Now().UTC()
+						age := t.Sub(job.LastUpdated).Round(1 * time.Second)
+						formattedList += fmt.Sprintf("%-*s%-*s%-*s%-*s%-*s\n", maxLengthID+3, job.JobID, maxLengthName+3, name, maxLengthUser+3, job.User, maxLengthStatus+3, job.Status, maxAge, age)
 						break
 					default:
-						formattedList += fmt.Sprintf("%-*s%-*s%-*s%-*s%-*s%-*s\n", maxLengthID+3, job.JobID, maxLengthName+3, name, maxLengthUser+3, job.User, maxLengthStatus+3, job.Status, maxLengthStartTime+3, "-", maxLengthDuration+3, "-")
+						formattedList += fmt.Sprintf("%-*s%-*s%-*s%-*s%-*s\n", maxLengthID+3, job.JobID, maxLengthName+3, name, maxLengthUser+3, job.User, maxLengthStatus+3, job.Status, maxAge, "-")
 					}
 				}
 				fmt.Printf("%s", formattedList)

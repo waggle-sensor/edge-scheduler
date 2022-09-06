@@ -477,7 +477,13 @@ func (api *APIServer) handlerGoalStreamForNode(w http.ResponseWriter, r *http.Re
 	}
 	// if no science goal is assigned to the node return an empty list []
 	// returning null may raise an exception in edge scheduler
-	if len(goals) > 0 {
+	if len(goals) < 1 {
+		event := datatype.NewEventBuilder(datatype.EventGoalStatusUpdated).AddEntry("goals", "[]").Build()
+		if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.ToString(), event.GetEntry("goals")); err != nil {
+			return
+		}
+		flusher.Flush()
+	} else {
 		blob, err := json.MarshalIndent(goals, "", "  ")
 		if err != nil {
 			logger.Error.Printf("Failed to compress goals for node %q before pushing", nodeName)
