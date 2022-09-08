@@ -11,6 +11,8 @@ import (
 	"sync"
 
 	"github.com/gorilla/mux"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
 	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
 	yaml "gopkg.in/yaml.v2"
@@ -61,9 +63,7 @@ func (api *APIServer) Push(nodeName string, event *datatype.Event) {
 	api.subscriberMutex.Unlock()
 }
 
-func (api *APIServer) Run() {
-	api_address_port := fmt.Sprintf("0.0.0.0:%d", api.port)
-	logger.Info.Printf("API server starts at %q...", api_address_port)
+func (api *APIServer) ConfigureAPIs(prometheusGatherer *prometheus.Registry) {
 	api.mainRouter = mux.NewRouter()
 	r := api.mainRouter
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -74,6 +74,9 @@ func (api *APIServer) Run() {
 		fmt.Fprintln(w)
 	})
 	api_route := r.PathPrefix("/api/v1").Subrouter()
+	if prometheusGatherer != nil {
+		api_route.Handle("/system/metrics", promhttp.HandlerFor(prometheusGatherer, promhttp.HandlerOpts{EnableOpenMetrics: true})).Methods(http.MethodGet)
+	}
 	api_route.Handle("/create", http.HandlerFunc(api.handlerCreateJob)).Methods(http.MethodGet, http.MethodPost)
 	api_route.Handle("/edit", http.HandlerFunc(api.handlerEditJob)).Methods(http.MethodPost)
 	api_route.Handle("/submit", http.HandlerFunc(api.handlerSubmitJobs)).Methods(http.MethodGet, http.MethodPost)
@@ -86,6 +89,11 @@ func (api *APIServer) Run() {
 		logger.Info.Printf("Enabling push notification. Nodes can connect to /goals/{nodeName}/stream to get notification from the cloud scheduler.")
 		api_route.Handle("/goals/{nodeName}/stream", http.HandlerFunc(api.handlerGoalStreamForNode)).Methods(http.MethodGet)
 	}
+}
+
+func (api *APIServer) Run() {
+	api_address_port := fmt.Sprintf("0.0.0.0:%d", api.port)
+	logger.Info.Printf("API server starts at %q...", api_address_port)
 	logger.Info.Fatalln(http.ListenAndServe(api_address_port, api.mainRouter))
 }
 
@@ -235,112 +243,6 @@ func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) 
 			}
 		}
 	}
-
-	// switch r.Method {
-	// case PUT, POST:
-	// 	data, err := ioutil.ReadAll(r.Body)
-	// 	if err != nil {
-	// 		respondJSON(w, http.StatusBadRequest, err.Error())
-	// 		return
-	// 	}
-	// 	var job datatype.Job
-	// 	err = json.Unmarshal(data, &job)
-	// 	if err != nil {
-	// 		respondJSON(w, http.StatusBadRequest, err.Error())
-	// 		return
-	// 	}
-	// 	err = api.cloudScheduler.GoalManager.AddJob(&job)
-	// 	if err != nil {
-	// 		respondJSON(w, http.StatusBadRequest, err.Error())
-	// 	}
-	// 	respondJSON(w, http.StatusOK, `{"response": "success"}`)
-	// 	return
-	// }
-	// respondJSON(w, http.StatusOK, []byte{})
-	// if r.Method == POST {
-	// 	log.Printf("hit POST")
-	// 	// yamlFile, err := ioutil.ReadAll(r.Body)
-	// 	// if err != nil {
-	// 	// 	fmt.Println(err)
-	// 	// }
-	// 	// var job datatype.Job
-	// 	// _ = yaml.Unmarshal(yamlFile, &job)
-	// 	// job.ID = guuid.New().String()
-
-	// 	// if len(job.PluginTags) > 0 {
-	// 	// 	foundPlugins := cs.Meta.GetPluginsByTags(job.PluginTags)
-	// 	// 	for _, p := range foundPlugins {
-	// 	// 		logger.Debug.Printf("Plugin %s:%s is added to job %s", p.Name, p.PluginSpec.Version, job.Name)
-	// 	// 		job.AddPlugin(p)
-	// 	// 	}
-	// 	// 	logger.Info.Printf("Found %d plugins by the tags", len(foundPlugins))
-	// 	// }
-
-	// 	// if len(job.NodeTags) > 0 {
-	// 	// 	foundNodes := cs.Meta.GetNodesByTags(job.NodeTags)
-	// 	// 	for _, n := range foundNodes {
-	// 	// 		logger.Debug.Printf("Node %s is added to job %s", n.Name, job.Name)
-	// 	// 		job.AddNode(n)
-	// 	// 	}
-	// 	// 	logger.Info.Printf("Found %d nodes by the tags", len(foundNodes))
-	// 	// }
-
-	// 	// // TODO: Add error hanlding here
-	// 	// scienceGoal, errorList := cs.Validator.ValidateJobAndCreateScienceGoal(&job, cs.Meta)
-	// 	// if len(errorList) > 0 {
-	// 	// 	for _, err := range errorList {
-	// 	// 		logger.Error.Printf("%s", err)
-	// 	// 	}
-	// 	// } else {
-	// 	// 	cs.GoalManager.UpdateScienceGoal(scienceGoal)
-	// 	// }
-	// 	// respondYAML(w, http.StatusOK, scienceGoal)
-
-	// 	respondJSON(w, http.StatusNotFound, "Not supported yet")
-	// } else if r.Method == PUT {
-	// 	log.Printf("hit PUT")
-	// 	// mReader, err := r.MultipartReader()
-	// 	// if err != nil {
-	// 	// 	respondJSON(w, http.StatusOK, "ERROR")
-	// 	// }
-	// 	// yamlFile, err := ioutil.ReadAll(r.Body)
-	// 	// if err != nil {
-	// 	// 	fmt.Println(err)
-	// 	// }
-	// 	// var job datatype.Job
-	// 	// _ = yaml.Unmarshal(yamlFile, &job)
-	// 	// job.ID = guuid.New().String()
-
-	// 	// if len(job.PluginTags) > 0 {
-	// 	// 	foundPlugins := cs.Meta.GetPluginsByTags(job.PluginTags)
-	// 	// 	for _, p := range foundPlugins {
-	// 	// 		logger.Debug.Printf("Plugin %s:%s is added to job %s", p.Name, p.PluginSpec.Version, job.Name)
-	// 	// 		job.AddPlugin(p)
-	// 	// 	}
-	// 	// 	logger.Info.Printf("Found %d plugins by the tags", len(foundPlugins))
-	// 	// }
-
-	// 	// if len(job.NodeTags) > 0 {
-	// 	// 	foundNodes := cs.Meta.GetNodesByTags(job.NodeTags)
-	// 	// 	for _, n := range foundNodes {
-	// 	// 		logger.Debug.Printf("Node %s is added to job %s", n.Name, job.Name)
-	// 	// 		job.AddNode(n)
-	// 	// 	}
-	// 	// 	logger.Info.Printf("Found %d nodes by the tags", len(foundNodes))
-	// 	// }
-
-	// 	// // TODO: Add error hanlding here
-	// 	// scienceGoal, errorList := cs.Validator.ValidateJobAndCreateScienceGoal(&job, cs.Meta)
-	// 	// if len(errorList) > 0 {
-	// 	// 	for _, err := range errorList {
-	// 	// 		logger.Error.Printf("%s", err)
-	// 	// 	}
-	// 	// } else {
-	// 	// 	cs.GoalManager.UpdateScienceGoal(scienceGoal)
-	// 	// }
-	// 	// respondYAML(w, http.StatusOK, scienceGoal)
-	// 	respondJSON(w, http.StatusOK, "")
-	// }
 }
 
 func (api *APIServer) handlerJobs(w http.ResponseWriter, r *http.Request) {
@@ -495,11 +397,19 @@ func (api *APIServer) handlerGoalStreamForNode(w http.ResponseWriter, r *http.Re
 			flusher.Flush()
 		}
 	}
-	for event := range c {
-		if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.ToString(), event.GetEntry("goals")); err != nil {
+	for {
+		select {
+		case event := <-c:
+			if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.ToString(), event.GetEntry("goals")); err != nil {
+				return
+			}
+			// option 1. send a small heartbeat to the client to keep the connection and notify if it fails
+			// option 2. check if the connection is closed so that it can clean up
+			flusher.Flush()
+		case <-r.Context().Done():
+			flusher.Flush()
 			return
 		}
-		flusher.Flush()
 	}
 }
 

@@ -2,12 +2,8 @@ package cloudscheduler
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io/ioutil"
-	"os"
 	"path"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -188,6 +184,8 @@ func (cgm *CloudGoalManager) RemoveJob(jobID string, force bool) (err error) {
 }
 
 func (cgm *CloudGoalManager) RemoveScienceGoal(goalID string) error {
+	cgm.mu.Lock()
+	defer cgm.mu.Unlock()
 	if goal, exist := cgm.scienceGoals[goalID]; exist {
 		delete(cgm.scienceGoals, goal.ID)
 		return nil
@@ -198,7 +196,8 @@ func (cgm *CloudGoalManager) RemoveScienceGoal(goalID string) error {
 
 // UpdateScienceGoal stores given science goal
 func (cgm *CloudGoalManager) UpdateScienceGoal(scienceGoal *datatype.ScienceGoal) error {
-	// TODO: This operation may need a mutex?
+	cgm.mu.Lock()
+	defer cgm.mu.Unlock()
 	cgm.scienceGoals[scienceGoal.ID] = scienceGoal
 
 	// Send the updated science goal to all subject edge schedulers
@@ -221,7 +220,8 @@ func (cgm *CloudGoalManager) UpdateScienceGoal(scienceGoal *datatype.ScienceGoal
 
 // GetScienceGoal returns the science goal matching to given science goal ID
 func (cgm *CloudGoalManager) GetScienceGoal(goalID string) (*datatype.ScienceGoal, error) {
-	// TODO: This operation may need a mutex?
+	cgm.mu.Lock()
+	defer cgm.mu.Unlock()
 	if goal, exist := cgm.scienceGoals[goalID]; exist {
 		return goal, nil
 	}
@@ -240,24 +240,19 @@ func (cgm *CloudGoalManager) GetScienceGoalsForNode(nodeName string) (goals []*d
 	return
 }
 
-// WARNING: deprecated as the jobDB database controls job IDs
-func (cgm *CloudGoalManager) GenerateNewJobID() string {
-	cgm.mu.Lock()
-	defer cgm.mu.Unlock()
-	jobCounterPath := path.Join(cgm.dataPath, "jobcounter")
-	if _, err := os.Stat(jobCounterPath); errors.Is(err, os.ErrNotExist) {
-		ioutil.WriteFile(jobCounterPath, []byte("1"), 0600)
-		return "1"
-	} else {
-		counter, err := ioutil.ReadFile(jobCounterPath)
-		if err != nil {
-			panic(err)
+func (cgm *CloudGoalManager) GatherJobsMetric() (m JobsMetric) {
+	// TODO: Do we count removed jobs for the completed jobs?
+	for _, j := range cgm.GetJobs() {
+		switch j.Status {
+		case datatype.JobCreated, datatype.JobDrafted, datatype.JobSuspended:
+			m.CountSubmitted += 1
+		case datatype.JobRunning:
+			m.CountRunning += 1
+		case datatype.JobComplete, datatype.JobRemoved:
+			m.CountCompleted += 1
 		}
-		intCounter, _ := strconv.Atoi(string(counter))
-		intCounter += 1
-		ioutil.WriteFile(jobCounterPath, []byte(fmt.Sprint(intCounter)), 0600)
-		return strconv.Itoa(intCounter)
 	}
+	return
 }
 
 func (cgm *CloudGoalManager) OpenJobDB() error {

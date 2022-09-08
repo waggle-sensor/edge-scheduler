@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
 	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
 )
@@ -19,6 +21,7 @@ type CloudScheduler struct {
 	Validator           *JobValidator
 	APIServer           *APIServer
 	chanFromGoalManager chan datatype.Event
+	MetricsCollector    *prometheus.Collector
 }
 
 func (cs *CloudScheduler) Configure() error {
@@ -35,6 +38,11 @@ func (cs *CloudScheduler) Configure() error {
 	if err := cs.Validator.LoadDatabase(); err != nil {
 		return err
 	}
+	// Setting up Prometheus metrics
+	reg := prometheus.NewRegistry()
+	reg.MustRegister(collectors.NewGoCollector())
+	reg.MustRegister(NewMetricsCollector(cs))
+	cs.APIServer.ConfigureAPIs(reg)
 	return nil
 }
 
@@ -209,4 +217,58 @@ func (cs *CloudScheduler) Run() {
 			}
 		}
 	}
+}
+
+type MetricsCollector struct {
+	cs             *CloudScheduler
+	jobsGrandTotal *prometheus.Desc
+	jobsTotal      *prometheus.Desc
+}
+
+func NewMetricsCollector(cs *CloudScheduler) *MetricsCollector {
+	return &MetricsCollector{
+		cs: cs,
+		jobsGrandTotal: prometheus.NewDesc(
+			"jobs_total",
+			"Number of jobs in the system",
+			nil,
+			nil),
+		jobsTotal: prometheus.NewDesc(
+			"jobs_count",
+			"Number of jobs per status",
+			[]string{"status"},
+			nil),
+	}
+}
+
+func (mc *MetricsCollector) Describe(ch chan<- *prometheus.Desc) {
+	ch <- mc.jobsGrandTotal
+	ch <- mc.jobsTotal
+}
+
+func (mc *MetricsCollector) Collect(ch chan<- prometheus.Metric) {
+	jobsMetric := mc.cs.GoalManager.GatherJobsMetric()
+	ch <- prometheus.MustNewConstMetric(
+		mc.jobsGrandTotal,
+		prometheus.GaugeValue,
+		float64(jobsMetric.GrantTotal()),
+	)
+	ch <- prometheus.MustNewConstMetric(
+		mc.jobsTotal,
+		prometheus.GaugeValue,
+		float64(jobsMetric.CountSubmitted),
+		"submitted",
+	)
+	ch <- prometheus.MustNewConstMetric(
+		mc.jobsTotal,
+		prometheus.GaugeValue,
+		float64(jobsMetric.CountRunning),
+		"running",
+	)
+	ch <- prometheus.MustNewConstMetric(
+		mc.jobsTotal,
+		prometheus.GaugeValue,
+		float64(jobsMetric.CountCompleted),
+		"complted",
+	)
 }
