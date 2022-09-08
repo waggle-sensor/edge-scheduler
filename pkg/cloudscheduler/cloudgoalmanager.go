@@ -273,6 +273,23 @@ func (cgm *CloudGoalManager) OpenJobDB() error {
 	return nil
 }
 
-func (cgm *CloudGoalManager) sync(job *datatype.Job) {
-
+func (cgm *CloudGoalManager) LoadScienceGoalsFromJobDB() error {
+	cgm.jobDB.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(jobBucketName))
+		if b == nil {
+			return fmt.Errorf("Bucket %s does not exist", jobBucketName)
+		}
+		return b.ForEach(func(k, v []byte) error {
+			var j datatype.Job
+			if err := json.Unmarshal(v, &j); err != nil {
+				return err
+			}
+			switch j.Status {
+			case datatype.JobSubmitted, datatype.JobRunning:
+				cgm.UpdateScienceGoal(j.ScienceGoal)
+			}
+			return nil
+		})
+	})
+	return nil
 }

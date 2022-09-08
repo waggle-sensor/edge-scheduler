@@ -26,6 +26,11 @@ func (cs *CloudScheduler) Configure() error {
 	if err := cs.GoalManager.OpenJobDB(); err != nil {
 		return err
 	}
+	// Loading science goals from the job database
+	// to bring the latest status of jobs to the scheduler
+	if err := cs.GoalManager.LoadScienceGoalsFromJobDB(); err != nil {
+		return err
+	}
 	// Loading node and plugin database
 	if err := cs.Validator.LoadDatabase(); err != nil {
 		return err
