@@ -244,7 +244,7 @@ func (cgm *CloudGoalManager) GatherJobsMetric() (m JobsMetric) {
 	// TODO: Do we count removed jobs for the completed jobs?
 	for _, j := range cgm.GetJobs() {
 		switch j.Status {
-		case datatype.JobCreated, datatype.JobDrafted, datatype.JobSuspended:
+		case datatype.JobCreated, datatype.JobDrafted, datatype.JobSuspended, datatype.JobSubmitted:
 			m.CountSubmitted += 1
 		case datatype.JobRunning:
 			m.CountRunning += 1
