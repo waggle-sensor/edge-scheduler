@@ -15,7 +15,7 @@ const (
 	JobDrafted   JobStatus = "Drafted"
 	JobSubmitted JobStatus = "Submitted"
 	JobRunning   JobStatus = "Running"
-	JobComplete  JobStatus = "Complete"
+	JobComplete  JobStatus = "Completed"
 	JobSuspended JobStatus = "Suspended"
 	JobRemoved   JobStatus = "Removed"
 )
@@ -25,6 +25,8 @@ type Job struct {
 	Name            string                 `json:"name" yaml:"name"`
 	JobID           string                 `json:"job_id" yaml:"jobID"`
 	User            string                 `json:"user" yaml:"user"`
+	Email           string                 `json:"email" yaml:"email"`
+	NotificationOn  []JobStatus            `json:"notification_on" yaml:"notificationOn"`
 	Plugins         []*Plugin              `json:"plugins,omitempty" yaml:"plugins,omitempty"`
 	NodeTags        []string               `json:"node_tags" yaml:"nodeTags"`
 	Nodes           map[string]interface{} `json:"nodes" yaml:"nodes"`
@@ -42,6 +44,11 @@ func NewJob(name string, user string, jobID string) *Job {
 		User:  user,
 		Nodes: make(map[string]interface{}),
 	}
+}
+
+func (j *Job) SetNotification(email string, on []JobStatus) {
+	j.Email = email
+	j.NotificationOn = on
 }
 
 func (j *Job) UpdateStatus(newStatus JobStatus) {

@@ -18,17 +18,10 @@ const jobBucketName = "jobs"
 // CloudGoalManager structs a goal manager for cloudscheduler
 type CloudGoalManager struct {
 	scienceGoals map[string]*datatype.ScienceGoal
-	rmqHandler   *interfacing.RabbitMQHandler
 	Notifier     *interfacing.Notifier
 	mu           sync.Mutex
 	dataPath     string
 	jobDB        *bolt.DB
-}
-
-// SetRMQHandler sets a RabbitMQ handler used for transferring goals to edge schedulers
-func (cgm *CloudGoalManager) SetRMQHandler(rmqHandler *interfacing.RabbitMQHandler) {
-	cgm.rmqHandler = rmqHandler
-	cgm.rmqHandler.CreateExchange("scheduler")
 }
 
 func (cgm *CloudGoalManager) AddJob(job *datatype.Job) string {
@@ -116,6 +109,30 @@ func (cgm *CloudGoalManager) UpdateJob(job *datatype.Job, submit bool) (err erro
 		cgm.Notifier.Notify(event)
 	}
 	return
+}
+
+func (cgm *CloudGoalManager) UpdateJobStatus(jobID string, status datatype.JobStatus) (err error) {
+	return cgm.jobDB.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(jobBucketName))
+		if b == nil {
+			return fmt.Errorf("Bucket %s does not exist", jobBucketName)
+		}
+		v := b.Get([]byte(jobID))
+		if v == nil {
+			return fmt.Errorf("Job ID %q does not exist", jobID)
+		}
+		var j datatype.Job
+		if err := json.Unmarshal(v, &j); err != nil {
+			return err
+		}
+		j.UpdateStatus(status)
+		buf, err := json.Marshal(j)
+		if err != nil {
+			return err
+		}
+		b.Put([]byte(jobID), []byte(buf))
+		return nil
+	})
 }
 
 func (cgm *CloudGoalManager) SuspendJob(jobID string) (err error) {
@@ -235,21 +252,6 @@ func (cgm *CloudGoalManager) GetScienceGoalsForNode(nodeName string) (goals []*d
 			if strings.ToLower(subGoal.Name) == strings.ToLower(nodeName) {
 				goals = append(goals, scienceGoal)
 			}
-		}
-	}
-	return
-}
-
-func (cgm *CloudGoalManager) GatherJobsMetric() (m JobsMetric) {
-	// TODO: Do we count removed jobs for the completed jobs?
-	for _, j := range cgm.GetJobs() {
-		switch j.Status {
-		case datatype.JobCreated, datatype.JobDrafted, datatype.JobSuspended, datatype.JobSubmitted:
-			m.CountSubmitted += 1
-		case datatype.JobRunning:
-			m.CountRunning += 1
-		case datatype.JobComplete, datatype.JobRemoved:
-			m.CountCompleted += 1
 		}
 	}
 	return

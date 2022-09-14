@@ -27,6 +27,7 @@ type APIServer struct {
 	cloudScheduler         *CloudScheduler
 	subscribers            map[string]map[chan *datatype.Event]bool
 	subscriberMutex        sync.Mutex
+	authenticator          Authenticator
 }
 
 func (api *APIServer) subscribe(nodeName string, c chan *datatype.Event) {
@@ -247,8 +248,9 @@ func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) 
 
 func (api *APIServer) handlerJobs(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
-		jobs := api.cloudScheduler.GoalManager.GetJobs()
 		response := datatype.NewAPIMessageBuilder()
+
+		jobs := api.cloudScheduler.GoalManager.GetJobs()
 		for _, job := range jobs {
 			response.AddEntity(job.JobID, job)
 		}
@@ -370,6 +372,8 @@ func (api *APIServer) handlerGoalStreamForNode(w http.ResponseWriter, r *http.Re
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "text/event-stream")
+	// To prevent nginx proxy from keeping buffer of data
+	w.Header().Set("X-Accel-Buffering", "no")
 	c := make(chan *datatype.Event, 1)
 	api.subscribe(nodeName, c)
 	defer api.unsubscribe(nodeName, c)
@@ -413,6 +417,25 @@ func (api *APIServer) handlerGoalStreamForNode(w http.ResponseWriter, r *http.Re
 	}
 }
 
+func (api *APIServer) authenticate(r *http.Request) error {
+	// token, err := extractToken(r)
+	// if err != nil {
+	// 	return false, err
+	// }
+	// authenticated, err := api.authenticator.Authenticate(token)
+	// if err != nil {
+	// 	response.AddError(err.Error())
+	// 	respondJSON(w, http.StatusBadGateway, response.Build().ToJson())
+	// 	return
+	// }
+	// if authenticated == false {
+	// 	response.AddError("Authentication failed. Invalid token")
+	// 	respondJSON(w, http.StatusBadRequest, response.Build().ToJson())
+	// 	return
+	// }
+	return nil
+}
+
 func respondJSON(w http.ResponseWriter, statusCode int, data []byte) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
@@ -434,4 +457,21 @@ func respondYAML(w http.ResponseWriter, statusCode int, data interface{}) {
 	if err == nil {
 		w.Write(s)
 	}
+}
+
+func extractToken(r *http.Request) (string, error) {
+	auth := r.Header.Get("Authorization")
+	if auth == "" {
+		return "", fmt.Errorf("No token found")
+	}
+	// TODO: This prefix may be Beehive/project dependent
+	const prefix = "Sage "
+	if len(auth) < len(prefix) || auth[:len(prefix)] != prefix {
+		return "", fmt.Errorf("Token is not a Sage token")
+	}
+	token := auth[len(prefix):]
+	if len(token) == 0 {
+		return "", fmt.Errorf("Token not found")
+	}
+	return token, nil
 }

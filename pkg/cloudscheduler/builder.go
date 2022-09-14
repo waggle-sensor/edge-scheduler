@@ -3,20 +3,21 @@ package cloudscheduler
 import (
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
 	"github.com/waggle-sensor/edge-scheduler/pkg/interfacing"
-	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
 )
 
 type CloudSchedulerConfig struct {
-	Name             string `json:"name" yaml:"name"`
-	Version          string
-	NoRabbitMQ       bool   `json:"no_rabbitmq" yaml:"noRabbitMQ"`
-	RabbitmqURI      string `json:"rabbitmq_uri" yaml:"rabbimqURI"`
-	RabbitmqUsername string `json:"rabbitmq_username" yaml:"rabbitMQUsername"`
-	RabbitmqPassword string `json:"rabbitmq_password" yaml:"rabbitMQPassword"`
-	ECRURI           string `json:"ecr_uri" yaml:"ecrURI"`
-	Port             int    `json:"port" yaml:"port"`
-	DataDir          string `json:"data_dir,omitempty" yaml:"dataDir,omitempty"`
-	PushNotification bool   `json:"push_notification" yaml:"PushNotification"`
+	Name               string `json:"name" yaml:"name"`
+	Version            string
+	NoRabbitMQ         bool   `json:"no_rabbitmq" yaml:"noRabbitMQ"`
+	RabbitmqURI        string `json:"rabbitmq_uri" yaml:"rabbimqURI"`
+	RabbitmqUsername   string `json:"rabbitmq_username" yaml:"rabbitMQUsername"`
+	RabbitmqPassword   string `json:"rabbitmq_password" yaml:"rabbitMQPassword"`
+	RabbitmqCaCertPath string `json:"rabbitmq_cacert_path" yaml:"rabbitMQCacertPath"`
+	ECRURI             string `json:"ecr_uri" yaml:"ecrURI"`
+	Port               int    `json:"port" yaml:"port"`
+	DataDir            string `json:"data_dir,omitempty" yaml:"dataDir,omitempty"`
+	PushNotification   bool   `json:"push_notification" yaml:"PushNotification"`
+	AuthServerURL      string `json:"auth_server_url" yaml:"authServerURL"`
 }
 
 type CloudSchedulerBuilder struct {
@@ -41,21 +42,6 @@ func (csb *CloudSchedulerBuilder) AddGoalManager() *CloudSchedulerBuilder {
 		Notifier:     interfacing.NewNotifier(),
 		dataPath:     csb.cloudScheduler.Config.DataDir,
 	}
-	if !csb.cloudScheduler.Config.NoRabbitMQ {
-		logger.Info.Printf(
-			"Using RabbitMQ at %s with user %s",
-			csb.cloudScheduler.Config.RabbitmqURI,
-			csb.cloudScheduler.Config.RabbitmqUsername,
-		)
-		csb.cloudScheduler.GoalManager.SetRMQHandler(
-			interfacing.NewRabbitMQHandler(
-				csb.cloudScheduler.Config.RabbitmqURI,
-				csb.cloudScheduler.Config.RabbitmqUsername,
-				csb.cloudScheduler.Config.RabbitmqPassword,
-				"",
-			),
-		)
-	}
 	csb.cloudScheduler.GoalManager.Notifier.Subscribe(csb.cloudScheduler.chanFromGoalManager)
 	return csb
 }
@@ -67,6 +53,7 @@ func (csb *CloudSchedulerBuilder) AddAPIServer() *CloudSchedulerBuilder {
 		port:                   csb.cloudScheduler.Config.Port,
 		enablePushNotification: csb.cloudScheduler.Config.PushNotification,
 		subscribers:            make(map[string]map[chan *datatype.Event]bool),
+		authenticator:          NewAuthenticator(csb.cloudScheduler.Config.AuthServerURL),
 	}
 	return csb
 }

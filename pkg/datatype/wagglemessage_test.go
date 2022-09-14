@@ -62,7 +62,7 @@ func TestWaggleMessageValueTypes(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			originalMessage := NewMessage(tc.message.Name, tc.message.Value, tc.message.Timestamp, tc.message.Meta)
 			encodedMessage := Dump(originalMessage)
-			decodedMessage := Load(encodedMessage)
+			decodedMessage, _ := Load(encodedMessage)
 			switch originalMessage.Value.(type) {
 			case float64:
 				if originalMessage.Value != decodedMessage.Value {

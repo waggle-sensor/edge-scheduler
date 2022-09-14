@@ -127,6 +127,18 @@ func (e *Event) ToString() string {
 	return string(e.Type)
 }
 
+func NewEventBuilderFromWaggleMessage(m *WaggleMessage) (*EventBuilder, error) {
+	builder := NewEventBuilder(EventType(m.Name))
+	builder.e.Timestamp = m.Timestamp
+	var body map[string]string
+	err := json.Unmarshal([]byte(m.Value.(string)), &body)
+	if err != nil {
+		return nil, err
+	}
+	builder.e.Meta = body
+	return builder, nil
+}
+
 // ToWaggleMessage converts an Event into a Waggle message that can be sent through Waggle infrastructure.
 //
 // A few points to make in this conversion is,

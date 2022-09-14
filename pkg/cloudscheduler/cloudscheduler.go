@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
+	"github.com/waggle-sensor/edge-scheduler/pkg/interfacing"
 	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
 )
 
@@ -22,6 +23,7 @@ type CloudScheduler struct {
 	APIServer           *APIServer
 	chanFromGoalManager chan datatype.Event
 	MetricsCollector    *prometheus.Collector
+	eventListener       *interfacing.RabbitMQHandler
 }
 
 func (cs *CloudScheduler) Configure() error {
@@ -43,6 +45,22 @@ func (cs *CloudScheduler) Configure() error {
 	reg.MustRegister(collectors.NewGoCollector())
 	reg.MustRegister(NewMetricsCollector(cs))
 	cs.APIServer.ConfigureAPIs(reg)
+
+	// Setting up RabbitMQ connection to receive scheduling events from nodes
+	if !cs.Config.NoRabbitMQ {
+		logger.Info.Printf(
+			"Using RabbitMQ at %s with user %s",
+			cs.Config.RabbitmqURI,
+			cs.Config.RabbitmqUsername,
+		)
+		cs.eventListener = interfacing.NewRabbitMQHandler(
+			cs.Config.RabbitmqURI,
+			cs.Config.RabbitmqUsername,
+			cs.Config.RabbitmqPassword,
+			cs.Config.RabbitmqCaCertPath,
+			"",
+		)
+	}
 	return nil
 }
 
@@ -57,6 +75,30 @@ func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(jobID string, dryrun b
 	job.AddNodes(cs.Validator.GetNodeNamesByTags(job.NodeTags))
 	if len(job.Nodes) < 1 {
 		return []error{fmt.Errorf("Node is not selected")}
+	}
+	// Check if email is set for notification
+	if len(job.NotificationOn) > 0 {
+		if job.Email == "" {
+			return []error{fmt.Errorf("No email is set for notification")}
+		}
+		// Check if given notification types are valid
+		for _, s := range job.NotificationOn {
+			switch s {
+			case datatype.JobCreated,
+				datatype.JobDrafted,
+				datatype.JobSubmitted,
+				datatype.JobRunning,
+				datatype.JobComplete,
+				datatype.JobSuspended,
+				datatype.JobRemoved:
+				continue
+			default:
+				errorList = append(errorList, fmt.Errorf("No type %q in Job notification", s))
+			}
+		}
+		if len(errorList) > 1 {
+			return
+		}
 	}
 	for nodeName := range job.Nodes {
 		approvedPlugins := []*datatype.Plugin{}
@@ -156,10 +198,34 @@ func (cs *CloudScheduler) updateNodes(nodes []string) {
 }
 
 func (cs *CloudScheduler) Run() {
-	go cs.APIServer.Run()
 	logger.Info.Printf("Cloud Scheduler %s starts...", cs.Name)
+	go cs.APIServer.Run()
+	chanEventFromNode := make(chan *datatype.Event)
+	if cs.eventListener != nil {
+		cs.eventListener.SubscribeEvents("waggle.msg", "to-scheduler", chanEventFromNode)
+	}
 	for {
 		select {
+		case event := <-chanEventFromNode:
+			logger.Debug.Printf("%s:%v", event.ToString(), event)
+			// TODO: stat aggregator for jobs may use this event
+			sender := event.GetEntry("vsn")
+			// sender must be identified
+			switch event.Type {
+			case datatype.EventGoalStatusReceived, datatype.EventGoalStatusUpdated:
+				goalID := event.GetGoalID()
+				logger.Debug.Printf("%s received science goal %s", sender, goalID)
+				scienceGoal, err := cs.GoalManager.GetScienceGoal(goalID)
+				if err != nil {
+					logger.Error.Printf("Failed to find science goal %s", goalID)
+				}
+				err = cs.GoalManager.UpdateJobStatus(scienceGoal.JobID, datatype.JobRunning)
+				if err != nil {
+					logger.Error.Printf("Failed to update status of job %q: %s", scienceGoal.JobID, err.Error())
+				}
+			}
+			// TODO: How do we determine if a job is failed
+			//       by looking at EventPluginStatusFailed?
 		case event := <-cs.chanFromGoalManager:
 			logger.Debug.Printf("%s: %q", event.ToString(), event.GetGoalName())
 			switch event.Type {
@@ -217,58 +283,4 @@ func (cs *CloudScheduler) Run() {
 			}
 		}
 	}
-}
-
-type MetricsCollector struct {
-	cs             *CloudScheduler
-	jobsGrandTotal *prometheus.Desc
-	jobsTotal      *prometheus.Desc
-}
-
-func NewMetricsCollector(cs *CloudScheduler) *MetricsCollector {
-	return &MetricsCollector{
-		cs: cs,
-		jobsGrandTotal: prometheus.NewDesc(
-			"jobs_total",
-			"Number of jobs in the system",
-			nil,
-			nil),
-		jobsTotal: prometheus.NewDesc(
-			"jobs_count",
-			"Number of jobs per status",
-			[]string{"status"},
-			nil),
-	}
-}
-
-func (mc *MetricsCollector) Describe(ch chan<- *prometheus.Desc) {
-	ch <- mc.jobsGrandTotal
-	ch <- mc.jobsTotal
-}
-
-func (mc *MetricsCollector) Collect(ch chan<- prometheus.Metric) {
-	jobsMetric := mc.cs.GoalManager.GatherJobsMetric()
-	ch <- prometheus.MustNewConstMetric(
-		mc.jobsGrandTotal,
-		prometheus.GaugeValue,
-		float64(jobsMetric.GrantTotal()),
-	)
-	ch <- prometheus.MustNewConstMetric(
-		mc.jobsTotal,
-		prometheus.GaugeValue,
-		float64(jobsMetric.CountSubmitted),
-		"submitted",
-	)
-	ch <- prometheus.MustNewConstMetric(
-		mc.jobsTotal,
-		prometheus.GaugeValue,
-		float64(jobsMetric.CountRunning),
-		"running",
-	)
-	ch <- prometheus.MustNewConstMetric(
-		mc.jobsTotal,
-		prometheus.GaugeValue,
-		float64(jobsMetric.CountCompleted),
-		"complted",
-	)
 }

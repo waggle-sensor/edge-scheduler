@@ -21,22 +21,35 @@ import (
 
 type HTTPRequest struct {
 	BaseURL string
+	c       *http.Client
 }
 
 func NewHTTPRequest(baseURL string) *HTTPRequest {
 	return &HTTPRequest{
 		BaseURL: baseURL,
+		c:       &http.Client{},
 	}
 }
 
-func (r *HTTPRequest) RequestGet(subPath string, queries url.Values) (*http.Response, error) {
+func (r *HTTPRequest) RequestGet(subPath string, queries url.Values, header map[string]string) (*http.Response, error) {
 	url, err := url.Parse(r.BaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to parse %q: %s", r.BaseURL, err.Error())
 	}
 	url.Path = path.Join(url.Path, subPath)
-	url.RawQuery = queries.Encode()
-	return http.Get(url.String())
+	if queries != nil {
+		url.RawQuery = queries.Encode()
+	}
+	req, err := http.NewRequest("GET", url.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	if header != nil {
+		for k, v := range header {
+			req.Header.Add(k, v)
+		}
+	}
+	return r.c.Do(req)
 }
 
 func (r *HTTPRequest) RequestPost(subPath string, body []byte) (*http.Response, error) {
@@ -97,7 +110,7 @@ func (r *HTTPRequest) ParseJSONHTTPResponse(resp *http.Response) (body map[strin
 
 func (r *HTTPRequest) Subscribe(streamPath string, ch chan *datatype.Event, keepRetry bool) error {
 	operation := func() error {
-		resp, err := r.RequestGet(streamPath, map[string][]string{})
+		resp, err := r.RequestGet(streamPath, nil, nil)
 		if err != nil {
 			return err
 		}

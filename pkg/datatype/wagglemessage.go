@@ -31,12 +31,15 @@ func Dump(message *WaggleMessage) []byte {
 	return raw
 }
 
-func Load(raw []byte) *WaggleMessage {
+func Load(raw []byte) (*WaggleMessage, error) {
 	var message WaggleMessage
-	json.Unmarshal(raw, &message)
+	err := json.Unmarshal(raw, &message)
+	if err != nil {
+		return nil, err
+	}
 	if message.Enc == "b64" {
 		v, _ := b64.StdEncoding.DecodeString(message.Value.(string))
 		message.Value = v
 	}
-	return &message
+	return &message, nil
 }
