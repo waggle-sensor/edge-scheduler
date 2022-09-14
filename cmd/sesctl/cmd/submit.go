@@ -6,60 +6,56 @@ import (
 	"net/url"
 
 	"github.com/spf13/cobra"
-	"github.com/waggle-sensor/edge-scheduler/pkg/interfacing"
 )
 
 func init() {
-	var (
-		jobID    string
-		filePath string
-		dryRun   bool
-	)
 	cmdSubmit := &cobra.Command{
 		Use:              "submit [FLAGS]",
 		Short:            "submit a job to cloud scheduler",
 		TraverseChildren: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			r := interfacing.NewHTTPRequest(serverHostString)
-			if jobID != "" {
-				q, err := url.ParseQuery("id=" + jobID + "&dryrun=" + fmt.Sprint(dryRun))
-				if err != nil {
-					return err
+			submitFunc := func(r *JobRequest) error {
+				if r.JobID != "" {
+					q, err := url.ParseQuery("id=" + r.JobID + "&dryrun=" + fmt.Sprint(r.DryRun))
+					if err != nil {
+						return err
+					}
+					resp, err := r.handler.RequestGet("api/v1/submit", q, r.Headers)
+					if err != nil {
+						return err
+					}
+					body, err := r.handler.ParseJSONHTTPResponse(resp)
+					if err != nil {
+						return err
+					}
+					blob, _ := json.MarshalIndent(body, "", " ")
+					fmt.Printf("%s\n", string(blob))
+				} else if r.FilePath != "" {
+					q, err := url.ParseQuery("&dryrun=" + fmt.Sprint(r.DryRun))
+					if err != nil {
+						return err
+					}
+					resp, err := r.handler.RequestPostFromFileWithQueries("api/v1/submit", r.FilePath, q)
+					if err != nil {
+						return err
+					}
+					body, err := r.handler.ParseJSONHTTPResponse(resp)
+					if err != nil {
+						return err
+					}
+					blob, _ := json.MarshalIndent(body, "", " ")
+					fmt.Printf("%s\n", string(blob))
+				} else {
+					return fmt.Errorf("Either --job-id or --file-path should be provided.")
 				}
-				resp, err := r.RequestGet("api/v1/submit", q)
-				if err != nil {
-					return err
-				}
-				body, err := r.ParseJSONHTTPResponse(resp)
-				if err != nil {
-					return err
-				}
-				blob, _ := json.MarshalIndent(body, "", " ")
-				fmt.Printf("%s\n", string(blob))
-			} else if filePath != "" {
-				q, err := url.ParseQuery("&dryrun=" + fmt.Sprint(dryRun))
-				if err != nil {
-					return err
-				}
-				resp, err := r.RequestPostFromFileWithQueries("api/v1/submit", filePath, q)
-				if err != nil {
-					return err
-				}
-				body, err := r.ParseJSONHTTPResponse(resp)
-				if err != nil {
-					return err
-				}
-				blob, _ := json.MarshalIndent(body, "", " ")
-				fmt.Printf("%s\n", string(blob))
-			} else {
-				return fmt.Errorf("Either --job-id or --file-path should be provided.")
+				return nil
 			}
-			return nil
+			return jobRequest.Run(submitFunc)
 		},
 	}
 	flags := cmdSubmit.Flags()
-	flags.StringVarP(&jobID, "job-id", "j", "", "Job ID")
-	flags.BoolVarP(&dryRun, "dry-run", "", false, "Dry run the job")
-	flags.StringVarP(&filePath, "file-path", "f", "", "Path to the job file")
+	flags.StringVarP(&jobRequest.JobID, "job-id", "j", "", "Job ID")
+	flags.BoolVarP(&jobRequest.DryRun, "dry-run", "", false, "Dry run the job")
+	flags.StringVarP(&jobRequest.FilePath, "file-path", "f", "", "Path to the job file")
 	rootCmd.AddCommand(cmdSubmit)
 }
