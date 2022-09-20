@@ -141,7 +141,7 @@ func (api *APIServer) handlerEditJob(w http.ResponseWriter, r *http.Request) {
 	queries := r.URL.Query()
 	if _, exist := queries["id"]; exist {
 		jobID := queries.Get("id")
-		_, err := api.cloudScheduler.GoalManager.GetJob(jobID)
+		oldJob, err := api.cloudScheduler.GoalManager.GetJob(jobID)
 		if err != nil {
 			response := datatype.NewAPIMessageBuilder().AddError(err.Error()).Build()
 			respondJSON(w, http.StatusBadRequest, response.ToJson())
@@ -163,6 +163,10 @@ func (api *APIServer) handlerEditJob(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			updatedJob.JobID = jobID
+			// Remove science goal of old Job if exists
+			if oldJob.ScienceGoal != nil {
+				api.cloudScheduler.GoalManager.RemoveScienceGoal(oldJob.ScienceGoal.ID)
+			}
 			api.cloudScheduler.GoalManager.UpdateJob(updatedJob, false)
 			response := datatype.NewAPIMessageBuilder().AddEntity("job_id", jobID).AddEntity("status", datatype.JobDrafted)
 			respondJSON(w, http.StatusOK, response.Build().ToJson())
