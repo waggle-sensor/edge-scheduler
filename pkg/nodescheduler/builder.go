@@ -62,6 +62,7 @@ func (nsb *NodeSchedulerBuilder) AddGoalManager(appID string) *NodeSchedulerBuil
 			nsb.nodeScheduler.Config.RabbitmqURI,
 			nsb.nodeScheduler.Config.RabbitmqUsername,
 			nsb.nodeScheduler.Config.RabbitmqPassword,
+			"",
 			appID),
 		)
 	}
@@ -105,6 +106,7 @@ func (nsb *NodeSchedulerBuilder) AddLoggerToBeehive(appID string) *NodeScheduler
 		nsb.nodeScheduler.Config.RabbitmqURI,
 		nsb.nodeScheduler.Config.RabbitmqUsername,
 		nsb.nodeScheduler.Config.RabbitmqPassword,
+		"",
 		appID)
 	return nsb
 }
