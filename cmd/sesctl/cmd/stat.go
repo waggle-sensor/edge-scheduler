@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"path"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/waggle-sensor/edge-scheduler/pkg/cloudscheduler"
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
 )
 
@@ -20,7 +22,8 @@ func init() {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			statFunc := func(r *JobRequest) error {
 				if r.JobID != "" {
-					resp, err := r.handler.RequestGet(fmt.Sprintf("api/v1/jobs/%s/status", r.JobID), nil, r.Headers)
+					subPathString := path.Join(cloudscheduler.API_V1_VERSION, cloudscheduler.API_PATH_JOB_STATUS_REGEX)
+					resp, err := r.handler.RequestGet(fmt.Sprintf(subPathString, r.JobID), nil, r.Headers)
 					if err != nil {
 						return err
 					}
@@ -51,7 +54,8 @@ func init() {
 						return fmt.Errorf("Failed to get the job %q: Job does not exist", r.JobID)
 					}
 				} else {
-					resp, err := r.handler.RequestGet("api/v1/jobs", nil, r.Headers)
+					subPathString := path.Join(cloudscheduler.API_V1_VERSION, cloudscheduler.API_PATH_JOB_LIST)
+					resp, err := r.handler.RequestGet(subPathString, nil, r.Headers)
 					if err != nil {
 						return err
 					}

@@ -19,6 +19,19 @@ import (
 	// "github.com/urfave/negroni"
 )
 
+const (
+	API_V1_VERSION                   = "/api/v1"
+	API_PATH_SYSTEM_METRICS          = "/system/metrics"
+	API_PATH_JOB_CREATE              = "/create"
+	API_PATH_JOB_EDIT                = "/edit"
+	API_PATH_JOB_SUBMIT              = "/submit"
+	API_PATH_JOB_LIST                = "/jobs/list"
+	API_PATH_JOB_STATUS_REGEX        = "/jobs/%s/status"
+	API_PATH_JOB_REMOVE_REGEX        = "/jobs/%s/rm"
+	API_PATH_GOALS_NODE_REGEX        = "/goals/%s"
+	API_PATH_GOALS_NODE_STREAM_REGEX = "/goals/%s/stream"
+)
+
 type APIServer struct {
 	version                string
 	port                   int
@@ -74,21 +87,21 @@ func (api *APIServer) ConfigureAPIs(prometheusGatherer *prometheus.Registry) {
 		respondJSON(w, http.StatusOK, response.ToJson())
 		fmt.Fprintln(w)
 	})
-	api_route := r.PathPrefix("/api/v1").Subrouter()
+	api_route := r.PathPrefix(API_V1_VERSION).Subrouter()
 	if prometheusGatherer != nil {
-		api_route.Handle("/system/metrics", promhttp.HandlerFor(prometheusGatherer, promhttp.HandlerOpts{EnableOpenMetrics: true})).Methods(http.MethodGet)
+		api_route.Handle(API_PATH_SYSTEM_METRICS, promhttp.HandlerFor(prometheusGatherer, promhttp.HandlerOpts{EnableOpenMetrics: true})).Methods(http.MethodGet)
 	}
-	api_route.Handle("/create", http.HandlerFunc(api.handlerCreateJob)).Methods(http.MethodGet, http.MethodPost)
-	api_route.Handle("/edit", http.HandlerFunc(api.handlerEditJob)).Methods(http.MethodPost)
-	api_route.Handle("/submit", http.HandlerFunc(api.handlerSubmitJobs)).Methods(http.MethodGet, http.MethodPost)
-	api_route.Handle("/jobs/list", http.HandlerFunc(api.handlerJobs)).Methods(http.MethodGet)
-	api_route.Handle("/jobs/{id}/status", http.HandlerFunc(api.handlerJobStatus)).Methods(http.MethodGet)
-	api_route.Handle("/jobs/{id}/rm", http.HandlerFunc(api.handlerJobRemove)).Methods(http.MethodGet)
-	// api.Handle("/goals", http.HandlerFunc(cs.handlerGoals)).Methods(http.MethodGet, http.MethodPost, http.MethodPut)
-	api_route.Handle("/goals/{nodeName}", http.HandlerFunc(api.handlerGoalForNode)).Methods(http.MethodGet)
+	api_route.Handle(API_PATH_JOB_CREATE, http.HandlerFunc(api.handlerCreateJob)).Methods(http.MethodGet, http.MethodPost)
+	api_route.Handle(API_PATH_JOB_EDIT, http.HandlerFunc(api.handlerEditJob)).Methods(http.MethodPost)
+	api_route.Handle(API_PATH_JOB_SUBMIT, http.HandlerFunc(api.handlerSubmitJobs)).Methods(http.MethodGet, http.MethodPost)
+	api_route.Handle(API_PATH_JOB_LIST, http.HandlerFunc(api.handlerJobs)).Methods(http.MethodGet)
+	api_route.Handle(fmt.Sprintf(API_PATH_JOB_STATUS_REGEX, "{id}"), http.HandlerFunc(api.handlerJobStatus)).Methods(http.MethodGet)
+	api_route.Handle(fmt.Sprintf(API_PATH_JOB_REMOVE_REGEX, "{id}"), http.HandlerFunc(api.handlerJobRemove)).Methods(http.MethodGet)
+	// api_route.Handle("/goals", http.HandlerFunc(api.handlerGoals)).Methods(http.MethodGet, http.MethodPost, http.MethodPut)
+	api_route.Handle(fmt.Sprintf(API_PATH_GOALS_NODE_REGEX, "{nodeName}"), http.HandlerFunc(api.handlerGoalForNode)).Methods(http.MethodGet)
 	if api.enablePushNotification {
 		logger.Info.Printf("Enabling push notification. Nodes can connect to /goals/{nodeName}/stream to get notification from the cloud scheduler.")
-		api_route.Handle("/goals/{nodeName}/stream", http.HandlerFunc(api.handlerGoalStreamForNode)).Methods(http.MethodGet)
+		api_route.Handle(fmt.Sprintf(API_PATH_GOALS_NODE_STREAM_REGEX, "{nodeName}"), http.HandlerFunc(api.handlerGoalStreamForNode)).Methods(http.MethodGet)
 	}
 }
 

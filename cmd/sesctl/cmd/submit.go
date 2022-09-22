@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"path"
 
 	"github.com/spf13/cobra"
+	"github.com/waggle-sensor/edge-scheduler/pkg/cloudscheduler"
 )
 
 func init() {
@@ -15,12 +17,13 @@ func init() {
 		TraverseChildren: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			submitFunc := func(r *JobRequest) error {
+				subPathString := path.Join(cloudscheduler.API_V1_VERSION, cloudscheduler.API_PATH_JOB_SUBMIT)
 				if r.JobID != "" {
 					q, err := url.ParseQuery("id=" + r.JobID + "&dryrun=" + fmt.Sprint(r.DryRun))
 					if err != nil {
 						return err
 					}
-					resp, err := r.handler.RequestGet("api/v1/submit", q, r.Headers)
+					resp, err := r.handler.RequestGet(subPathString, q, r.Headers)
 					if err != nil {
 						return err
 					}
@@ -35,7 +38,7 @@ func init() {
 					if err != nil {
 						return err
 					}
-					resp, err := r.handler.RequestPostFromFileWithQueries("api/v1/submit", r.FilePath, q)
+					resp, err := r.handler.RequestPostFromFileWithQueries(subPathString, r.FilePath, q)
 					if err != nil {
 						return err
 					}
