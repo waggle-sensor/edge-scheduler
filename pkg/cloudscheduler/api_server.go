@@ -81,7 +81,7 @@ func (api *APIServer) ConfigureAPIs(prometheusGatherer *prometheus.Registry) {
 	api_route.Handle("/create", http.HandlerFunc(api.handlerCreateJob)).Methods(http.MethodGet, http.MethodPost)
 	api_route.Handle("/edit", http.HandlerFunc(api.handlerEditJob)).Methods(http.MethodPost)
 	api_route.Handle("/submit", http.HandlerFunc(api.handlerSubmitJobs)).Methods(http.MethodGet, http.MethodPost)
-	api_route.Handle("/jobs", http.HandlerFunc(api.handlerJobs)).Methods(http.MethodGet)
+	api_route.Handle("/jobs/list", http.HandlerFunc(api.handlerJobs)).Methods(http.MethodGet)
 	api_route.Handle("/jobs/{id}/status", http.HandlerFunc(api.handlerJobStatus)).Methods(http.MethodGet)
 	api_route.Handle("/jobs/{id}/rm", http.HandlerFunc(api.handlerJobRemove)).Methods(http.MethodGet)
 	// api.Handle("/goals", http.HandlerFunc(cs.handlerGoals)).Methods(http.MethodGet, http.MethodPost, http.MethodPut)
