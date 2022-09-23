@@ -38,7 +38,7 @@ func init() {
 					if err != nil {
 						return err
 					}
-					resp, err := r.handler.RequestPostFromFileWithQueries(subPathString, r.FilePath, q)
+					resp, err := r.handler.RequestPostFromFile(subPathString, r.FilePath, q, nil)
 					if err != nil {
 						return err
 					}

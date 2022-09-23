@@ -19,7 +19,7 @@ func init() {
 			createFunc := func(r *JobRequest) error {
 				subPathString := path.Join(cloudscheduler.API_V1_VERSION, cloudscheduler.API_PATH_JOB_CREATE)
 				if r.FilePath != "" {
-					resp, err := r.handler.RequestPostFromFile(subPathString, r.FilePath)
+					resp, err := r.handler.RequestPostFromFile(subPathString, r.FilePath, nil, nil)
 					if err != nil {
 						return err
 					}

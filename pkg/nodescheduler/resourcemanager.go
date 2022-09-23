@@ -960,7 +960,7 @@ func (rm *ResourceManager) Run(chanPluginToUpdate <-chan *datatype.Plugin) {
 		}
 	}
 	// for {
-	// 	nodeMetrics, err := rm.MetricsClient.MetricsV1beta1().NodeMetricses().List(context.TODO(), metav1.ListOptions{})
+	// nodeMetrics, err := rm.MetricsClient.MetricsV1beta1().NodeMetricses().List(context.TODO(), metav1.ListOptions{})
 	// 	if err != nil {
 	// 		logger.Error.Println("Error:", err)
 	// 		return

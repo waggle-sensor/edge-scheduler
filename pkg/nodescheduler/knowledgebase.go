@@ -61,7 +61,7 @@ func (kb *KnowledgeBase) AddRawMeasure(k string, v interface{}) {
 		"key":   k,
 		"value": v,
 	})
-	resp, err := r.RequestPost("store", data)
+	resp, err := r.RequestPost("store", data, nil)
 
 	body, err := r.ParseJSONHTTPResponse(resp)
 	if err != nil {
@@ -90,7 +90,7 @@ func (kb *KnowledgeBase) EvaluateRule(rule string) (string, error) {
 	data, _ := json.Marshal(map[string]interface{}{
 		"rule": condition,
 	})
-	resp, err := r.RequestPost("evaluate", data)
+	resp, err := r.RequestPost("evaluate", data, nil)
 	if err != nil {
 		return "", fmt.Errorf("Failed to get data from checker: %s", err.Error())
 	}

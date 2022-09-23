@@ -264,9 +264,16 @@ func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) 
 }
 
 func (api *APIServer) handlerJobs(w http.ResponseWriter, r *http.Request) {
+	token, err := extractToken(r)
+	if err != nil {
+		response := datatype.NewAPIMessageBuilder()
+		response.AddError(err.Error())
+		respondJSON(w, http.StatusBadRequest, response.Build().ToJson())
+		return
+	}
+	api.authenticator.Authenticate(token)
 	if r.Method == http.MethodGet {
 		response := datatype.NewAPIMessageBuilder()
-
 		jobs := api.cloudScheduler.GoalManager.GetJobs()
 		for _, job := range jobs {
 			response.AddEntity(job.JobID, job)
