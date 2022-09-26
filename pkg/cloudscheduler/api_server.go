@@ -514,6 +514,7 @@ func (api *APIServer) authenticate(r *http.Request) (*User, error) {
 }
 
 func respondJSON(w http.ResponseWriter, statusCode int, data []byte) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	w.Write(data)
@@ -526,6 +527,7 @@ func respondJSON(w http.ResponseWriter, statusCode int, data []byte) {
 }
 
 func respondYAML(w http.ResponseWriter, statusCode int, data interface{}) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/yaml")
 	w.WriteHeader(statusCode)
 
