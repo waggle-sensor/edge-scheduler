@@ -43,7 +43,7 @@ func (cgm *CloudGoalManager) AddJob(job *datatype.Job) string {
 	return job.JobID
 }
 
-func (cgm *CloudGoalManager) GetJobs() (jobs []*datatype.Job) {
+func (cgm *CloudGoalManager) GetJobs(userName string) (jobs []*datatype.Job) {
 	cgm.jobDB.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(jobBucketName))
 		if b == nil {
@@ -54,7 +54,14 @@ func (cgm *CloudGoalManager) GetJobs() (jobs []*datatype.Job) {
 			if err := json.Unmarshal(v, &j); err != nil {
 				return err
 			}
-			jobs = append(jobs, &j)
+			// If username is given we return jobs that belong to the user
+			if userName != "" {
+				if j.User == userName {
+					jobs = append(jobs, &j)
+				}
+			} else {
+				jobs = append(jobs, &j)
+			}
 			return nil
 		})
 	})

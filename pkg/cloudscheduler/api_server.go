@@ -112,6 +112,13 @@ func (api *APIServer) Run() {
 }
 
 func (api *APIServer) handlerCreateJob(w http.ResponseWriter, r *http.Request) {
+	user, err := api.authenticate(r)
+	if err != nil {
+		response := datatype.NewAPIMessageBuilder()
+		response.AddError(err.Error())
+		respondJSON(w, http.StatusBadRequest, response.Build().ToJson())
+		return
+	}
 	var newJob *datatype.Job
 	switch r.Method {
 	case http.MethodGet:
@@ -124,6 +131,7 @@ func (api *APIServer) handlerCreateJob(w http.ResponseWriter, r *http.Request) {
 		name := queries.Get("name")
 		newJob = &datatype.Job{
 			Name: name,
+			User: user.GetUserName(),
 		}
 	case http.MethodPost:
 		// The query includes a full job description
@@ -134,6 +142,8 @@ func (api *APIServer) handlerCreateJob(w http.ResponseWriter, r *http.Request) {
 			return
 		} else {
 			err = yaml.Unmarshal(blob, &newJob)
+			// Make sure job owner is the same with the authenticated user
+			newJob.User = user.GetUserName()
 			if err != nil {
 				response := datatype.NewAPIMessageBuilder().AddError(err.Error()).Build()
 				respondJSON(w, http.StatusBadRequest, response.ToJson())
@@ -151,12 +161,25 @@ func (api *APIServer) handlerCreateJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api *APIServer) handlerEditJob(w http.ResponseWriter, r *http.Request) {
+	user, err := api.authenticate(r)
+	if err != nil {
+		response := datatype.NewAPIMessageBuilder()
+		response.AddError(err.Error())
+		respondJSON(w, http.StatusBadRequest, response.Build().ToJson())
+		return
+	}
 	queries := r.URL.Query()
 	if _, exist := queries["id"]; exist {
 		jobID := queries.Get("id")
 		oldJob, err := api.cloudScheduler.GoalManager.GetJob(jobID)
 		if err != nil {
 			response := datatype.NewAPIMessageBuilder().AddError(err.Error()).Build()
+			respondJSON(w, http.StatusBadRequest, response.ToJson())
+			return
+		}
+		// If the job is not created by the user, raise an error
+		if oldJob.User != user.GetUserName() {
+			response := datatype.NewAPIMessageBuilder().AddError(fmt.Sprintf("User %s does not have access to the job", user.GetUserName())).Build()
 			respondJSON(w, http.StatusBadRequest, response.ToJson())
 			return
 		}
@@ -176,6 +199,8 @@ func (api *APIServer) handlerEditJob(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			updatedJob.JobID = jobID
+			// Make sure the job ownder is the owner from the authentication
+			updatedJob.User = user.GetUserName()
 			// Remove science goal of old Job if exists
 			if oldJob.ScienceGoal != nil {
 				api.cloudScheduler.GoalManager.RemoveScienceGoal(oldJob.ScienceGoal.ID)
@@ -193,6 +218,13 @@ func (api *APIServer) handlerEditJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) {
+	user, err := api.authenticate(r)
+	if err != nil {
+		response := datatype.NewAPIMessageBuilder()
+		response.AddError(err.Error())
+		respondJSON(w, http.StatusBadRequest, response.Build().ToJson())
+		return
+	}
 	queries := r.URL.Query()
 	flagDryRun := false
 	if _, exist := queries["dryrun"]; exist {
@@ -208,7 +240,7 @@ func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) 
 	case http.MethodGet:
 		queries := r.URL.Query()
 		if _, exist := queries["id"]; exist {
-			errorList := api.cloudScheduler.ValidateJobAndCreateScienceGoal(queries.Get("id"), flagDryRun)
+			errorList := api.cloudScheduler.ValidateJobAndCreateScienceGoal(queries.Get("id"), user, flagDryRun)
 			if len(errorList) > 0 {
 				response := datatype.NewAPIMessageBuilder().AddError(fmt.Sprintf("%v", errorList)).Build()
 				respondJSON(w, http.StatusBadRequest, response.ToJson())
@@ -244,9 +276,12 @@ func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) 
 				return
 			}
 			jobID := api.cloudScheduler.GoalManager.AddJob(newJob)
-			errorList := api.cloudScheduler.ValidateJobAndCreateScienceGoal(jobID, flagDryRun)
+			errorList := api.cloudScheduler.ValidateJobAndCreateScienceGoal(jobID, user, flagDryRun)
 			if len(errorList) > 0 {
-				response := datatype.NewAPIMessageBuilder().AddError(fmt.Sprintf("%v", errorList)).Build()
+				response := datatype.NewAPIMessageBuilder().
+					AddEntity("job_id", jobID).
+					AddEntity("message", "job is added, but failed to be validated. Please edit the job and try again.").
+					AddError(fmt.Sprintf("%v", errorList)).Build()
 				respondJSON(w, http.StatusBadRequest, response.ToJson())
 				return
 			} else {
@@ -264,17 +299,16 @@ func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) 
 }
 
 func (api *APIServer) handlerJobs(w http.ResponseWriter, r *http.Request) {
-	token, err := extractToken(r)
+	user, err := api.authenticate(r)
 	if err != nil {
 		response := datatype.NewAPIMessageBuilder()
 		response.AddError(err.Error())
 		respondJSON(w, http.StatusBadRequest, response.Build().ToJson())
 		return
 	}
-	api.authenticator.Authenticate(token)
 	if r.Method == http.MethodGet {
 		response := datatype.NewAPIMessageBuilder()
-		jobs := api.cloudScheduler.GoalManager.GetJobs()
+		jobs := api.cloudScheduler.GoalManager.GetJobs(user.GetUserName())
 		for _, job := range jobs {
 			response.AddEntity(job.JobID, job)
 		}
@@ -283,43 +317,67 @@ func (api *APIServer) handlerJobs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api *APIServer) handlerJobStatus(w http.ResponseWriter, r *http.Request) {
+	user, err := api.authenticate(r)
+	if err != nil {
+		response := datatype.NewAPIMessageBuilder()
+		response.AddError(err.Error())
+		respondJSON(w, http.StatusBadRequest, response.Build().ToJson())
+		return
+	}
 	vars := mux.Vars(r)
 	if r.Method == http.MethodGet {
-		logger.Debug.Printf("API call on Job status of %s", vars["id"])
-		// if goal, err := cs.GoalManager.GetScienceGoal(vars["id"]); err == nil {
-		// 	respondJSON(w, http.StatusOK, goal)
-		// } else {
-		// 	respondJSON(w, http.StatusOK, "")
-		// }
-		job, err := api.cloudScheduler.GoalManager.GetJob(vars["id"])
 		response := datatype.NewAPIMessageBuilder()
+		job, err := api.cloudScheduler.GoalManager.GetJob(vars["id"])
 		if err != nil {
 			response.AddError(err.Error())
-		} else {
-			response.AddEntity(vars["id"], job)
+			respondJSON(w, http.StatusBadRequest, response.Build().ToJson())
+			return
 		}
+		if job.User != user.GetUserName() {
+			response.AddError(fmt.Sprintf("User %s does not have permission to view the job %s", user.GetUserName(), vars["id"]))
+			respondJSON(w, http.StatusBadRequest, response.Build().ToJson())
+			return
+		}
+		response.AddEntity(vars["id"], job)
 		respondJSON(w, http.StatusOK, response.Build().ToJson())
 	}
 }
 
 func (api *APIServer) handlerJobRemove(w http.ResponseWriter, r *http.Request) {
+	response := datatype.NewAPIMessageBuilder()
+	user, err := api.authenticate(r)
+	if err != nil {
+		response.AddError(err.Error())
+		respondJSON(w, http.StatusBadRequest, response.Build().ToJson())
+		return
+	}
 	queries := r.URL.Query()
 	jobID := queries.Get("id")
-	if _, exist := queries["suspend"]; exist {
-		suspend := queries.Get("suspend")
-		if suspend == "true" {
-			err := api.cloudScheduler.GoalManager.SuspendJob(jobID)
-			if err != nil {
-				response := datatype.NewAPIMessageBuilder().AddEntity("job_id", jobID).
-					AddError(err.Error()).Build()
-				respondJSON(w, http.StatusOK, response.ToJson())
-				return
-			}
-			response := datatype.NewAPIMessageBuilder().AddEntity("job_id", jobID).
-				AddEntity("status", datatype.JobSuspended).Build()
-			respondJSON(w, http.StatusOK, response.ToJson())
+	job, err := api.cloudScheduler.GoalManager.GetJob(jobID)
+	if err != nil {
+		response.AddError(err.Error())
+		respondJSON(w, http.StatusBadRequest, response.Build().ToJson())
+		return
+	}
+	if job.User != user.GetUserName() {
+		response.AddError(fmt.Sprintf("User %s does not have permission to remove the job %s", user.GetUserName(), jobID))
+		respondJSON(w, http.StatusBadRequest, response.Build().ToJson())
+		return
+	}
+	// Suspend the job instead of removal if suspend flag is given
+	suspend := queries.Get("suspend")
+	if suspend == "true" {
+		err := api.cloudScheduler.GoalManager.SuspendJob(jobID)
+		if err != nil {
+			response.AddEntity("job_id", jobID).
+				AddError(err.Error()).Build()
+			respondJSON(w, http.StatusBadRequest, response.Build().ToJson())
 			return
 		}
+		response.AddEntity("job_id", jobID).
+			AddEntity("status", datatype.JobSuspended)
+		respondJSON(w, http.StatusOK, response.Build().ToJson())
+		return
 	}
 	force := false
 	if _, exist := queries["force"]; exist {
@@ -328,16 +386,15 @@ func (api *APIServer) handlerJobRemove(w http.ResponseWriter, r *http.Request) {
 			force = true
 		}
 	}
-	err := api.cloudScheduler.GoalManager.RemoveJob(jobID, force)
+	err = api.cloudScheduler.GoalManager.RemoveJob(jobID, force)
 	if err != nil {
-		response := datatype.NewAPIMessageBuilder().AddEntity("job_id", jobID).
+		response.AddEntity("job_id", jobID).
 			AddError(err.Error()).Build()
-		respondJSON(w, http.StatusOK, response.ToJson())
+		respondJSON(w, http.StatusOK, response.Build().ToJson())
 	} else {
-		response := datatype.NewAPIMessageBuilder().
-			AddEntity("job_id", jobID).
-			AddEntity("status", datatype.JobRemoved).Build()
-		respondJSON(w, http.StatusOK, response.ToJson())
+		response.AddEntity("job_id", jobID).
+			AddEntity("status", datatype.JobRemoved)
+		respondJSON(w, http.StatusOK, response.Build().ToJson())
 	}
 }
 
@@ -441,23 +498,19 @@ func (api *APIServer) handlerGoalStreamForNode(w http.ResponseWriter, r *http.Re
 	}
 }
 
-func (api *APIServer) authenticate(r *http.Request) error {
-	// token, err := extractToken(r)
-	// if err != nil {
-	// 	return false, err
-	// }
-	// authenticated, err := api.authenticator.Authenticate(token)
-	// if err != nil {
-	// 	response.AddError(err.Error())
-	// 	respondJSON(w, http.StatusBadGateway, response.Build().ToJson())
-	// 	return
-	// }
-	// if authenticated == false {
-	// 	response.AddError("Authentication failed. Invalid token")
-	// 	respondJSON(w, http.StatusBadRequest, response.Build().ToJson())
-	// 	return
-	// }
-	return nil
+func (api *APIServer) authenticate(r *http.Request) (*User, error) {
+	token, err := extractToken(r)
+	if err != nil {
+		return nil, err
+	}
+	user, err := api.authenticator.Authenticate(token)
+	if err != nil {
+		return nil, fmt.Errorf("Authentication failed: %s", err.Error())
+	}
+	if user.Auth.Active == false {
+		return user, fmt.Errorf("User %q is inactive. Please contact administrator.", user.GetUserName())
+	}
+	return user, nil
 }
 
 func respondJSON(w http.ResponseWriter, statusCode int, data []byte) {
