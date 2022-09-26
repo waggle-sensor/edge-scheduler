@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
@@ -58,6 +59,13 @@ Total number of nodes %d
 
 	// )
 	return ret
+}
+
+func printSingleJsonFromDecoder(decoder *json.Decoder) string {
+	var blob map[string]interface{}
+	decoder.Decode(&blob)
+	ret, _ := json.MarshalIndent(blob, "", " ")
+	return string(ret)
 }
 
 type JobRequest struct {

@@ -106,7 +106,7 @@ func (r *HTTPRequest) RequestPostFromFile(subPath string, filePath string, queri
 	return r.c.Do(req)
 }
 
-func (r *HTTPRequest) ParseJSONHTTPResponse(resp *http.Response) (body map[string]interface{}, err error) {
+func (r *HTTPRequest) ParseJSONHTTPResponse(resp *http.Response) (decoder *json.Decoder, err error) {
 	defer resp.Body.Close()
 	stream, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -118,12 +118,13 @@ func (r *HTTPRequest) ParseJSONHTTPResponse(resp *http.Response) (body map[strin
 	if resp.Header.Get("Content-Type") != "application/json" {
 		return nil, fmt.Errorf("Content-Type is not JSON: %s", resp.Header.Get("Content-Type"))
 	}
-	err = json.Unmarshal(stream, &body)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to decode JSON body: %s", err.Error())
-	}
-	// body["StatusCode"] = resp.StatusCode
-	return body, nil
+	return json.NewDecoder(bytes.NewReader(stream)), nil
+	// err = json.Unmarshal(stream, &body)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("Failed to decode JSON body: %s", err.Error())
+	// }
+	// // body["StatusCode"] = resp.StatusCode
+	// return body, nil
 }
 
 func (r *HTTPRequest) Subscribe(streamPath string, ch chan *datatype.Event, keepRetry bool) error {

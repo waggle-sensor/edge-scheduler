@@ -27,10 +27,12 @@ func init() {
 					if err != nil {
 						return err
 					}
-					body, err := r.handler.ParseJSONHTTPResponse(resp)
+					decoder, err := r.handler.ParseJSONHTTPResponse(resp)
 					if err != nil {
 						return err
 					}
+					var body map[string]interface{}
+					decoder.Decode(&body)
 					if blob, exist := body[r.JobID]; exist {
 						jobBlob, err := json.MarshalIndent(blob, "", "  ")
 						if err != nil {
@@ -59,10 +61,12 @@ func init() {
 					if err != nil {
 						return err
 					}
-					body, err := r.handler.ParseJSONHTTPResponse(resp)
+					decoder, err := r.handler.ParseJSONHTTPResponse(resp)
 					if err != nil {
 						return err
 					}
+					var body map[string]interface{}
+					decoder.Decode(&body)
 					var (
 						maxLengthID     int = 5
 						maxLengthName   int = 26
