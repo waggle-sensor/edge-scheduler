@@ -153,7 +153,12 @@ func (api *APIServer) Run() {
 	api_address_port := fmt.Sprintf("0.0.0.0:%d", api.port)
 	logger.Info.Printf("API server starts at %q...", api_address_port)
 
-	logger.Info.Fatalln(http.ListenAndServe(api_address_port, handlers.CORS()(logRequestHandler(api.mainRouter))))
+	// Added as requested for browser support
+	headersOk := handlers.AllowedHeaders([]string{"X-Requested-With"})
+	originsOk := handlers.AllowedOrigins([]string{"*"})
+	methodsOk := handlers.AllowedMethods([]string{"GET", "HEAD", "POST", "PUT", "OPTIONS"})
+	cors := handlers.CORS(headersOk, originsOk, methodsOk)(api.mainRouter)
+	logger.Info.Fatalln(http.ListenAndServe(api_address_port, logRequestHandler(cors)))
 }
 
 func (api *APIServer) handlerCreateJob(w http.ResponseWriter, r *http.Request) {
