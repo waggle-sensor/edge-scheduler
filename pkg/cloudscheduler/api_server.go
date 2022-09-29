@@ -112,10 +112,11 @@ func (api *APIServer) Run() {
 	logger.Info.Printf("API server starts at %q...", api_address_port)
 
 	// Added as requested for browser support
-	headersOk := handlers.AllowedHeaders([]string{"X-Requested-With"})
+	headersOk := handlers.AllowedHeaders([]string{"X-Requested-With", "Authorization"})
 	originsOk := handlers.AllowedOrigins([]string{"*"})
 	methodsOk := handlers.AllowedMethods([]string{"GET", "HEAD", "POST", "PUT", "OPTIONS"})
-	cors := handlers.CORS(headersOk, originsOk, methodsOk)(api.mainRouter)
+	credentialOK := handlers.AllowCredentials()
+	cors := handlers.CORS(headersOk, originsOk, methodsOk, credentialOK)(api.mainRouter)
 	logger.Info.Fatalln(http.ListenAndServe(api_address_port, handlers.LoggingHandler(os.Stdout, cors)))
 }
 
