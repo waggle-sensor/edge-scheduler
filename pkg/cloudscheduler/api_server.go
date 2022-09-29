@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -106,49 +107,6 @@ func (api *APIServer) ConfigureAPIs(prometheusGatherer *prometheus.Registry) {
 	}
 }
 
-type loggingResponseWriter struct {
-	http.ResponseWriter
-	statusCode int
-}
-
-func NewLoggingResponseWriter(w http.ResponseWriter) *loggingResponseWriter {
-	return &loggingResponseWriter{w, http.StatusOK}
-}
-
-func (lrw *loggingResponseWriter) WriteHeader(code int) {
-	lrw.statusCode = code
-	lrw.ResponseWriter.WriteHeader(code)
-}
-
-func (lrw *loggingResponseWriter) Flush() {
-	flusher, ok := lrw.ResponseWriter.(http.Flusher)
-	if ok {
-		flusher.Flush()
-	}
-}
-
-func logRequestHandler(h http.Handler) http.Handler {
-	fn := func(w http.ResponseWriter, r *http.Request) {
-
-		// call the original http.Handler we're wrapping
-		lrw := NewLoggingResponseWriter(w)
-		h.ServeHTTP(lrw, r)
-
-		// gather information about request and log it
-		uri := r.URL.String()
-		method := r.Method
-		// TODO: We are now manually blocking goals/vsn/stream requests to be logged simply because
-		//       they are too many.
-		if !strings.Contains(uri, "stream") {
-			logger.Info.Printf("[%s] %s from %s: %d", method, uri, r.RemoteAddr, lrw.statusCode)
-		}
-	}
-
-	// http.HandlerFunc wraps a function so that it
-	// implements http.Handler interface
-	return http.HandlerFunc(fn)
-}
-
 func (api *APIServer) Run() {
 	api_address_port := fmt.Sprintf("0.0.0.0:%d", api.port)
 	logger.Info.Printf("API server starts at %q...", api_address_port)
@@ -158,7 +116,7 @@ func (api *APIServer) Run() {
 	originsOk := handlers.AllowedOrigins([]string{"*"})
 	methodsOk := handlers.AllowedMethods([]string{"GET", "HEAD", "POST", "PUT", "OPTIONS"})
 	cors := handlers.CORS(headersOk, originsOk, methodsOk)(api.mainRouter)
-	logger.Info.Fatalln(http.ListenAndServe(api_address_port, logRequestHandler(cors)))
+	logger.Info.Fatalln(http.ListenAndServe(api_address_port, handlers.LoggingHandler(os.Stdout, cors)))
 }
 
 func (api *APIServer) handlerCreateJob(w http.ResponseWriter, r *http.Request) {
