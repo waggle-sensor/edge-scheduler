@@ -64,7 +64,7 @@ func (cs *CloudScheduler) Configure() error {
 	return nil
 }
 
-func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(jobID string, dryrun bool) (errorList []error) {
+func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(jobID string, user *User, dryrun bool) (errorList []error) {
 	job, err := cs.GoalManager.GetJob(jobID)
 	if err != nil {
 		return []error{err}
@@ -101,6 +101,15 @@ func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(jobID string, dryrun b
 		}
 	}
 	for nodeName := range job.Nodes {
+		// Check 0: if the user can schedule
+		ret, err := user.CanScheduleOnNode(nodeName)
+		if err != nil {
+			errorList = append(errorList, err)
+			continue
+		} else if ret == false {
+			errorList = append(errorList, fmt.Errorf("User %s does not have permission for node %s", user.GetUserName(), nodeName))
+			continue
+		}
 		approvedPlugins := []*datatype.Plugin{}
 		nodeManifest := cs.Validator.GetNodeManifest(nodeName)
 		if nodeManifest == nil {

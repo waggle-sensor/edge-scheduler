@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -18,12 +17,11 @@ func init() {
 				if err != nil {
 					return err
 				}
-				body, err := r.handler.ParseJSONHTTPResponse(resp)
+				decoder, err := r.handler.ParseJSONHTTPResponse(resp)
 				if err != nil {
 					return err
 				}
-				blob, _ := json.MarshalIndent(body, "", " ")
-				fmt.Printf("%s\n", string(blob))
+				fmt.Println(printSingleJsonFromDecoder(decoder))
 				return nil
 			}
 			return jobRequest.Run(pingFunc)

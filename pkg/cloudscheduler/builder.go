@@ -18,6 +18,7 @@ type CloudSchedulerConfig struct {
 	DataDir            string `json:"data_dir,omitempty" yaml:"dataDir,omitempty"`
 	PushNotification   bool   `json:"push_notification" yaml:"PushNotification"`
 	AuthServerURL      string `json:"auth_server_url" yaml:"authServerURL"`
+	AuthPassword       string `json:"auth_password" yaml:"authPassword"`
 }
 
 type CloudSchedulerBuilder struct {
@@ -53,7 +54,7 @@ func (csb *CloudSchedulerBuilder) AddAPIServer() *CloudSchedulerBuilder {
 		port:                   csb.cloudScheduler.Config.Port,
 		enablePushNotification: csb.cloudScheduler.Config.PushNotification,
 		subscribers:            make(map[string]map[chan *datatype.Event]bool),
-		authenticator:          NewAuthenticator(csb.cloudScheduler.Config.AuthServerURL),
+		authenticator:          NewAuthenticator(csb.cloudScheduler.Config.AuthServerURL, csb.cloudScheduler.Config.AuthPassword),
 	}
 	return csb
 }

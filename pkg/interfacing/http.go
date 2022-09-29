@@ -9,7 +9,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"path"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -36,7 +36,7 @@ func (r *HTTPRequest) RequestGet(subPath string, queries url.Values, header map[
 	if err != nil {
 		return nil, fmt.Errorf("Failed to parse %q: %s", r.BaseURL, err.Error())
 	}
-	url.Path = path.Join(url.Path, subPath)
+	url = url.JoinPath(url.Path, subPath)
 	if queries != nil {
 		url.RawQuery = queries.Encode()
 	}
@@ -44,51 +44,69 @@ func (r *HTTPRequest) RequestGet(subPath string, queries url.Values, header map[
 	if err != nil {
 		return nil, err
 	}
+	req.Header.Set("Content-Type", "application/json")
 	if header != nil {
 		for k, v := range header {
-			req.Header.Add(k, v)
+			req.Header.Set(k, v)
 		}
 	}
 	return r.c.Do(req)
 }
 
-func (r *HTTPRequest) RequestPost(subPath string, body []byte) (*http.Response, error) {
+func (r *HTTPRequest) RequestPost(subPath string, body []byte, header map[string]string) (*http.Response, error) {
 	url, err := url.Parse(r.BaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to parse %q: %s", r.BaseURL, err.Error())
 	}
-	url.Path = path.Join(url.Path, subPath)
-	return http.Post(url.String(), "application/json", bytes.NewBuffer(body))
+	url = url.JoinPath(url.Path, subPath)
+	req, err := http.NewRequest("POST", url.String(), bytes.NewBuffer(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if header != nil {
+		for k, v := range header {
+			req.Header.Set(k, v)
+		}
+	}
+	return r.c.Do(req)
 }
 
-func (r *HTTPRequest) RequestPostFromFile(subPath string, filePath string) (*http.Response, error) {
+func (r *HTTPRequest) RequestPostFromFile(subPath string, filePath string, queries url.Values, header map[string]string) (*http.Response, error) {
 	url, err := url.Parse(r.BaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to parse %q: %s", r.BaseURL, err.Error())
 	}
-	url.Path = path.Join(url.Path, subPath)
+	url = url.JoinPath(url.Path, subPath)
+	if queries != nil {
+		url.RawQuery = queries.Encode()
+	}
 	blob, err := ioutil.ReadFile(filePath)
 	if err != nil {
 		return nil, err
 	}
-	return http.Post(url.String(), "application/json", bytes.NewBuffer(blob))
-}
-
-func (r *HTTPRequest) RequestPostFromFileWithQueries(subPath string, filePath string, queries url.Values) (*http.Response, error) {
-	url, err := url.Parse(r.BaseURL)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to parse %q: %s", r.BaseURL, err.Error())
-	}
-	url.Path = path.Join(url.Path, subPath)
-	url.RawQuery = queries.Encode()
-	blob, err := ioutil.ReadFile(filePath)
+	req, err := http.NewRequest("POST", url.String(), bytes.NewBuffer(blob))
 	if err != nil {
 		return nil, err
 	}
-	return http.Post(url.String(), "application/json", bytes.NewBuffer(blob))
+	ext := filepath.Ext(filePath)
+	switch ext {
+	case ".json":
+		req.Header.Set("Content-Type", "application/json")
+	case ".yaml", ".yml":
+		req.Header.Set("Content-Type", "application/yaml")
+	default:
+		req.Header.Set("Content-Type", "application/octet-stream")
+	}
+	if header != nil {
+		for k, v := range header {
+			req.Header.Set(k, v)
+		}
+	}
+	return r.c.Do(req)
 }
 
-func (r *HTTPRequest) ParseJSONHTTPResponse(resp *http.Response) (body map[string]interface{}, err error) {
+func (r *HTTPRequest) ParseJSONHTTPResponse(resp *http.Response) (decoder *json.Decoder, err error) {
 	defer resp.Body.Close()
 	stream, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -100,12 +118,13 @@ func (r *HTTPRequest) ParseJSONHTTPResponse(resp *http.Response) (body map[strin
 	if resp.Header.Get("Content-Type") != "application/json" {
 		return nil, fmt.Errorf("Content-Type is not JSON: %s", resp.Header.Get("Content-Type"))
 	}
-	err = json.Unmarshal(stream, &body)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to decode JSON body: %s", err.Error())
-	}
-	// body["StatusCode"] = resp.StatusCode
-	return body, nil
+	return json.NewDecoder(bytes.NewReader(stream)), nil
+	// err = json.Unmarshal(stream, &body)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("Failed to decode JSON body: %s", err.Error())
+	// }
+	// // body["StatusCode"] = resp.StatusCode
+	// return body, nil
 }
 
 func (r *HTTPRequest) Subscribe(streamPath string, ch chan *datatype.Event, keepRetry bool) error {

@@ -61,12 +61,14 @@ func (kb *KnowledgeBase) AddRawMeasure(k string, v interface{}) {
 		"key":   k,
 		"value": v,
 	})
-	resp, err := r.RequestPost("store", data)
+	resp, err := r.RequestPost("store", data, nil)
 
-	body, err := r.ParseJSONHTTPResponse(resp)
+	decoder, err := r.ParseJSONHTTPResponse(resp)
 	if err != nil {
 
 	}
+	var body map[string]interface{}
+	decoder.Decode(&body)
 	logger.Debug.Printf("%v", body)
 	// logger.Debug.Printf("Added raw measure %q:%s", k, v.(string))
 	// v, err := strconv.ParseFloat(v.(string), 64)
@@ -90,14 +92,16 @@ func (kb *KnowledgeBase) EvaluateRule(rule string) (string, error) {
 	data, _ := json.Marshal(map[string]interface{}{
 		"rule": condition,
 	})
-	resp, err := r.RequestPost("evaluate", data)
+	resp, err := r.RequestPost("evaluate", data, nil)
 	if err != nil {
 		return "", fmt.Errorf("Failed to get data from checker: %s", err.Error())
 	}
-	body, err := r.ParseJSONHTTPResponse(resp)
+	decoder, err := r.ParseJSONHTTPResponse(resp)
 	if err != nil {
 		return "", fmt.Errorf("Failed to parse response: %s", err.Error())
 	}
+	var body map[string]interface{}
+	decoder.Decode(&body)
 	if r, exists := body["response"]; exists {
 		if r.(string) == "failed" {
 			return "", fmt.Errorf("Failed to evaluate rule: %s", body["error"])

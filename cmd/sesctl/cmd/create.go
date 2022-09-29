@@ -1,11 +1,12 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/url"
+	"path"
 
 	"github.com/spf13/cobra"
+	"github.com/waggle-sensor/edge-scheduler/pkg/cloudscheduler"
 )
 
 func init() {
@@ -15,17 +16,17 @@ func init() {
 		TraverseChildren: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			createFunc := func(r *JobRequest) error {
+				subPathString := path.Join(cloudscheduler.API_V1_VERSION, cloudscheduler.API_PATH_JOB_CREATE)
 				if r.FilePath != "" {
-					resp, err := r.handler.RequestPostFromFile("api/v1/create", r.FilePath)
+					resp, err := r.handler.RequestPostFromFile(subPathString, r.FilePath, nil, r.Headers)
 					if err != nil {
 						return err
 					}
-					body, err := r.handler.ParseJSONHTTPResponse(resp)
+					decoder, err := r.handler.ParseJSONHTTPResponse(resp)
 					if err != nil {
 						return err
 					}
-					blob, _ := json.MarshalIndent(body, "", " ")
-					fmt.Printf("%s\n", string(blob))
+					fmt.Println(printSingleJsonFromDecoder(decoder))
 				} else {
 					if len(args) < 1 {
 						return fmt.Errorf("Please specify job name")
@@ -35,15 +36,15 @@ func init() {
 					if err != nil {
 						return err
 					}
-					resp, err := r.handler.RequestGet("api/v1/create", q, r.Headers)
+					resp, err := r.handler.RequestGet(subPathString, q, r.Headers)
 					if err != nil {
 						return err
 					}
-					body, err := r.handler.ParseJSONHTTPResponse(resp)
+					decoder, err := r.handler.ParseJSONHTTPResponse(resp)
 					if err != nil {
 						return err
 					}
-					fmt.Printf("%v", body)
+					fmt.Println(printSingleJsonFromDecoder(decoder))
 				}
 				return nil
 			}

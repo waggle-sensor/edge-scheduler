@@ -45,7 +45,7 @@ func (mc *MetricsCollector) Describe(ch chan<- *prometheus.Desc) {
 func (mc *MetricsCollector) Collect(ch chan<- prometheus.Metric) {
 	var m JobsMetric
 	// TODO: Do we count removed jobs for the completed jobs?
-	for _, j := range mc.cs.GoalManager.GetJobs() {
+	for _, j := range mc.cs.GoalManager.GetJobs("") {
 		switch j.Status {
 		case datatype.JobCreated, datatype.JobDrafted, datatype.JobSuspended, datatype.JobSubmitted:
 			m.CountSubmitted += 1
