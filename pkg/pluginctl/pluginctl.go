@@ -101,6 +101,89 @@ func (p *PluginCtl) Deploy(dep *Deployment) (string, error) {
 	return deployedJob.Name, err
 }
 
+// RunAsync runs given plugin and reports plugin status changes back to caller
+// The function is expected to be called asynchronously, i.e. go RunAsync()
+func (p *PluginCtl) RunAsync(dep *Deployment, chEvent chan<- datatype.Event, out *os.File) {
+	// Run plugin
+	pluginName, err := p.Deploy(dep)
+	if err != nil {
+		eventBuilder := datatype.NewEventBuilder(datatype.EventFailure).AddReason(err.Error())
+		chEvent <- eventBuilder.Build()
+		return
+	}
+	defer p.TerminatePlugin(pluginName)
+	eventBuilder := datatype.NewEventBuilder(datatype.EventPluginStatusLaunched).AddEntry("plugin_name", pluginName)
+	chEvent <- eventBuilder.Build()
+	pluginStartT := time.Now().UTC()
+	// TODO: We will need to capture when the user does Ctrl + C to kill the caller
+	// Check if the pod is running
+	for {
+		pluginStatus, err := p.GetPluginStatus(pluginName)
+		if err != nil {
+			fmt.Fprintln(out, "Waiting for plugin to run...")
+		} else {
+			if pluginStatus != apiv1.PodPending {
+				break
+			}
+			fmt.Fprintf(out, "Plugin is in %q state. Waiting...\n", pluginStatus)
+		}
+		time.Sleep(2 * time.Second)
+	}
+	// c := make(chan os.Signal, 1)
+	// signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	// go func() {
+	// 	watcher, err := p.ResourceManager.WatchJob(pluginName, p.ResourceManager.Namespace, 0)
+	// 	if err != nil {
+	// 		logger.Error.Printf("%q", err.Error())
+	// 		c <- nil
+	// 	}
+	// 	chanGoal := watcher.ResultChan()
+	// 	for {
+	// 		event := <-chanGoal
+	// 		switch event.Type {
+	// 		case watch.Added, watch.Deleted, watch.Modified:
+	// 			switch obj := event.Object.(type) {
+	// 			case *batchv1.Job:
+	// 				if len(obj.Status.Conditions) > 0 {
+	// 					logger.Debug.Printf("%s: %s", event.Type, obj.Status.Conditions[0].Type)
+	// 					switch obj.Status.Conditions[0].Type {
+	// 					case batchv1.JobComplete, batchv1.JobFailed:
+	// 						c <- nil
+	// 					}
+	// 				} else {
+	// 					logger.Debug.Printf("job unexpectedly missing status conditions: %v", obj)
+	// 				}
+	// 			default:
+	// 				logger.Debug.Printf("%s: %s", event.Type, "UNKNOWN")
+	// 			}
+	// 		}
+	// 	}
+	// }()
+
+	printLogFunc, terminateLog, err := p.PrintLog(pluginName, true)
+	if err != nil {
+		eventBuilder := datatype.NewEventBuilder(datatype.EventFailure).AddReason(err.Error())
+		chEvent <- eventBuilder.Build()
+		return
+	}
+	go printLogFunc()
+	for {
+		select {
+		// case <-c:
+		// 	logger.Debug.Println("Log terminated from user side")
+		// 	pluginEndT := time.Now().UTC()
+		// 	logger.Info.Println(pluginStartT)
+		// 	logger.Info.Println(pluginEndT)
+		// 	return nil
+		case <-terminateLog:
+			logger.Debug.Println("Log terminated from handler")
+			pluginEndT := time.Now().UTC()
+			logger.Info.Println(pluginStartT)
+			logger.Info.Println(pluginEndT)
+		}
+	}
+}
+
 func (p *PluginCtl) PrintLog(pluginName string, follow bool) (func(), chan os.Signal, error) {
 	podLog, err := p.ResourceManager.GetPluginLog(pluginName, follow)
 	if err != nil {
