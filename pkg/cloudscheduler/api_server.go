@@ -285,6 +285,13 @@ func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) 
 				return
 			}
 			jobID := api.cloudScheduler.GoalManager.AddJob(newJob)
+			err = api.authenticator.UpdatePermissionTableForUser(user)
+			if err != nil {
+				response := datatype.NewAPIMessageBuilder()
+				response.AddError(err.Error())
+				respondJSON(w, http.StatusInternalServerError, response.Build().ToJson())
+				return
+			}
 			errorList := api.cloudScheduler.ValidateJobAndCreateScienceGoal(jobID, user, flagDryRun)
 			if len(errorList) > 0 {
 				response := datatype.NewAPIMessageBuilder().
@@ -317,7 +324,12 @@ func (api *APIServer) handlerJobs(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == http.MethodGet {
 		response := datatype.NewAPIMessageBuilder()
-		jobs := api.cloudScheduler.GoalManager.GetJobs(user.GetUserName())
+		var jobs []*datatype.Job
+		if user.Auth.IsSuperUser {
+			jobs = api.cloudScheduler.GoalManager.GetJobs("")
+		} else {
+			jobs = api.cloudScheduler.GoalManager.GetJobs(user.GetUserName())
+		}
 		for _, job := range jobs {
 			response.AddEntity(job.JobID, job)
 		}
@@ -340,6 +352,11 @@ func (api *APIServer) handlerJobStatus(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			response.AddError(err.Error())
 			respondJSON(w, http.StatusBadRequest, response.Build().ToJson())
+			return
+		}
+		if user.Auth.IsSuperUser {
+			response.AddEntity(vars["id"], job)
+			respondJSON(w, http.StatusOK, response.Build().ToJson())
 			return
 		}
 		if job.User != user.GetUserName() {
@@ -516,9 +533,9 @@ func (api *APIServer) authenticate(r *http.Request) (*User, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Authentication failed: %s", err.Error())
 	}
-	if user.Auth.Active == false {
-		return user, fmt.Errorf("User %q is inactive. Please contact administrator.", user.GetUserName())
-	}
+	// if user.Auth.Active == false {
+	// 	return user, fmt.Errorf("User %q is inactive. Please contact administrator.", user.GetUserName())
+	// }
 	return user, nil
 }
 

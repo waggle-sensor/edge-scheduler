@@ -9,16 +9,17 @@ import (
 
 type Authenticator interface {
 	Authenticate(string) (*User, error)
+	UpdatePermissionTableForUser(*User) error
 }
 
-func NewAuthenticator(authServerURL string, authPassword string) Authenticator {
+func NewAuthenticator(authServerURL string, authToken string) Authenticator {
 	// If no auth server is given we will use a fake auth granting any request
 	if authServerURL == "" {
 		return &FakeAuthenticator{}
 	} else {
 		return &RealAuthenticator{
 			AuthServerURL: authServerURL,
-			AuthPassword:  authPassword,
+			AuthToken:     authToken,
 		}
 	}
 }
@@ -35,9 +36,14 @@ func (auth *FakeAuthenticator) Authenticate(token string) (*User, error) {
 	}, nil
 }
 
+func (auth *FakeAuthenticator) UpdatePermissionTableForUser(u *User) error {
+	// TODO: We will need to think about how we fill the permission table for a fake user
+	return nil
+}
+
 type RealAuthenticator struct {
 	AuthServerURL string
-	AuthPassword  string
+	AuthToken     string
 }
 
 func (auth *RealAuthenticator) Authenticate(token string) (*User, error) {
@@ -50,16 +56,16 @@ func (auth *RealAuthenticator) Authenticate(token string) (*User, error) {
 	return &user, nil
 }
 
+// validateTokenAndGetAuth attempts to validate the user with given token using
+// the auth server. Upon validated the user information will be updated in `u` parameter.
 func (auth *RealAuthenticator) validateTokenAndGetAuth(u *User) error {
-	subPathString := "/token_info/"
-	payload := fmt.Sprintf("token=%s", u.Token)
+	subPathString := "/users/~self"
 	req := interfacing.NewHTTPRequest(auth.AuthServerURL)
 	additionalHeader := map[string]string{
-		"Authorization": fmt.Sprintf("Basic %s", auth.AuthPassword),
-		"Content-Type":  "application/x-www-form-urlencoded",
+		"Authorization": fmt.Sprintf("Sage %s", u.Token),
 		"Accept":        "application/json",
 	}
-	resp, err := req.RequestPost(subPathString, []byte(payload), additionalHeader)
+	resp, err := req.RequestGet(subPathString, nil, additionalHeader)
 	if err != nil {
 		return err
 	}
@@ -76,70 +82,13 @@ func (auth *RealAuthenticator) validateTokenAndGetAuth(u *User) error {
 	return nil
 }
 
-type User struct {
-	Token          string
-	Auth           *UserAuth
-	nodePermission *UserPermissionTable
-}
-
-func (u *User) GetUserName() string {
-	if u.Auth != nil {
-		return u.Auth.UserName
-	}
-	return ""
-}
-
-func (u *User) CanScheduleOnNode(nodeName string) (bool, error) {
-	// Username must be provided
-	if u.GetUserName() == "" {
-		return false, fmt.Errorf("Username does not exist")
-	}
-	err := u.updateNodePermission()
-	if err != nil {
-		return false, fmt.Errorf("Failed to get node permission:%s", err.Error())
-	}
-	result := u.nodePermission.HasSchedulePermission(nodeName)
-	return result, nil
-}
-
-func (u *User) updateNodePermission() error {
-	if u.nodePermission == nil {
-		u.nodePermission = &UserPermissionTable{
-			table: map[string]bool{},
-		}
-	}
-	// Once the table has updated, we do not update it again
-	if time.Now().Sub(u.nodePermission.lastUpdated) > time.Duration(1*time.Minute) {
-		return u.nodePermission.UpdateTable(u.GetUserName())
-	}
-	return nil
-}
-
-type UserAuth struct {
-	Active   bool
-	Scope    string
-	ClientID string
-	UserName string
-	Exp      int
-}
-
-const (
-	PERMISSION_SCHEDULE = "schedule"
-)
-
-type UserPermissionTable struct {
-	table       map[string]bool
-	lastUpdated time.Time
-}
-
-func (upt *UserPermissionTable) UpdateTable(userName string) error {
-	// TODO: We need to avoid updating the table too frequently.
-	//       With the following if statement the table is updated at most once an hour
-	permissionServerURL := "https://access.sagecontinuum.org"
-	subPathStringRegex := fmt.Sprintf("/profiles/%s/access", userName)
-	req := interfacing.NewHTTPRequest(permissionServerURL)
+// UpdatePermissinoTableForUser uses the schedulers token to update user access of given user
+func (auth *RealAuthenticator) UpdatePermissionTableForUser(u *User) error {
+	subPathStringRegex := fmt.Sprintf("/users/%s/access", u.Auth.UserName)
+	req := interfacing.NewHTTPRequest(auth.AuthServerURL)
 	additionalHeader := map[string]string{
-		"Accept": "application/json",
+		"Authorization": fmt.Sprintf("Sage %s", auth.AuthToken),
+		"Accept":        "application/json",
 	}
 	resp, err := req.RequestGet(subPathStringRegex, nil, additionalHeader)
 	if err != nil {
@@ -158,18 +107,65 @@ func (upt *UserPermissionTable) UpdateTable(userName string) error {
 	if err != nil {
 		return fmt.Errorf("Failed to decode permission table: %s", err.Error())
 	}
+	u.NodePermission = &UserPermissionTable{
+		table: map[string]bool{},
+	}
 	for _, p := range permissions {
 		for _, a := range p.Access {
 			if a == PERMISSION_SCHEDULE {
-				upt.table[p.Vsn] = true
+				u.NodePermission.table[p.Vsn] = true
 				break
 			} else {
-				upt.table[p.Vsn] = false
+				u.NodePermission.table[p.Vsn] = false
 			}
 		}
 	}
-	upt.lastUpdated = time.Now()
+	u.NodePermission.lastUpdated = time.Now()
 	return nil
+}
+
+type User struct {
+	Token          string
+	Auth           *UserAuth
+	NodePermission *UserPermissionTable
+}
+
+func (u *User) GetUserName() string {
+	if u.Auth != nil {
+		return u.Auth.UserName
+	}
+	return ""
+}
+
+func (u *User) CanScheduleOnNode(nodeName string) (bool, error) {
+	// Username must be provided
+	if u.GetUserName() == "" {
+		return false, fmt.Errorf("Username does not exist")
+	}
+	if u.NodePermission == nil {
+		return false, fmt.Errorf("User permission table has not been updated")
+	}
+	result := u.NodePermission.HasSchedulePermission(nodeName)
+	return result, nil
+}
+
+type UserAuth struct {
+	Url           string `json:"url"`
+	UserName      string `json:"username"`
+	Email         string `json:"email"`
+	Name          string `json:"name"`
+	IsStaff       bool   `json:"is_staff"`
+	IsSuperUser   bool   `json:"is_superuser"`
+	SshPublicKeys string `json:"ssh_public_keys"`
+}
+
+const (
+	PERMISSION_SCHEDULE = "schedule"
+)
+
+type UserPermissionTable struct {
+	table       map[string]bool
+	lastUpdated time.Time
 }
 
 func (upt *UserPermissionTable) HasSchedulePermission(nodeName string) bool {

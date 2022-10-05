@@ -36,7 +36,7 @@ func main() {
 	flag.StringVar(&config.RabbitmqPassword, "rabbitmq-password", getenv("RABBITMQ_PASSWORD", "guest"), "RabbitMQ management password")
 	flag.BoolVar(&config.PushNotification, "push-notification", true, "Enable HTTP push notification for science goals")
 	flag.StringVar(&config.AuthServerURL, "auth-server-url", getenv("AUTH_URL", ""), "Authentication server URL")
-	flag.StringVar(&config.AuthPassword, "auth-password", getenv("AUTH_PASSWORD", ""), "Password to query in authentication server")
+	flag.StringVar(&config.AuthToken, "auth-token", getenv("AUTH_TOKEN", ""), "TOKEN to query to authentication server")
 	flag.Parse()
 	logger.Info.Printf("Cloud scheduler (%s) starts...", config.Name)
 	if configPath != "" {
