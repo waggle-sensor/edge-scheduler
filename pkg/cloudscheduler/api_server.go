@@ -234,6 +234,14 @@ func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) 
 		respondJSON(w, http.StatusBadRequest, response.Build().ToJson())
 		return
 	}
+	// Update user permission table for validating user against node access permission
+	err = api.authenticator.UpdatePermissionTableForUser(user)
+	if err != nil {
+		response := datatype.NewAPIMessageBuilder()
+		response.AddError(err.Error())
+		respondJSON(w, http.StatusInternalServerError, response.Build().ToJson())
+		return
+	}
 	queries := r.URL.Query()
 	flagDryRun := false
 	if _, exist := queries["dryrun"]; exist {
@@ -285,13 +293,6 @@ func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) 
 				return
 			}
 			jobID := api.cloudScheduler.GoalManager.AddJob(newJob)
-			err = api.authenticator.UpdatePermissionTableForUser(user)
-			if err != nil {
-				response := datatype.NewAPIMessageBuilder()
-				response.AddError(err.Error())
-				respondJSON(w, http.StatusInternalServerError, response.Build().ToJson())
-				return
-			}
 			errorList := api.cloudScheduler.ValidateJobAndCreateScienceGoal(jobID, user, flagDryRun)
 			if len(errorList) > 0 {
 				response := datatype.NewAPIMessageBuilder().
