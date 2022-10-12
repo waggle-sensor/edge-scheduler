@@ -9,7 +9,7 @@ type CloudSchedulerConfig struct {
 	Name               string `json:"name" yaml:"name"`
 	Version            string
 	NoRabbitMQ         bool   `json:"no_rabbitmq" yaml:"noRabbitMQ"`
-	RabbitmqURI        string `json:"rabbitmq_uri" yaml:"rabbimqURI"`
+	RabbitmqURL        string `json:"rabbitmq_url" yaml:"rabbiMQURL"`
 	RabbitmqUsername   string `json:"rabbitmq_username" yaml:"rabbitMQUsername"`
 	RabbitmqPassword   string `json:"rabbitmq_password" yaml:"rabbitMQPassword"`
 	RabbitmqCaCertPath string `json:"rabbitmq_cacert_path" yaml:"rabbitMQCacertPath"`

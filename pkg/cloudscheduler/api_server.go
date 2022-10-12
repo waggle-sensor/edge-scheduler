@@ -292,6 +292,7 @@ func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) 
 				respondJSON(w, http.StatusBadRequest, response.ToJson())
 				return
 			}
+			newJob.User = user.GetUserName()
 			jobID := api.cloudScheduler.GoalManager.AddJob(newJob)
 			errorList := api.cloudScheduler.ValidateJobAndCreateScienceGoal(jobID, user, flagDryRun)
 			if len(errorList) > 0 {

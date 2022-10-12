@@ -15,14 +15,29 @@ Job ID: %s
 Job Name: %s
 Job Owner: %s
 Job Status: %s
-Job Starttime: %s
+  Last updated: %s
 `,
 		j.JobID,
 		j.Name,
 		j.User,
-		j.Status,
-		j.LastUpdated.UTC().String(),
+		j.State.GetState(),
+		j.State.LastUpdated.Time.UTC().String(),
 	)
+	if !j.State.LastSubmitted.Time.IsZero() {
+		ret += fmt.Sprintf(`  Submitted: %s
+`,
+			j.State.LastSubmitted)
+	}
+	if !j.State.LastStarted.Time.IsZero() {
+		ret += fmt.Sprintf(`  Started: %s
+`,
+			j.State.LastStarted)
+	}
+	if !j.State.LastCompleted.Time.IsZero() {
+		ret += fmt.Sprintf(`  Completed: %s
+`,
+			j.State.LastCompleted)
+	}
 	if len(j.NotificationOn) > 0 {
 		ret += fmt.Sprintf(`
 Notification to %s
