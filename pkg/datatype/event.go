@@ -169,6 +169,9 @@ func (e *Event) encodeMetaToJson() ([]byte, error) {
 type EventType string
 
 const (
+	EventRabbitMQSubscriptionPatternAll     string = "sys.scheduler.#"
+	EventRabbitMQSubscriptionPatternGoals   string = "sys.scheduler.status.goal.#"
+	EventRabbitMQSubscriptionPatternPlugins string = "sys.scheduler.status.plugin.#"
 	// EventSchedulingDecisionScheduled EventType = "sys.scheduler.decision.scheduled"
 	EventJobStatusSuspended     EventType = "sys.scheduler.status.job.suspended"
 	EventJobStatusRemoved       EventType = "sys.scheduler.status.job.removed"

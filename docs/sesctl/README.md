@@ -12,7 +12,21 @@ $ sesctl --server ${SES_SERVER_ADDRESS} ping
 }
 ```
 
-# Tutorials
+## Attributes of A Job
+A job consists of attributes used to detail the job.
+
+- `json:"job_id" yaml:"jobID"`: ID of a job given from scheduler 
+- `json:"name" yaml:"name"`: user-defined name of the job
+- `json:"user" yaml:"user"`: username, the owner of job
+- `json:"email" yaml:"email"`: email of the user
+- `json:"notification_on" yaml:"notificationOn"`: list of events for user notification
+- `json:"plugins,omitempty" yaml:"plugins,omitempty"`: list of plugin specification
+- `json:"node_tags" yaml:"nodeTags"`: node tags to select nodes
+- `json:"nodes" yaml:"nodes"`: list of nodes
+- `json:"science_rules" yaml:"scienceRules"`: user-given science rules
+- `json:"success_criteria" yaml:"successCriteria"`: user-given conditions that check when the job completes
+
+## Tutorials
 
 1. [create_job](tutorial_createjob.md) creates a job in SES
 

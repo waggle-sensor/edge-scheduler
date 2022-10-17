@@ -50,11 +50,11 @@ func (cs *CloudScheduler) Configure() error {
 	if !cs.Config.NoRabbitMQ {
 		logger.Info.Printf(
 			"Using RabbitMQ at %s with user %s",
-			cs.Config.RabbitmqURI,
+			cs.Config.RabbitmqURL,
 			cs.Config.RabbitmqUsername,
 		)
 		cs.eventListener = interfacing.NewRabbitMQHandler(
-			cs.Config.RabbitmqURI,
+			cs.Config.RabbitmqURL,
 			cs.Config.RabbitmqUsername,
 			cs.Config.RabbitmqPassword,
 			cs.Config.RabbitmqCaCertPath,
@@ -211,7 +211,7 @@ func (cs *CloudScheduler) Run() {
 	go cs.APIServer.Run()
 	chanEventFromNode := make(chan *datatype.Event)
 	if cs.eventListener != nil {
-		cs.eventListener.SubscribeEvents("waggle.msg", "to-scheduler", chanEventFromNode)
+		cs.eventListener.SubscribeEvents("waggle.msg", "to-scheduler", datatype.EventRabbitMQSubscriptionPatternGoals, chanEventFromNode)
 	}
 	for {
 		select {

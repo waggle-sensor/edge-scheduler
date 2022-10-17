@@ -89,7 +89,7 @@ func init() {
 							return err
 						}
 						if !showAll {
-							if job.Status == datatype.JobRemoved || job.Status == datatype.JobComplete {
+							if job.State.GetState() == datatype.JobRemoved || job.State.GetState() == datatype.JobComplete {
 								continue
 							}
 						}
@@ -99,14 +99,14 @@ func init() {
 						} else {
 							name = job.Name
 						}
-						switch job.Status {
-						case datatype.JobSubmitted, datatype.JobRunning, datatype.JobComplete:
+						switch job.State.GetState() {
+						case datatype.JobRunning, datatype.JobComplete:
 							t := time.Now().UTC()
-							age := t.Sub(job.LastUpdated).Round(1 * time.Second)
-							formattedList += fmt.Sprintf("%-*s%-*s%-*s%-*s%-*s\n", maxLengthID+3, job.JobID, maxLengthName+3, name, maxLengthUser+3, job.User, maxLengthStatus+3, job.Status, maxAge, age)
+							age := t.Sub(job.State.LastUpdated.Time).Round(1 * time.Second)
+							formattedList += fmt.Sprintf("%-*s%-*s%-*s%-*s%-*s\n", maxLengthID+3, job.JobID, maxLengthName+3, name, maxLengthUser+3, job.User, maxLengthStatus+3, job.State.GetState(), maxAge, age)
 							break
 						default:
-							formattedList += fmt.Sprintf("%-*s%-*s%-*s%-*s%-*s\n", maxLengthID+3, job.JobID, maxLengthName+3, name, maxLengthUser+3, job.User, maxLengthStatus+3, job.Status, maxAge, "-")
+							formattedList += fmt.Sprintf("%-*s%-*s%-*s%-*s%-*s\n", maxLengthID+3, job.JobID, maxLengthName+3, name, maxLengthUser+3, job.User, maxLengthStatus+3, job.State.GetState(), maxAge, "-")
 						}
 					}
 					fmt.Printf("%s", formattedList)

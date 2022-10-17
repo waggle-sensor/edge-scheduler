@@ -8,17 +8,68 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-type JobStatus string
+type JobState string
 
 const (
-	JobCreated   JobStatus = "Created"
-	JobDrafted   JobStatus = "Drafted"
-	JobSubmitted JobStatus = "Submitted"
-	JobRunning   JobStatus = "Running"
-	JobComplete  JobStatus = "Completed"
-	JobSuspended JobStatus = "Suspended"
-	JobRemoved   JobStatus = "Removed"
+	JobCreated   JobState = "Created"
+	JobDrafted   JobState = "Drafted"
+	JobSubmitted JobState = "Submitted"
+	JobRunning   JobState = "Running"
+	JobComplete  JobState = "Completed"
+	JobSuspended JobState = "Suspended"
+	JobRemoved   JobState = "Removed"
 )
+
+type Time struct {
+	time.Time
+}
+
+// MarshalJSON overrides the JSON marshal function to send out null
+// instead of skipping the attribute in JSON marshalling
+func (t *Time) MarshalJSON() ([]byte, error) {
+	if t.Time.IsZero() {
+		return json.Marshal(nil)
+	} else {
+		return json.Marshal(t.Time)
+	}
+}
+
+func (t *Time) UnmarshalJSON(data []byte) error {
+	var a time.Time
+	err := json.Unmarshal(data, &a)
+	if err != nil {
+		return err
+	}
+	if !a.IsZero() {
+		t.Time = a
+	}
+	return nil
+}
+
+type State struct {
+	LastState     JobState `json:"last_state" yaml:"lastState"`
+	LastUpdated   Time     `json:"last_updated" yaml:"lastUpdated"`
+	LastSubmitted Time     `json:"last_submitted" yaml:"lastSubmitted"`
+	LastStarted   Time     `json:"last_started" yaml:"lastStarted"`
+	LastCompleted Time     `json:"last_completed" yaml:"lastCompleted"`
+}
+
+func (s *State) GetState() JobState {
+	return s.LastState
+}
+
+func (s *State) UpdateState(newState JobState) {
+	s.LastState = newState
+	s.LastUpdated.Time = time.Now().UTC()
+	switch newState {
+	case JobSubmitted:
+		s.LastSubmitted.Time = s.LastUpdated.Time
+	case JobRunning:
+		s.LastStarted.Time = s.LastUpdated.Time
+	case JobComplete, JobSuspended, JobRemoved:
+		s.LastCompleted.Time = s.LastUpdated.Time
+	}
+}
 
 // Job structs user request for jobs
 type Job struct {
@@ -26,15 +77,14 @@ type Job struct {
 	JobID           string                 `json:"job_id" yaml:"jobID"`
 	User            string                 `json:"user" yaml:"user"`
 	Email           string                 `json:"email" yaml:"email"`
-	NotificationOn  []JobStatus            `json:"notification_on" yaml:"notificationOn"`
+	NotificationOn  []JobState             `json:"notification_on" yaml:"notificationOn"`
 	Plugins         []*Plugin              `json:"plugins,omitempty" yaml:"plugins,omitempty"`
 	NodeTags        []string               `json:"node_tags" yaml:"nodeTags"`
 	Nodes           map[string]interface{} `json:"nodes" yaml:"nodes"`
 	ScienceRules    []string               `json:"science_rules" yaml:"scienceRules"`
 	SuccessCriteria []string               `json:"success_criteria" yaml:"successCriteria"`
 	ScienceGoal     *ScienceGoal           `json:"science_goal,omitempty" yaml:"scienceGoal,omitempty"`
-	Status          JobStatus              `json:"status" yaml:"status"`
-	LastUpdated     time.Time              `json:"last_updated" yaml:"lastUpdated"`
+	State           State                  `json:"state" yaml:"state"`
 }
 
 func NewJob(name string, user string, jobID string) *Job {
@@ -46,14 +96,13 @@ func NewJob(name string, user string, jobID string) *Job {
 	}
 }
 
-func (j *Job) SetNotification(email string, on []JobStatus) {
+func (j *Job) SetNotification(email string, on []JobState) {
 	j.Email = email
 	j.NotificationOn = on
 }
 
-func (j *Job) UpdateStatus(newStatus JobStatus) {
-	j.Status = newStatus
-	j.updateLastModified()
+func (j *Job) UpdateState(newState JobState) {
+	j.State.UpdateState(newState)
 }
 
 func (j *Job) AddNodes(nodeNames []string) {
@@ -82,8 +131,4 @@ func (j *Job) EncodeToJson() ([]byte, error) {
 
 func (j *Job) EncodeToYaml() ([]byte, error) {
 	return yaml.Marshal(j)
-}
-
-func (j *Job) updateLastModified() {
-	j.LastUpdated = time.Now()
 }
