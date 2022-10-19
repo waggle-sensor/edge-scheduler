@@ -52,10 +52,17 @@ var cmdRun = &cobra.Command{
 		defer pluginCtl.TerminatePlugin(pluginName)
 
 		fmt.Printf("Launched the plugin %s successfully \n", pluginName)
+		maxErrorCount := 5
+		errorCount := 0
 		for {
 			pluginStatus, err := pluginCtl.GetPluginStatus(pluginName)
 			if err != nil {
-				return err
+				errorCount += 1
+				logger.Debug.Printf("Failed to get plugin status: %s", err.Error())
+				if errorCount > maxErrorCount {
+					return fmt.Errorf("Failed to get plugin status %s", err.Error())
+				}
+				logger.Debug.Printf("Retrying with attempt count %d", errorCount)
 			}
 			if pluginStatus != apiv1.PodPending {
 				break

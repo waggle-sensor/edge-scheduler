@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -14,9 +13,9 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/watch"
-
-	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 )
+
+var metricsServerConfig pluginctl.MetricsServerConfig
 
 func init() {
 	flags := cmdProfile.Flags()
@@ -28,55 +27,8 @@ func init() {
 	flags.StringSliceVarP(&deployment.EnvVarString, "env", "e", []string{}, "Set environment variables")
 	flags.StringVarP(&deployment.EnvFromFile, "env-from", "", "", "Set environment variables from file")
 	flags.BoolVar(&deployment.DevelopMode, "develop", false, "Enable the following development time features: access to wan network")
+	flags.StringVar(&metricsServerConfig.InfluxDBTokenPath, "influxdb-token-path", getenv("INFLUXDB_TOKEN_PATH", "~/.influxdb2/token"), "Path to valid token to access InfluxDB")
 	rootCmd.AddCommand(cmdProfile)
-}
-
-func getPerformanceData(s time.Time, e time.Time, pluginName string) {
-	logger.Info.Println("Start gathering performance data...")
-	client := influxdb2.NewClient("http://localhost:8086", "o6o9QbxX85JBZEHzeob2t7y5ej5In9bqgG-skg967P-_XNHKCxSZsJU0xZZFUzjtXu0WLraJThNhqvq2JBFc2g==")
-	queryAPI := client.QueryAPI("waggle")
-	q := fmt.Sprintf(`
-from(bucket:"waggle")
-  |> range(start: %s, stop: %s)
-  |> filter(fn: (r) => r._measurement == "prometheus_remote_write")
-  |> filter(fn: (r) => r["pod"] =~ /^%s*/)`,
-		s.Format(time.RFC3339),
-		e.Format(time.RFC3339),
-		pluginName)
-	logger.Debug.Println(q)
-	f, err := os.OpenFile(fmt.Sprintf("%s.csv", pluginName), os.O_CREATE|os.O_WRONLY, 0644)
-	defer f.Close()
-	result, err := queryAPI.QueryRaw(context.Background(), q, influxdb2.DefaultDialect())
-	if err == nil {
-		n, err := f.WriteString(result)
-		if err != nil {
-			logger.Error.Printf("Failed to write performance data to a file: %s", err.Error())
-		} else {
-			logger.Debug.Printf("%d bytes written", n)
-		}
-	} else {
-		logger.Error.Printf("Failed to obtain performance data: %s", err.Error())
-	}
-
-	q = fmt.Sprintf(`
-from(bucket:"waggle")
-  |> range(start: %s, stop: %s)
-  |> filter(fn: (r) => r._measurement == "prometheus_remote_write")
-  |> filter(fn: (r) => r._field == "gpu_average_load1s")`,
-		s.Format(time.RFC3339),
-		e.Format(time.RFC3339))
-	logger.Debug.Println(q)
-	result, err = queryAPI.QueryRaw(context.Background(), q, influxdb2.DefaultDialect())
-	if err == nil {
-		n, err := f.WriteString(result)
-		if err != nil {
-			logger.Error.Printf("Failed to write performance data to a file: %s", err.Error())
-		} else {
-			logger.Debug.Printf("%d bytes written", n)
-		}
-	} else {
-		logger.Error.Printf("Failed to obtain performance data: %s", err.Error())
-	}
 }
 
 var cmdProfile = &cobra.Command{
@@ -87,15 +39,19 @@ var cmdProfile = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		deployment.PluginImage = args[0]
 		deployment.PluginArgs = args[1:]
-
 		logger.Debug.Printf("kubeconfig: %s", kubeconfig)
 		logger.Debug.Printf("deployment: %#v", deployment)
-
 		pluginCtl, err := pluginctl.NewPluginCtl(kubeconfig)
 		if err != nil {
 			return err
 		}
-
+		// Metrics server will provide performance data after the run
+		err = pluginCtl.ConnectToMetricsServer(metricsServerConfig)
+		if err != nil {
+			logger.Error.Printf("Failed to check metrics server: %s", err.Error())
+			logger.Error.Println("Abort profiling due to the error")
+			return err
+		}
 		pluginName, err := pluginCtl.Deploy(deployment)
 		if err != nil {
 			return err
@@ -103,10 +59,17 @@ var cmdProfile = &cobra.Command{
 		defer pluginCtl.TerminatePlugin(pluginName)
 		startT := time.Now().UTC()
 		fmt.Printf("Launched the plugin %s successfully \n", pluginName)
+		maxErrorCount := 5
+		errorCount := 0
 		for {
 			pluginStatus, err := pluginCtl.GetPluginStatus(pluginName)
 			if err != nil {
-				return err
+				errorCount += 1
+				logger.Debug.Printf("Failed to get plugin status: %s", err.Error())
+				if errorCount > maxErrorCount {
+					return fmt.Errorf("Failed to get plugin status %s", err.Error())
+				}
+				logger.Debug.Printf("Retrying with attempt count %d", errorCount)
 			}
 			if pluginStatus != apiv1.PodPending {
 				break
@@ -155,17 +118,16 @@ var cmdProfile = &cobra.Command{
 					logger.Debug.Println("Log terminated from user side")
 					endT := time.Now().UTC()
 					logger.Info.Printf("Plugin took %s to finish", endT.Sub(startT).String())
-					getPerformanceData(startT, endT, pluginName)
+					pluginCtl.GetPerformanceData(startT, endT, pluginName)
 					return nil
 				case <-terminateLog:
 					logger.Debug.Println("Log terminated from handler")
 					endT := time.Now().UTC()
 					logger.Info.Printf("Plugin took %s to finish", endT.Sub(startT).String())
-					getPerformanceData(startT, endT, pluginName)
+					pluginCtl.GetPerformanceData(startT, endT, pluginName)
 					return nil
 				}
 			}
 		}
-
 	},
 }
