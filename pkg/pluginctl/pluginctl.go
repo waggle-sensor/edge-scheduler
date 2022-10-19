@@ -2,12 +2,15 @@ package pluginctl
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"strings"
 	"time"
 
+	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
 	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
 	"github.com/waggle-sensor/edge-scheduler/pkg/nodescheduler"
@@ -16,7 +19,18 @@ import (
 
 const pluginctlJob = "Pluginctl"
 
+type MetricsServerConfig struct {
+	InfluxDBTokenPath string
+}
+
+type MetricsServer struct {
+	config *MetricsServerConfig
+	Client influxdb2.Client
+}
+
 type PluginCtl struct {
+	kubeConfig      string
+	MetricsServer   *MetricsServer
 	ResourceManager *nodescheduler.ResourceManager
 }
 
@@ -40,7 +54,10 @@ func NewPluginCtl(kubeconfig string) (*PluginCtl, error) {
 		return nil, err
 	}
 	resourceManager.Namespace = "default"
-	return &PluginCtl{ResourceManager: resourceManager}, nil
+	return &PluginCtl{
+		kubeConfig:      kubeconfig,
+		ResourceManager: resourceManager,
+	}, nil
 }
 
 func parseEnv(envs []string) (map[string]string, error) {
@@ -57,6 +74,45 @@ func parseEnv(envs []string) (map[string]string, error) {
 		items[k] = v
 	}
 	return items, nil
+}
+
+func (p *PluginCtl) GetMetrcisServerURL() (string, error) {
+	ip, err := p.ResourceManager.GetServiceClusterIP("wes-node-influxdb", "default")
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("http://%s:8086", ip), nil
+}
+
+func (p *PluginCtl) ConnectToMetricsServer(config MetricsServerConfig) error {
+	tokenBlob, err := ioutil.ReadFile(config.InfluxDBTokenPath)
+	if err != nil {
+		return fmt.Errorf("Failed to read token at %s: %s", config.InfluxDBTokenPath, err)
+	}
+	token := string(tokenBlob)
+	token = strings.TrimSpace(token)
+	if len(token) == 0 {
+		return fmt.Errorf("Token is empty")
+	}
+	influxURL, err := p.GetMetrcisServerURL()
+	if err != nil {
+		return err
+	}
+	if p.MetricsServer == nil {
+		p.MetricsServer = &MetricsServer{}
+	}
+	p.MetricsServer.Client = influxdb2.NewClient(influxURL, string(token))
+	// Ping to the server
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	result, err := p.MetricsServer.Client.Ping(ctx)
+	if err != nil {
+		return err
+	}
+	if !result {
+		return fmt.Errorf("The server %s is not running", influxURL)
+	}
+	return nil
 }
 
 func (p *PluginCtl) Deploy(dep *Deployment) (string, error) {
@@ -99,6 +155,89 @@ func (p *PluginCtl) Deploy(dep *Deployment) (string, error) {
 	}
 	deployedJob, err := p.ResourceManager.RunPlugin(job)
 	return deployedJob.Name, err
+}
+
+// RunAsync runs given plugin and reports plugin status changes back to caller
+// The function is expected to be called asynchronously, i.e. go RunAsync()
+func (p *PluginCtl) RunAsync(dep *Deployment, chEvent chan<- datatype.Event, out *os.File) {
+	// Run plugin
+	pluginName, err := p.Deploy(dep)
+	if err != nil {
+		eventBuilder := datatype.NewEventBuilder(datatype.EventFailure).AddReason(err.Error())
+		chEvent <- eventBuilder.Build()
+		return
+	}
+	defer p.TerminatePlugin(pluginName)
+	eventBuilder := datatype.NewEventBuilder(datatype.EventPluginStatusLaunched).AddEntry("plugin_name", pluginName)
+	chEvent <- eventBuilder.Build()
+	pluginStartT := time.Now().UTC()
+	// TODO: We will need to capture when the user does Ctrl + C to kill the caller
+	// Check if the pod is running
+	for {
+		pluginStatus, err := p.GetPluginStatus(pluginName)
+		if err != nil {
+			fmt.Fprintln(out, "Waiting for plugin to run...")
+		} else {
+			if pluginStatus != apiv1.PodPending {
+				break
+			}
+			fmt.Fprintf(out, "Plugin is in %q state. Waiting...\n", pluginStatus)
+		}
+		time.Sleep(2 * time.Second)
+	}
+	// c := make(chan os.Signal, 1)
+	// signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	// go func() {
+	// 	watcher, err := p.ResourceManager.WatchJob(pluginName, p.ResourceManager.Namespace, 0)
+	// 	if err != nil {
+	// 		logger.Error.Printf("%q", err.Error())
+	// 		c <- nil
+	// 	}
+	// 	chanGoal := watcher.ResultChan()
+	// 	for {
+	// 		event := <-chanGoal
+	// 		switch event.Type {
+	// 		case watch.Added, watch.Deleted, watch.Modified:
+	// 			switch obj := event.Object.(type) {
+	// 			case *batchv1.Job:
+	// 				if len(obj.Status.Conditions) > 0 {
+	// 					logger.Debug.Printf("%s: %s", event.Type, obj.Status.Conditions[0].Type)
+	// 					switch obj.Status.Conditions[0].Type {
+	// 					case batchv1.JobComplete, batchv1.JobFailed:
+	// 						c <- nil
+	// 					}
+	// 				} else {
+	// 					logger.Debug.Printf("job unexpectedly missing status conditions: %v", obj)
+	// 				}
+	// 			default:
+	// 				logger.Debug.Printf("%s: %s", event.Type, "UNKNOWN")
+	// 			}
+	// 		}
+	// 	}
+	// }()
+
+	printLogFunc, terminateLog, err := p.PrintLog(pluginName, true)
+	if err != nil {
+		eventBuilder := datatype.NewEventBuilder(datatype.EventFailure).AddReason(err.Error())
+		chEvent <- eventBuilder.Build()
+		return
+	}
+	go printLogFunc()
+	for {
+		select {
+		// case <-c:
+		// 	logger.Debug.Println("Log terminated from user side")
+		// 	pluginEndT := time.Now().UTC()
+		// 	logger.Info.Println(pluginStartT)
+		// 	logger.Info.Println(pluginEndT)
+		// 	return nil
+		case <-terminateLog:
+			logger.Debug.Println("Log terminated from handler")
+			pluginEndT := time.Now().UTC()
+			logger.Info.Println(pluginStartT)
+			logger.Info.Println(pluginEndT)
+		}
+	}
 }
 
 func (p *PluginCtl) PrintLog(pluginName string, follow bool) (func(), chan os.Signal, error) {
@@ -197,4 +336,51 @@ func (p *PluginCtl) GetPlugins() (formattedList string, err error) {
 		formattedList += fmt.Sprintf("%-*s%-*s%-*s%-*s\n", maxLengthName+3, plugin.Name, maxLengthStatus+3, status, maxLengthStartTime+3, startTime, maxLengthDuration+3, duration)
 	}
 	return
+}
+
+func (p *PluginCtl) GetPerformanceData(s time.Time, e time.Time, pluginName string) error {
+	logger.Info.Println("Start gathering performance data...")
+	// TODO: We will need an error handling on whether the metrics server with config is set
+	queryAPI := p.MetricsServer.Client.QueryAPI("waggle")
+	q := fmt.Sprintf(`
+from(bucket:"waggle")
+  |> range(start: %s, stop: %s)
+  |> filter(fn: (r) => r["pod"] =~ /^%s*/)`,
+		s.Format(time.RFC3339),
+		e.Format(time.RFC3339),
+		pluginName)
+	logger.Debug.Println(q)
+	f, err := os.OpenFile(fmt.Sprintf("%s.csv", pluginName), os.O_CREATE|os.O_WRONLY, 0644)
+	defer f.Close()
+	result, err := queryAPI.QueryRaw(context.Background(), q, influxdb2.DefaultDialect())
+	if err == nil {
+		n, err := f.WriteString(result)
+		if err != nil {
+			logger.Error.Printf("Failed to write performance data to a file: %s", err.Error())
+		} else {
+			logger.Debug.Printf("%d bytes written", n)
+		}
+	} else {
+		logger.Error.Printf("Failed to obtain performance data: %s", err.Error())
+	}
+
+	q = fmt.Sprintf(`
+from(bucket:"waggle")
+  |> range(start: %s, stop: %s)
+  |> filter(fn: (r) => r._measurement =~ /^sys.metrics.gpu.*/)`,
+		s.Format(time.RFC3339),
+		e.Format(time.RFC3339))
+	logger.Debug.Println(q)
+	result, err = queryAPI.QueryRaw(context.Background(), q, influxdb2.DefaultDialect())
+	if err == nil {
+		n, err := f.WriteString(result)
+		if err != nil {
+			logger.Error.Printf("Failed to write performance data to a file: %s", err.Error())
+		} else {
+			logger.Debug.Printf("%d bytes written", n)
+		}
+	} else {
+		logger.Error.Printf("Failed to obtain performance data: %s", err.Error())
+	}
+	return nil
 }
