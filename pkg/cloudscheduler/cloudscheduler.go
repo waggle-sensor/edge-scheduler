@@ -3,6 +3,7 @@ package cloudscheduler
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -213,8 +214,17 @@ func (cs *CloudScheduler) Run() {
 	if cs.eventListener != nil {
 		cs.eventListener.SubscribeEvents("waggle.msg", "to-scheduler", datatype.EventRabbitMQSubscriptionPatternGoals, chanEventFromNode)
 	}
+	// Timer for job re-evaluation
+	ticker := time.NewTicker(1 * time.Second)
+	if cs.Config.JobReevaluationIntervalSecond > 0 {
+		ticker = time.NewTicker(time.Duration(cs.Config.JobReevaluationIntervalSecond) * time.Second)
+	} else {
+		ticker.Stop()
+	}
 	for {
 		select {
+		case <-ticker.C:
+			logger.Debug.Printf("Job re-evaluation")
 		case event := <-chanEventFromNode:
 			logger.Debug.Printf("%s:%v", event.ToString(), event)
 			// TODO: stat aggregator for jobs may use this event

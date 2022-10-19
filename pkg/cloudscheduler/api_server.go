@@ -164,7 +164,7 @@ func (api *APIServer) handlerCreateJob(w http.ResponseWriter, r *http.Request) {
 	response := datatype.NewAPIMessageBuilder().
 		AddEntity("job_name", newJob.Name).
 		AddEntity("job_id", jobID).
-		AddEntity("status", datatype.JobCreated).
+		AddEntity("state", datatype.JobCreated).
 		Build()
 	respondJSON(w, http.StatusOK, response.ToJson())
 }
@@ -215,7 +215,7 @@ func (api *APIServer) handlerEditJob(w http.ResponseWriter, r *http.Request) {
 				api.cloudScheduler.GoalManager.RemoveScienceGoal(oldJob.ScienceGoal.ID)
 			}
 			api.cloudScheduler.GoalManager.UpdateJob(updatedJob, false)
-			response := datatype.NewAPIMessageBuilder().AddEntity("job_id", jobID).AddEntity("status", datatype.JobDrafted)
+			response := datatype.NewAPIMessageBuilder().AddEntity("job_id", jobID).AddEntity("state", datatype.JobDrafted)
 			respondJSON(w, http.StatusOK, response.Build().ToJson())
 			return
 		}
@@ -267,7 +267,7 @@ func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) 
 				if flagDryRun {
 					response = response.AddEntity("dryrun", true)
 				} else {
-					response = response.AddEntity("status", datatype.JobSubmitted)
+					response = response.AddEntity("state", datatype.JobSubmitted)
 				}
 				respondJSON(w, http.StatusOK, response.Build().ToJson())
 				return
@@ -307,7 +307,7 @@ func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) 
 				if flagDryRun {
 					response = response.AddEntity("dryrun", true)
 				} else {
-					response = response.AddEntity("status", datatype.JobSubmitted)
+					response = response.AddEntity("state", datatype.JobSubmitted)
 				}
 				respondJSON(w, http.StatusOK, response.Build().ToJson())
 				return
@@ -408,7 +408,7 @@ func (api *APIServer) handlerJobRemove(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		response.AddEntity("job_id", jobID).
-			AddEntity("status", datatype.JobSuspended)
+			AddEntity("state", datatype.JobSuspended)
 		respondJSON(w, http.StatusOK, response.Build().ToJson())
 		return
 	}
@@ -426,7 +426,7 @@ func (api *APIServer) handlerJobRemove(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusOK, response.Build().ToJson())
 	} else {
 		response.AddEntity("job_id", jobID).
-			AddEntity("status", datatype.JobRemoved)
+			AddEntity("state", datatype.JobRemoved)
 		respondJSON(w, http.StatusOK, response.Build().ToJson())
 	}
 }
