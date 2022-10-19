@@ -35,7 +35,7 @@ func NewRabbitMQHandler(rabbitmqURI string, rabbitmqUsername string, rabbitmqPas
 
 func (rh *RabbitMQHandler) Connect() error {
 	// If cacert is given it attempts TLS connection
-	if rh.cacertPath == "" {
+	if rh.cacertPath != "" {
 		caCert, err := ioutil.ReadFile(rh.cacertPath)
 		if err != nil {
 			return err
@@ -193,9 +193,9 @@ func (rh *RabbitMQHandler) GetReceiver(queueName string) (<-chan amqp.Delivery, 
 
 // SubscribeEvents subscribes scheduling events from target exchange
 // it will attempt to reconnect if connection is closed
-func (rh *RabbitMQHandler) SubscribeEvents(exchange string, queueName string, ch chan *datatype.Event) error {
+func (rh *RabbitMQHandler) SubscribeEvents(exchange string, queueName string, topic string, ch chan *datatype.Event) error {
 	operation := func() error {
-		q, err := rh.DeclareQueueAndConnectToExchange(exchange, queueName, "sys.scheduler.#")
+		q, err := rh.DeclareQueueAndConnectToExchange(exchange, queueName, topic)
 		if err != nil {
 			return err
 		}

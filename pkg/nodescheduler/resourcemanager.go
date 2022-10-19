@@ -767,6 +767,16 @@ func (rm *ResourceManager) GetPluginLog(jobName string, follow bool) (io.ReadClo
 	// podWatcher, err = rm.Clientset.CoreV1().Pods(rm.Namespace).Watch(ctx, metav1.ListOptions{LabelSelector: selector.String()})
 }
 
+func (rm *ResourceManager) GetServiceClusterIP(serviceName string, namespace string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Second)
+	defer cancel()
+	service, err := rm.Clientset.CoreV1().Services(namespace).Get(ctx, serviceName, metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+	return service.Spec.ClusterIP, nil
+}
+
 // CleanUp removes all currently running jobs
 func (rm *ResourceManager) CleanUp() error {
 	jobs, err := rm.ListJobs()

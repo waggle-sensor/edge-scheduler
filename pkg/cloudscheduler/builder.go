@@ -6,19 +6,21 @@ import (
 )
 
 type CloudSchedulerConfig struct {
-	Name               string `json:"name" yaml:"name"`
-	Version            string
-	NoRabbitMQ         bool   `json:"no_rabbitmq" yaml:"noRabbitMQ"`
-	RabbitmqURI        string `json:"rabbitmq_uri" yaml:"rabbimqURI"`
-	RabbitmqUsername   string `json:"rabbitmq_username" yaml:"rabbitMQUsername"`
-	RabbitmqPassword   string `json:"rabbitmq_password" yaml:"rabbitMQPassword"`
-	RabbitmqCaCertPath string `json:"rabbitmq_cacert_path" yaml:"rabbitMQCacertPath"`
-	ECRURI             string `json:"ecr_uri" yaml:"ecrURI"`
-	Port               int    `json:"port" yaml:"port"`
-	DataDir            string `json:"data_dir,omitempty" yaml:"dataDir,omitempty"`
-	PushNotification   bool   `json:"push_notification" yaml:"PushNotification"`
-	AuthServerURL      string `json:"auth_server_url" yaml:"authServerURL"`
-	AuthToken          string `json:"auth_token" yaml:"authToken"`
+	Name                          string `json:"name" yaml:"name"`
+	Version                       string
+	NoRabbitMQ                    bool   `json:"no_rabbitmq" yaml:"noRabbitMQ"`
+	RabbitmqURL                   string `json:"rabbitmq_url" yaml:"rabbiMQURL"`
+	RabbitmqUsername              string `json:"rabbitmq_username" yaml:"rabbitMQUsername"`
+	RabbitmqPassword              string `json:"rabbitmq_password" yaml:"rabbitMQPassword"`
+	RabbitmqCaCertPath            string `json:"rabbitmq_cacert_path" yaml:"rabbitMQCacertPath"`
+	ECRURI                        string `json:"ecr_uri" yaml:"ecrURI"`
+	Port                          int    `json:"port" yaml:"port"`
+	DataDir                       string `json:"data_dir,omitempty" yaml:"dataDir,omitempty"`
+	PushNotification              bool   `json:"push_notification" yaml:"PushNotification"`
+	AuthServerURL                 string `json:"auth_server_url" yaml:"authServerURL"`
+	AuthToken                     string `json:"auth_token" yaml:"authToken"`
+	JobReevaluationIntervalSecond int    `json:"job_reevaluation_interval_second" yaml:"jobReevaluationIntervalSecond"`
+	Debug                         bool   `json:"debug" yaml:"debug"`
 }
 
 type CloudSchedulerBuilder struct {

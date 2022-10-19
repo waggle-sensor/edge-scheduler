@@ -15,8 +15,10 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 )
 
+var metricsServerConfig pluginctl.MetricsServerConfig
+
 func init() {
-	flags := cmdRun.Flags()
+	flags := cmdProfile.Flags()
 	flags.StringVarP(&deployment.Name, "name", "n", "", "Specify plugin name")
 	flags.StringVar(&deployment.Node, "node", "", "run plugin on node")
 	flags.StringVar(&deployment.SelectorString, "selector", "", "Specify where plugin can run")
@@ -25,32 +27,37 @@ func init() {
 	flags.StringSliceVarP(&deployment.EnvVarString, "env", "e", []string{}, "Set environment variables")
 	flags.StringVarP(&deployment.EnvFromFile, "env-from", "", "", "Set environment variables from file")
 	flags.BoolVar(&deployment.DevelopMode, "develop", false, "Enable the following development time features: access to wan network")
-	rootCmd.AddCommand(cmdRun)
+	flags.StringVar(&metricsServerConfig.InfluxDBTokenPath, "influxdb-token-path", getenv("INFLUXDB_TOKEN_PATH", "~/.influxdb2/token"), "Path to valid token to access InfluxDB")
+	rootCmd.AddCommand(cmdProfile)
 }
 
-var cmdRun = &cobra.Command{
-	Use:              "run [FLAGS] PLUGIN_IMAGE [-- PLUGIN ARGUMENTS]",
-	Short:            "Run a plugin",
+var cmdProfile = &cobra.Command{
+	Use:              "profile [FLAGS] PLUGIN_IMAGE [-- PLUGIN ARGUMENTS]",
+	Short:            "Profile performance of a plugin",
 	TraverseChildren: true,
 	Args:             cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		deployment.PluginImage = args[0]
 		deployment.PluginArgs = args[1:]
-
 		logger.Debug.Printf("kubeconfig: %s", kubeconfig)
 		logger.Debug.Printf("deployment: %#v", deployment)
-
 		pluginCtl, err := pluginctl.NewPluginCtl(kubeconfig)
 		if err != nil {
 			return err
 		}
-
+		// Metrics server will provide performance data after the run
+		err = pluginCtl.ConnectToMetricsServer(metricsServerConfig)
+		if err != nil {
+			logger.Error.Printf("Failed to check metrics server: %s", err.Error())
+			logger.Error.Println("Abort profiling due to the error")
+			return err
+		}
 		pluginName, err := pluginCtl.Deploy(deployment)
 		if err != nil {
 			return err
 		}
 		defer pluginCtl.TerminatePlugin(pluginName)
-
+		startT := time.Now().UTC()
 		fmt.Printf("Launched the plugin %s successfully \n", pluginName)
 		maxErrorCount := 5
 		errorCount := 0
@@ -109,9 +116,15 @@ var cmdRun = &cobra.Command{
 				select {
 				case <-c:
 					logger.Debug.Println("Log terminated from user side")
+					endT := time.Now().UTC()
+					logger.Info.Printf("Plugin took %s to finish", endT.Sub(startT).String())
+					pluginCtl.GetPerformanceData(startT, endT, pluginName)
 					return nil
 				case <-terminateLog:
 					logger.Debug.Println("Log terminated from handler")
+					endT := time.Now().UTC()
+					logger.Info.Printf("Plugin took %s to finish", endT.Sub(startT).String())
+					pluginCtl.GetPerformanceData(startT, endT, pluginName)
 					return nil
 				}
 			}

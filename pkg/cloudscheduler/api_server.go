@@ -164,7 +164,7 @@ func (api *APIServer) handlerCreateJob(w http.ResponseWriter, r *http.Request) {
 	response := datatype.NewAPIMessageBuilder().
 		AddEntity("job_name", newJob.Name).
 		AddEntity("job_id", jobID).
-		AddEntity("status", datatype.JobCreated).
+		AddEntity("state", datatype.JobCreated).
 		Build()
 	respondJSON(w, http.StatusOK, response.ToJson())
 }
@@ -215,7 +215,7 @@ func (api *APIServer) handlerEditJob(w http.ResponseWriter, r *http.Request) {
 				api.cloudScheduler.GoalManager.RemoveScienceGoal(oldJob.ScienceGoal.ID)
 			}
 			api.cloudScheduler.GoalManager.UpdateJob(updatedJob, false)
-			response := datatype.NewAPIMessageBuilder().AddEntity("job_id", jobID).AddEntity("status", datatype.JobDrafted)
+			response := datatype.NewAPIMessageBuilder().AddEntity("job_id", jobID).AddEntity("state", datatype.JobDrafted)
 			respondJSON(w, http.StatusOK, response.Build().ToJson())
 			return
 		}
@@ -267,7 +267,7 @@ func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) 
 				if flagDryRun {
 					response = response.AddEntity("dryrun", true)
 				} else {
-					response = response.AddEntity("status", datatype.JobSubmitted)
+					response = response.AddEntity("state", datatype.JobSubmitted)
 				}
 				respondJSON(w, http.StatusOK, response.Build().ToJson())
 				return
@@ -292,6 +292,7 @@ func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) 
 				respondJSON(w, http.StatusBadRequest, response.ToJson())
 				return
 			}
+			newJob.User = user.GetUserName()
 			jobID := api.cloudScheduler.GoalManager.AddJob(newJob)
 			errorList := api.cloudScheduler.ValidateJobAndCreateScienceGoal(jobID, user, flagDryRun)
 			if len(errorList) > 0 {
@@ -306,7 +307,7 @@ func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) 
 				if flagDryRun {
 					response = response.AddEntity("dryrun", true)
 				} else {
-					response = response.AddEntity("status", datatype.JobSubmitted)
+					response = response.AddEntity("state", datatype.JobSubmitted)
 				}
 				respondJSON(w, http.StatusOK, response.Build().ToJson())
 				return
@@ -315,22 +316,24 @@ func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
+// handlerJobs handles getting jobs requests. It returns the full list of current jobs
+// if user token is not provided. If provided, it returns only the list owned by the token owner.
 func (api *APIServer) handlerJobs(w http.ResponseWriter, r *http.Request) {
-	user, err := api.authenticate(r)
-	if err != nil {
-		response := datatype.NewAPIMessageBuilder()
-		response.AddError(err.Error())
-		respondJSON(w, http.StatusBadRequest, response.Build().ToJson())
-		return
+	userName := ""
+	if hasToken(r) {
+		user, err := api.authenticate(r)
+		if err != nil {
+			response := datatype.NewAPIMessageBuilder()
+			response.AddError(err.Error())
+			respondJSON(w, http.StatusBadRequest, response.Build().ToJson())
+			return
+		}
+		userName = user.GetUserName()
 	}
 	if r.Method == http.MethodGet {
 		response := datatype.NewAPIMessageBuilder()
 		var jobs []*datatype.Job
-		if user.Auth.IsSuperUser {
-			jobs = api.cloudScheduler.GoalManager.GetJobs("")
-		} else {
-			jobs = api.cloudScheduler.GoalManager.GetJobs(user.GetUserName())
-		}
+		jobs = api.cloudScheduler.GoalManager.GetJobs(userName)
 		for _, job := range jobs {
 			response.AddEntity(job.JobID, job)
 		}
@@ -338,14 +341,17 @@ func (api *APIServer) handlerJobs(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handlerJobStatus returns details of jobs.
 func (api *APIServer) handlerJobStatus(w http.ResponseWriter, r *http.Request) {
-	user, err := api.authenticate(r)
-	if err != nil {
-		response := datatype.NewAPIMessageBuilder()
-		response.AddError(err.Error())
-		respondJSON(w, http.StatusBadRequest, response.Build().ToJson())
-		return
-	}
+	// TODO: Since handlerJobs is open to public, we do not need to check authentication here.
+	//       However, we may want to revisit this if this function returns more than what handlerJobs returns
+	// user, err := api.authenticate(r)
+	// if err != nil {
+	// 	response := datatype.NewAPIMessageBuilder()
+	// 	response.AddError(err.Error())
+	// 	respondJSON(w, http.StatusBadRequest, response.Build().ToJson())
+	// 	return
+	// }
 	vars := mux.Vars(r)
 	if r.Method == http.MethodGet {
 		response := datatype.NewAPIMessageBuilder()
@@ -355,16 +361,16 @@ func (api *APIServer) handlerJobStatus(w http.ResponseWriter, r *http.Request) {
 			respondJSON(w, http.StatusBadRequest, response.Build().ToJson())
 			return
 		}
-		if user.Auth.IsSuperUser {
-			response.AddEntity(vars["id"], job)
-			respondJSON(w, http.StatusOK, response.Build().ToJson())
-			return
-		}
-		if job.User != user.GetUserName() {
-			response.AddError(fmt.Sprintf("User %s does not have permission to view the job %s", user.GetUserName(), vars["id"]))
-			respondJSON(w, http.StatusBadRequest, response.Build().ToJson())
-			return
-		}
+		// if user.Auth.IsSuperUser {
+		// 	response.AddEntity(vars["id"], job)
+		// 	respondJSON(w, http.StatusOK, response.Build().ToJson())
+		// 	return
+		// }
+		// if job.User != user.GetUserName() {
+		// 	response.AddError(fmt.Sprintf("User %s does not have permission to view the job %s", user.GetUserName(), vars["id"]))
+		// 	respondJSON(w, http.StatusBadRequest, response.Build().ToJson())
+		// 	return
+		// }
 		response.AddEntity(vars["id"], job)
 		respondJSON(w, http.StatusOK, response.Build().ToJson())
 	}
@@ -402,7 +408,7 @@ func (api *APIServer) handlerJobRemove(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		response.AddEntity("job_id", jobID).
-			AddEntity("status", datatype.JobSuspended)
+			AddEntity("state", datatype.JobSuspended)
 		respondJSON(w, http.StatusOK, response.Build().ToJson())
 		return
 	}
@@ -420,7 +426,7 @@ func (api *APIServer) handlerJobRemove(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusOK, response.Build().ToJson())
 	} else {
 		response.AddEntity("job_id", jobID).
-			AddEntity("status", datatype.JobRemoved)
+			AddEntity("state", datatype.JobRemoved)
 		respondJSON(w, http.StatusOK, response.Build().ToJson())
 	}
 }
@@ -562,6 +568,14 @@ func respondYAML(w http.ResponseWriter, statusCode int, data interface{}) {
 	s, err := yaml.Marshal(data)
 	if err == nil {
 		w.Write(s)
+	}
+}
+
+func hasToken(r *http.Request) bool {
+	if auth := r.Header.Get("Authorization"); auth == "" {
+		return false
+	} else {
+		return true
 	}
 }
 
