@@ -101,6 +101,26 @@ func (j *Job) SetNotification(email string, on []JobState) {
 	j.NotificationOn = on
 }
 
+func (j *Job) Created() {
+	j.UpdateState(JobCreated)
+}
+
+func (j *Job) Submitted() {
+	j.UpdateState(JobSubmitted)
+}
+
+func (j *Job) Runs() {
+	j.UpdateState(JobRunning)
+}
+
+func (j *Job) Suspended() {
+	j.UpdateState(JobSuspended)
+}
+
+func (j *Job) Removed() {
+	j.UpdateState(JobRemoved)
+}
+
 func (j *Job) UpdateState(newState JobState) {
 	j.State.UpdateState(newState)
 }

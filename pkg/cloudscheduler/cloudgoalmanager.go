@@ -25,7 +25,7 @@ type CloudGoalManager struct {
 }
 
 func (cgm *CloudGoalManager) AddJob(job *datatype.Job) string {
-	job.UpdateState(datatype.JobCreated)
+	job.Created()
 	cgm.jobDB.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(jobBucketName))
 		if b == nil {
@@ -91,7 +91,7 @@ func (cgm *CloudGoalManager) GetJob(jobID string) (job *datatype.Job, err error)
 func (cgm *CloudGoalManager) UpdateJob(job *datatype.Job, submit bool) (err error) {
 	// update the status before puting the job to the database
 	if submit {
-		job.UpdateState(datatype.JobSubmitted)
+		job.Submitted()
 	}
 	err = cgm.jobDB.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(jobBucketName))
@@ -118,30 +118,6 @@ func (cgm *CloudGoalManager) UpdateJob(job *datatype.Job, submit bool) (err erro
 	return
 }
 
-func (cgm *CloudGoalManager) UpdateJobStatus(jobID string, status datatype.JobState) (err error) {
-	return cgm.jobDB.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(jobBucketName))
-		if b == nil {
-			return fmt.Errorf("Bucket %s does not exist", jobBucketName)
-		}
-		v := b.Get([]byte(jobID))
-		if v == nil {
-			return fmt.Errorf("Job ID %q does not exist", jobID)
-		}
-		var j datatype.Job
-		if err := json.Unmarshal(v, &j); err != nil {
-			return err
-		}
-		j.UpdateState(status)
-		buf, err := json.Marshal(j)
-		if err != nil {
-			return err
-		}
-		b.Put([]byte(jobID), []byte(buf))
-		return nil
-	})
-}
-
 func (cgm *CloudGoalManager) SuspendJob(jobID string) (err error) {
 	var job datatype.Job
 	err = cgm.jobDB.Update(func(tx *bolt.Tx) error {
@@ -156,7 +132,7 @@ func (cgm *CloudGoalManager) SuspendJob(jobID string) (err error) {
 		if err := json.Unmarshal(v, &job); err != nil {
 			return err
 		}
-		job.UpdateState(datatype.JobSuspended)
+		job.Suspended()
 		buf, err := json.Marshal(job)
 		if err != nil {
 			return err
@@ -190,7 +166,7 @@ func (cgm *CloudGoalManager) RemoveJob(jobID string, force bool) (err error) {
 		if job.State.GetState() == datatype.JobRunning && !force {
 			return fmt.Errorf("Failed to remove job %q as it is in running state. Suspend it first or specify force=true", jobID)
 		}
-		job.UpdateState(datatype.JobRemoved)
+		job.Removed()
 		buf, err := json.Marshal(job)
 		if err != nil {
 			return err
