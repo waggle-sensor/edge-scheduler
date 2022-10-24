@@ -5,7 +5,6 @@ import (
 
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
 	"github.com/waggle-sensor/edge-scheduler/pkg/interfacing"
-	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
 	"github.com/waggle-sensor/edge-scheduler/pkg/nodescheduler/policy"
 )
 
@@ -22,6 +21,7 @@ type NodeSchedulerConfig struct {
 	Simulate         bool   `json:"simulate" yaml:"simulate"`
 	GoalStreamURL    string `json:"goalstream_URI" yaml:"goalStreamURL"`
 	SchedulingPolicy string `json:"policy" yaml:"policy"`
+	Debug            bool   `json:"debug" yaml:"debug"`
 }
 
 type NodeSchedulerBuilder struct {
@@ -36,10 +36,8 @@ func NewNodeSchedulerBuilder(config *NodeSchedulerConfig) *NodeSchedulerBuilder 
 			Config:                      config,
 			SchedulingPolicy:            policy.GetSchedulingPolicyByName(config.SchedulingPolicy),
 			chanContextEventToScheduler: make(chan datatype.EventPluginContext, maxChannelBuffer),
-			chanFromGoalManager:         make(chan datatype.Event, maxChannelBuffer),
 			chanFromResourceManager:     make(chan datatype.Event, maxChannelBuffer),
 			chanFromCloudScheduler:      make(chan *datatype.Event, maxChannelBuffer),
-			chanRunGoal:                 make(chan *datatype.ScienceGoal, maxChannelBuffer),
 			chanStopPlugin:              make(chan *datatype.Plugin, maxChannelBuffer),
 			chanPluginToResourceManager: make(chan *datatype.Plugin, maxChannelBuffer),
 			chanNeedScheduling:          make(chan datatype.Event, maxChannelBuffer),
@@ -50,23 +48,8 @@ func NewNodeSchedulerBuilder(config *NodeSchedulerConfig) *NodeSchedulerBuilder 
 
 func (nsb *NodeSchedulerBuilder) AddGoalManager(appID string) *NodeSchedulerBuilder {
 	nsb.nodeScheduler.GoalManager = &NodeGoalManager{
-		ScienceGoals:  make(map[string]*datatype.ScienceGoal),
-		NodeID:        nsb.nodeScheduler.NodeID,
-		chanGoalQueue: make(chan *datatype.ScienceGoal, 100),
-		Simulate:      nsb.nodeScheduler.Config.Simulate,
-		Notifier:      interfacing.NewNotifier(),
+		ScienceGoals: make(map[string]datatype.ScienceGoal),
 	}
-	if !nsb.nodeScheduler.Config.NoRabbitMQ {
-		logger.Info.Printf("Using RabbitMQ at %s with user %s", nsb.nodeScheduler.Config.RabbitmqURI, nsb.nodeScheduler.Config.RabbitmqUsername)
-		nsb.nodeScheduler.GoalManager.SetRMQHandler(interfacing.NewRabbitMQHandler(
-			nsb.nodeScheduler.Config.RabbitmqURI,
-			nsb.nodeScheduler.Config.RabbitmqUsername,
-			nsb.nodeScheduler.Config.RabbitmqPassword,
-			"",
-			appID),
-		)
-	}
-	nsb.nodeScheduler.GoalManager.Notifier.Subscribe(nsb.nodeScheduler.chanFromGoalManager)
 	return nsb
 }
 

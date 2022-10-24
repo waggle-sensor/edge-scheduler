@@ -3,16 +3,14 @@ package datatype
 import (
 	"path"
 	"strings"
-	"time"
 )
 
 // Plugin structs plugin metadata from ECR
 type Plugin struct {
-	Name       string       `json:"name" yaml:"name"`
-	PluginSpec *PluginSpec  `json:"plugin_spec" yaml:"pluginSpec,omitempty"`
-	Status     PluginStatus `json:"status,omitempty" yaml:"status,omitempty"`
-	DataShims  []*DataShim  `json:"datathims,omitempty" yaml:"datashims,omitempty"`
-	GoalID     string       `json:"goal_id,omitempty" yaml:"goalID,omitempty"`
+	Name       string      `json:"name" yaml:"name"`
+	PluginSpec *PluginSpec `json:"plugin_spec" yaml:"pluginSpec,omitempty"`
+	DataShims  []*DataShim `json:"datathims,omitempty" yaml:"datashims,omitempty"`
+	GoalID     string      `json:"goal_id,omitempty" yaml:"goalID,omitempty"`
 }
 
 type PluginSpec struct {
@@ -34,15 +32,6 @@ func (ps *PluginSpec) GetImageVersion() string {
 		return ""
 	}
 	return parts[1]
-}
-
-// PluginStatus structs status about a plugin that includes
-// contexual, scheduling, and knob status
-type PluginStatus struct {
-	ContextStatus    ContextStatus    `json:"context,omitempty" yaml:"context,omitempty"`
-	SchedulingStatus SchedulingStatus `json:"scheduling,omitempty" yaml:"scheduling,omitempty"`
-	KnobStatus       *Profile         `json:"knob,omitempty" yaml:"knob,omitempty"`
-	Since            time.Time        `json:"since,omitempty" yaml:"since,omitempty"`
 }
 
 // ContextStatus represents contextual status of a plugin
@@ -94,13 +83,6 @@ type PluginCredential struct {
 // 	Configs map[string]string `yaml:"configs"`
 // }
 
-// UpdatePluginContext updates contextual status of the plugin
-func (p *Plugin) UpdatePluginSchedulingStatus(status SchedulingStatus) error {
-	p.Status.SchedulingStatus = status
-	p.Status.Since = time.Now()
-	return nil
-}
-
 // GetMetaInformation returns a dictionary of plugin information.
 // func (p *Plugin) GetMetaInformation() map[string]string {
 // 	meta := make(map[string]string)
@@ -112,12 +94,6 @@ func (p *Plugin) UpdatePluginSchedulingStatus(status SchedulingStatus) error {
 // 	meta["Selector"] = fmt.Sprint(p.PluginSpec.Selector)
 // 	return meta
 // }
-
-// UpdatePluginContext updates contextual status of the plugin
-func (p *Plugin) UpdatePluginContext(status ContextStatus) error {
-	p.Status.ContextStatus = status
-	return nil
-}
 
 // RemoveProfile removes an existing Profile by name
 // func (p *Plugin) RemoveProfile(profileToBeDeleted Profile) error {

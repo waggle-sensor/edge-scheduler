@@ -44,6 +44,7 @@ func (api *APIServer) Run() {
 	api_route.Handle("/kb/rules", http.HandlerFunc(api.handlerRules)).Methods(http.MethodGet, http.MethodPost)
 	api_route.Handle("/kb/senses", http.HandlerFunc(api.handlerSenses)).Methods(http.MethodGet, http.MethodPost, http.MethodDelete)
 	api_route.Handle("/goals", http.HandlerFunc(api.handlerGoals)).Methods(http.MethodGet, http.MethodPost, http.MethodPut)
+	// api_route.Handle("/status/queue/waiting", http.HandlerFunc(api.handlerGoals)).Methods(http.MethodGet, http.MethodPost, http.MethodPut)
 	logger.Info.Fatalln(http.ListenAndServe(api_address_port, r))
 }
 
@@ -115,7 +116,7 @@ func (api *APIServer) handlerGoals(w http.ResponseWriter, r *http.Request) {
 		// clauses := PrintClauses()
 		// respondJSON(w, http.StatusOK, clauses)
 	case http.MethodPost:
-		var newGoals []*datatype.ScienceGoal
+		var newGoals []datatype.ScienceGoal
 		blob, err := io.ReadAll(r.Body)
 		if err != nil {
 			response := datatype.NewAPIMessageBuilder().AddError(err.Error()).Build()
@@ -155,7 +156,7 @@ func (api *APIServer) handlerGoals(w http.ResponseWriter, r *http.Request) {
 				// RegisterGoal(goal)
 				// chanTriggerSchedule <- "received new goal via api"
 				// scienceGoal := NewScienceGoal()
-				api.nodeScheduler.GoalManager.AddGoal(scienceGoal)
+				api.nodeScheduler.GoalManager.AddGoal(*scienceGoal)
 			} else {
 				logger.Debug.Printf("Could not convert %q into a science goal", j.Name)
 			}

@@ -57,8 +57,6 @@ type ResourceManager struct {
 	RMQManagement *RMQManagement
 	Notifier      *interfacing.Notifier
 	Simulate      bool
-	Plugins       []*datatype.Plugin
-	reserved      bool
 	mutex         sync.Mutex
 	runner        string
 }
@@ -71,8 +69,6 @@ func NewK3SResourceManager(incluster bool, kubeconfig string, runner string, sim
 			Clientset:     nil,
 			MetricsClient: nil,
 			Simulate:      simulate,
-			Plugins:       make([]*datatype.Plugin, 0),
-			reserved:      false,
 			runner:        runner,
 		}, nil
 	}
@@ -790,20 +786,6 @@ func (rm *ResourceManager) CleanUp() error {
 	return nil
 }
 
-func (rm *ResourceManager) UpdateReservation(value bool) {
-	rm.mutex.Lock()
-	defer rm.mutex.Unlock()
-	rm.reserved = value
-}
-
-func (rm *ResourceManager) WillItFit(plugin *datatype.Plugin) bool {
-	if rm.reserved {
-		return false
-	} else {
-		return true
-	}
-}
-
 func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 	logger.Debug.Printf("Running plugin %q...", plugin.Name)
 	job, err := rm.CreateJob(plugin)
@@ -821,12 +803,10 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 	}
 	logger.Info.Printf("Plugin %q deployed", job.Name)
 	plugin.PluginSpec.Job = job.Name
-	// rm.UpdateReservation(true)
 	watcher, err := rm.WatchJob(job.Name, rm.Namespace, 3)
 	if err != nil {
 		logger.Error.Printf("Failed to watch %q. Abort the execution", job.Name)
 		rm.TerminateJob(job.Name)
-		// rm.UpdateReservation(false)
 		rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason(err.Error()).AddK3SJobMeta(job).AddPluginMeta(plugin).Build())
 		return
 	}
@@ -850,7 +830,7 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 					return
 				case batchv1.JobFailed:
 					// rm.UpdateReservation(false)
-					rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason(job.Status.Conditions[0].Reason).AddK3SJobMeta(job).AddPodMeta(pod).AddPluginMeta(plugin).Build())
+					rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason(pod.Status.Message).AddK3SJobMeta(job).AddPodMeta(pod).AddPluginMeta(plugin).Build())
 					return
 				}
 			} else {
@@ -903,6 +883,10 @@ func (rm *ResourceManager) RunGabageCollector() error {
 		}
 	}
 	return nil
+}
+
+func (rm *ResourceManager) RemovePlugin(p *datatype.Plugin) {
+	rm.TerminateJob(p.Name)
 }
 
 func (rm *ResourceManager) Configure() (err error) {

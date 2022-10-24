@@ -42,7 +42,7 @@ func (kb *KnowledgeBase) add(obj interface{}, k string, v interface{}) {
 	}
 }
 
-func (kb *KnowledgeBase) AddRulesFromScienceGoal(s *datatype.ScienceGoal) {
+func (kb *KnowledgeBase) AddRulesFromScienceGoal(s datatype.ScienceGoal) {
 	mySubGoal := s.GetMySubGoal(kb.nodeID)
 	kb.rules[s.ID] = mySubGoal.ScienceRules
 }

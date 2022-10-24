@@ -44,7 +44,7 @@ func (e *Event) GetJobID() string {
 	return e.get("job_id")
 }
 
-func (eb *EventBuilder) AddGoal(goal *ScienceGoal) *EventBuilder {
+func (eb *EventBuilder) AddGoal(goal ScienceGoal) *EventBuilder {
 	eb.e.Meta["goal_name"] = goal.Name
 	eb.e.Meta["goal_id"] = goal.ID
 	return eb
@@ -58,7 +58,6 @@ func (eb *EventBuilder) AddEntry(k string, v string) *EventBuilder {
 func (eb *EventBuilder) AddPluginMeta(plugin *Plugin) *EventBuilder {
 	eb.e.Meta["plugin_name"] = plugin.Name
 	eb.e.Meta["plugin_image"] = plugin.PluginSpec.Image
-	eb.e.Meta["plugin_status_by_scheduler"] = string(plugin.Status.SchedulingStatus)
 	eb.e.Meta["plugin_task"] = plugin.PluginSpec.Job
 	eb.e.Meta["plugin_args"] = strings.Join(plugin.PluginSpec.Args, " ")
 	selectors, err := json.Marshal(plugin.PluginSpec.Selector)
