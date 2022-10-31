@@ -59,6 +59,6 @@ func (ngm *NodeGoalManager) DropGoal(goalID string) error {
 	}
 }
 
-func (ngm *NodeGoalManager) AddGoal(goal datatype.ScienceGoal) {
-	ngm.ScienceGoals[goal.ID] = goal
+func (ngm *NodeGoalManager) AddGoal(goal *datatype.ScienceGoal) {
+	ngm.ScienceGoals[goal.ID] = *goal
 }

@@ -33,10 +33,7 @@ type NodeScheduler struct {
 	chanContextEventToScheduler chan datatype.EventPluginContext
 	chanFromResourceManager     chan datatype.Event
 	chanFromCloudScheduler      chan *datatype.Event
-	chanStopPlugin              chan *datatype.Plugin
-	chanPluginToResourceManager chan *datatype.Plugin
 	chanNeedScheduling          chan datatype.Event
-	chanAPIServerToGoalManager  chan *datatype.ScienceGoal
 }
 
 // Configure sets up the followings in Kubernetes cluster
@@ -74,7 +71,7 @@ func (ns *NodeScheduler) Configure() (err error) {
 
 // Run handles communications between components for scheduling
 func (ns *NodeScheduler) Run() {
-	go ns.ResourceManager.Run(ns.chanPluginToResourceManager)
+	go ns.ResourceManager.Run()
 	go ns.APIServer.Run()
 	ruleCheckingTicker := time.NewTicker(10 * time.Second)
 	for {
@@ -192,7 +189,7 @@ func (ns *NodeScheduler) Run() {
 	}
 }
 
-func (ns *NodeScheduler) registerGoal(goal datatype.ScienceGoal) {
+func (ns *NodeScheduler) registerGoal(goal *datatype.ScienceGoal) {
 	ns.GoalManager.AddGoal(goal)
 	ns.Knowledgebase.AddRulesFromScienceGoal(goal)
 	for _, p := range goal.GetMySubGoal(ns.NodeID).GetPlugins() {
@@ -220,8 +217,11 @@ func (ns *NodeScheduler) cleanUpGoal(goal *datatype.ScienceGoal) {
 
 // handleBulkGoals adds or updates each goal in given goal list
 func (ns *NodeScheduler) handleBulkGoals(goals []datatype.ScienceGoal) {
-	// ns.mu.Lock()
-	// defer ns.mu.Unlock()
+	// NOTE: There are multiple triggers that call this function
+	//       For example, k3s configmap change for goals and cloud scheduler pushing
+	//       new goals. We mutex lock this to secure adding/dropping goals.
+	ns.mu.Lock()
+	defer ns.mu.Unlock()
 	goalsToKeep := make(map[string]bool)
 	for _, goal := range goals {
 		if subGoal := goal.GetMySubGoal(ns.NodeID); subGoal != nil {
@@ -236,14 +236,14 @@ func (ns *NodeScheduler) handleBulkGoals(goals []datatype.ScienceGoal) {
 			} else {
 				logger.Info.Printf("The goal %s %q exists and has changed its content. Cleaning up the existing goal %q", goal.Name, goal.ID, existingGoal.ID)
 				ns.cleanUpGoal(existingGoal)
-				ns.registerGoal(goal)
-				e := datatype.NewEventBuilder(datatype.EventGoalStatusUpdated).AddGoal(goal).Build()
+				ns.registerGoal(&goal)
+				e := datatype.NewEventBuilder(datatype.EventGoalStatusUpdated).AddGoal(&goal).Build()
 				go ns.LogToBeehive.SendWaggleMessage(e.ToWaggleMessage(), "all")
 			}
 		} else {
 			logger.Info.Printf("Adding the new goal %s %q", goal.Name, goal.ID)
-			ns.registerGoal(goal)
-			e := datatype.NewEventBuilder(datatype.EventGoalStatusReceived).AddGoal(goal).Build()
+			ns.registerGoal(&goal)
+			e := datatype.NewEventBuilder(datatype.EventGoalStatusReceived).AddGoal(&goal).Build()
 			go ns.LogToBeehive.SendWaggleMessage(e.ToWaggleMessage(), "all")
 		}
 	}
@@ -251,7 +251,7 @@ func (ns *NodeScheduler) handleBulkGoals(goals []datatype.ScienceGoal) {
 	for _, goal := range ns.GoalManager.ScienceGoals {
 		if _, exist := goalsToKeep[goal.ID]; !exist {
 			ns.cleanUpGoal(&goal)
-			event := datatype.NewEventBuilder(datatype.EventGoalStatusRemoved).AddGoal(goal).Build()
+			event := datatype.NewEventBuilder(datatype.EventGoalStatusRemoved).AddGoal(&goal).Build()
 			go ns.LogToBeehive.SendWaggleMessage(event.ToWaggleMessage(), "all")
 		}
 	}

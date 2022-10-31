@@ -38,10 +38,7 @@ func NewNodeSchedulerBuilder(config *NodeSchedulerConfig) *NodeSchedulerBuilder 
 			chanContextEventToScheduler: make(chan datatype.EventPluginContext, maxChannelBuffer),
 			chanFromResourceManager:     make(chan datatype.Event, maxChannelBuffer),
 			chanFromCloudScheduler:      make(chan *datatype.Event, maxChannelBuffer),
-			chanStopPlugin:              make(chan *datatype.Plugin, maxChannelBuffer),
-			chanPluginToResourceManager: make(chan *datatype.Plugin, maxChannelBuffer),
 			chanNeedScheduling:          make(chan datatype.Event, maxChannelBuffer),
-			chanAPIServerToGoalManager:  make(chan *datatype.ScienceGoal, maxChannelBuffer),
 		},
 	}
 }

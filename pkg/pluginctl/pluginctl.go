@@ -46,6 +46,7 @@ type Deployment struct {
 	EnvVarString   []string
 	EnvFromFile    string
 	DevelopMode    bool
+	Type           string
 }
 
 func NewPluginCtl(kubeconfig string) (*PluginCtl, error) {
@@ -149,12 +150,31 @@ func (p *PluginCtl) Deploy(dep *Deployment) (string, error) {
 			DevelopMode: dep.DevelopMode,
 		},
 	}
-	job, err := p.ResourceManager.CreateJob(&plugin)
-	if err != nil {
-		return "", err
+	switch dep.Type {
+	case "job":
+		job, err := p.ResourceManager.CreateJob(&plugin)
+		if err != nil {
+			return "", err
+		}
+		err = p.ResourceManager.RunPlugin(job)
+		return job.Name, err
+	case "deployment":
+		deployment, err := p.ResourceManager.CreateDeployment(&plugin)
+		if err != nil {
+			return "", err
+		}
+		err = p.ResourceManager.UpdateDeployment(deployment)
+		return deployment.Name, err
+	case "daemonset":
+		daemonSet, err := p.ResourceManager.CreateDaemonSet(&plugin)
+		if err != nil {
+			return "", err
+		}
+		err = p.ResourceManager.UpdateDaemonSet(daemonSet)
+		return daemonSet.Name, err
+	default:
+		return "", fmt.Errorf("Unknown type %q for plugin", dep.Type)
 	}
-	deployedJob, err := p.ResourceManager.RunPlugin(job)
-	return deployedJob.Name, err
 }
 
 // RunAsync runs given plugin and reports plugin status changes back to caller

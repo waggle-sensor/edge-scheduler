@@ -377,6 +377,14 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 			Name:  "REDIS_HOST",
 			Value: "wes-scoreboard.default.svc.cluster.local",
 		},
+		{
+			Name: "HOST",
+			ValueFrom: &apiv1.EnvVarSource{
+				FieldRef: &apiv1.ObjectFieldSelector{
+					FieldPath: "spec.nodeName",
+				},
+			},
+		},
 	}
 
 	for k, v := range plugin.PluginSpec.Env {
@@ -583,6 +591,29 @@ func (rm *ResourceManager) CreateDeployment(plugin *datatype.Plugin) (*appsv1.De
 	}, nil
 }
 
+func (rm *ResourceManager) CreateDaemonSet(plugin *datatype.Plugin) (*appsv1.DaemonSet, error) {
+	name, err := pluginNameForSpecDeployment(plugin)
+	if err != nil {
+		return nil, err
+	}
+
+	template := rm.createPodTemplateSpecForPlugin(plugin)
+
+	return &appsv1.DaemonSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: rm.Namespace,
+			Labels:    template.Labels,
+		},
+		Spec: appsv1.DaemonSetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: template.Labels,
+			},
+			Template: template,
+		},
+	}, nil
+}
+
 // CreateDataConfigMap creates a K3S configmap object
 func (rm *ResourceManager) CreateDataConfigMap(configName string, datashims []*datatype.DataShim) error {
 	// Check if the configmap already exists
@@ -609,11 +640,39 @@ func (rm *ResourceManager) CreateDataConfigMap(configName string, datashims []*d
 	return err
 }
 
-func (rm *ResourceManager) RunPlugin(job *batchv1.Job) (*batchv1.Job, error) {
+func (rm *ResourceManager) UpdateDeployment(deployment *appsv1.Deployment) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	deployments := rm.Clientset.AppsV1().Deployments(rm.Namespace)
+	// if deployment exists, then update it, else create it
+	if _, err := deployments.Get(ctx, deployment.Name, metav1.GetOptions{}); err == nil {
+		_, err := deployments.Update(ctx, deployment, metav1.UpdateOptions{})
+		return err
+	} else {
+		_, err := deployments.Create(ctx, deployment, metav1.CreateOptions{})
+		return err
+	}
+}
+
+func (rm *ResourceManager) UpdateDaemonSet(daemonSet *appsv1.DaemonSet) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	daemonSets := rm.Clientset.AppsV1().DaemonSets(rm.Namespace)
+	if _, err := daemonSets.Get(ctx, daemonSet.Name, metav1.GetOptions{}); err == nil {
+		_, err := daemonSets.Update(ctx, daemonSet, metav1.UpdateOptions{})
+		return err
+	} else {
+		_, err := daemonSets.Create(ctx, daemonSet, metav1.CreateOptions{})
+		return err
+	}
+}
+
+func (rm *ResourceManager) RunPlugin(job *batchv1.Job) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	jobClient := rm.Clientset.BatchV1().Jobs(rm.Namespace)
-	return jobClient.Create(ctx, job, metav1.CreateOptions{})
+	_, err := jobClient.Create(ctx, job, metav1.CreateOptions{})
+	return err
 }
 
 // LaunchPlugin launches a k3s deployment in the cluster
@@ -794,7 +853,7 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 		rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason(err.Error()).AddPluginMeta(plugin).Build())
 		return
 	}
-	_, err = rm.RunPlugin(job)
+	err = rm.RunPlugin(job)
 	defer rm.TerminateJob(job.Name)
 	if err != nil {
 		logger.Error.Printf("Failed to run %q: %q", job.Name, err.Error())
@@ -915,10 +974,11 @@ func (rm *ResourceManager) Configure() (err error) {
 	return
 }
 
-func (rm *ResourceManager) Run(chanPluginToUpdate <-chan *datatype.Plugin) {
+func (rm *ResourceManager) Run() {
 	if rm.MetricsClient == nil {
 		logger.Info.Println("No metrics client is set. Metrics information cannot be obtained")
 	}
+	metricsTicker := time.NewTicker(5 * time.Second)
 	// NOTE: The garbage collector runs to clean up completed/failed jobs
 	//       This should be done by Kubernetes with versions higher than v1.21
 	//       v1.20 could do it by enabling TTL controller, but could not set it
@@ -951,6 +1011,28 @@ func (rm *ResourceManager) Run(chanPluginToUpdate <-chan *datatype.Plugin) {
 			// 	logger.Error.Printf("Failed on %q k3s watcher", configMapName)
 			// 	break
 			// }
+		case <-metricsTicker.C:
+			nodeMetrics, err := rm.MetricsClient.MetricsV1beta1().NodeMetricses().List(context.TODO(), metav1.ListOptions{})
+			if err != nil {
+				logger.Error.Println("Error:", err)
+				return
+			}
+			for _, nodeMetric := range nodeMetrics.Items {
+				cpuQuantity := nodeMetric.Usage.Cpu().String()
+				memQuantity := nodeMetric.Usage.Memory().String()
+				msg := fmt.Sprintf("Node Name: %s \n CPU usage: %s \n Memory usage: %s", nodeMetric.Name, cpuQuantity, memQuantity)
+				logger.Debug.Println(msg)
+			}
+			podMetrics, err := rm.MetricsClient.MetricsV1beta1().PodMetricses(rm.Namespace).List(context.TODO(), metav1.ListOptions{})
+			for _, podMetric := range podMetrics.Items {
+				podContainers := podMetric.Containers
+				for _, container := range podContainers {
+					cpuQuantity := container.Usage.Cpu().String()
+					memQuantity := container.Usage.Memory().String()
+					msg := fmt.Sprintf("Container Name: %s \n CPU usage: %s \n Memory usage: %s", container.Name, cpuQuantity, memQuantity)
+					logger.Debug.Println(msg)
+				}
+			}
 		}
 	}
 	// for {

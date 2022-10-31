@@ -133,7 +133,7 @@ func (api *APIServer) handlerGoals(w http.ResponseWriter, r *http.Request) {
 		}
 		logger.Info.Printf("Adding goals by the REST call.")
 		for _, goal := range newGoals {
-			api.nodeScheduler.GoalManager.AddGoal(goal)
+			api.nodeScheduler.GoalManager.AddGoal(&goal)
 		}
 		response := datatype.NewAPIMessageBuilder().AddEntity("status", "success").Build()
 		respondJSON(w, http.StatusOK, response.ToJson())
@@ -156,7 +156,7 @@ func (api *APIServer) handlerGoals(w http.ResponseWriter, r *http.Request) {
 				// RegisterGoal(goal)
 				// chanTriggerSchedule <- "received new goal via api"
 				// scienceGoal := NewScienceGoal()
-				api.nodeScheduler.GoalManager.AddGoal(*scienceGoal)
+				api.nodeScheduler.GoalManager.AddGoal(scienceGoal)
 			} else {
 				logger.Debug.Printf("Could not convert %q into a science goal", j.Name)
 			}

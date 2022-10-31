@@ -18,6 +18,7 @@ func init() {
 	flags.StringSliceVarP(&deployment.EnvVarString, "env", "e", []string{}, "Set environment variables")
 	flags.StringVarP(&deployment.EnvFromFile, "env-from", "", "", "Set environment variables from file")
 	flags.BoolVar(&deployment.DevelopMode, "develop", false, "Enable the following development time features: access to wan network")
+	flags.StringVar(&deployment.Type, "type", "job", "Type of the plugin. It is one of ['job', 'deployment', 'daemonset]. Default is 'job'.")
 	rootCmd.AddCommand(cmdDeploy)
 }
 

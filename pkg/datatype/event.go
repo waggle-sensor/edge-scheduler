@@ -44,7 +44,7 @@ func (e *Event) GetJobID() string {
 	return e.get("job_id")
 }
 
-func (eb *EventBuilder) AddGoal(goal ScienceGoal) *EventBuilder {
+func (eb *EventBuilder) AddGoal(goal *ScienceGoal) *EventBuilder {
 	eb.e.Meta["goal_name"] = goal.Name
 	eb.e.Meta["goal_id"] = goal.ID
 	return eb
