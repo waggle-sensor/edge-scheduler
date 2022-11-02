@@ -91,6 +91,10 @@ type SubGoal struct {
 	checksum     string    `json:"-" yaml:"-"`
 }
 
+func (sg *SubGoal) GetPlugins() []*Plugin {
+	return sg.Plugins
+}
+
 // func NewSubGoal(goalID string, nodeID string, plugins []*PluginSpec) *SubGoal {
 // 	var subGoal SubGoal
 // 	subGoal.Node = &Node{
@@ -127,6 +131,14 @@ func (sg *SubGoal) AddChecksum() error {
 	return nil
 }
 
+func (sg *SubGoal) IsUpdated(otherSubGoal *SubGoal) bool {
+	if sg.CompareChecksum(otherSubGoal) {
+		return false
+	} else {
+		return true
+	}
+}
+
 func (sg *SubGoal) CompareChecksum(otherSubGoal *SubGoal) bool {
 	if sg.checksum == otherSubGoal.checksum {
 		return true
@@ -139,30 +151,6 @@ func (sg *SubGoal) ApplyGoalIDToPlugins(goalID string) {
 	for _, plugin := range sg.Plugins {
 		plugin.GoalID = goalID
 	}
-}
-
-// UpdatePluginContext updates plugin's context event within the subgoal
-// It returns an error if it fails to update context status of the plugin
-// func (sg *SubGoal) UpdatePluginContext(contextEvent EventPluginContext) error {
-// 	for _, plugin := range sg.Plugins {
-// 		if plugin.Name == contextEvent.PluginName {
-// 			return plugin.UpdatePluginContext(contextEvent.Status)
-// 		}
-// 	}
-// 	return fmt.Errorf("failed to update context (%s) of plugin %s", contextEvent.Status, contextEvent.PluginName)
-// }
-
-// GetSchedulablePlugins returns a list of plugins that are schedulable.
-// A plugin is schedulable when its ContextStatus is Runnable and
-// SchedulingStatus is not Running
-func (sg *SubGoal) GetSchedulablePlugins() (schedulable []*Plugin) {
-	for _, plugin := range sg.Plugins {
-		if plugin.Status.ContextStatus == Runnable &&
-			plugin.Status.SchedulingStatus != Running {
-			schedulable = append(schedulable, plugin)
-		}
-	}
-	return
 }
 
 func (sg *SubGoal) AddPlugin(plugin *Plugin) {

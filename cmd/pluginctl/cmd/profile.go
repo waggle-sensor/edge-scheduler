@@ -70,11 +70,12 @@ var cmdProfile = &cobra.Command{
 					return fmt.Errorf("Failed to get plugin status %s", err.Error())
 				}
 				logger.Debug.Printf("Retrying with attempt count %d", errorCount)
+			} else {
+				if pluginStatus == apiv1.PodRunning {
+					break
+				}
+				logger.Info.Printf("Plugin is in %q state. Waiting...", pluginStatus)
 			}
-			if pluginStatus != apiv1.PodPending {
-				break
-			}
-			logger.Info.Printf("Plugin is in %q state. Waiting...", pluginStatus)
 			time.Sleep(2 * time.Second)
 		}
 		c := make(chan os.Signal, 1)

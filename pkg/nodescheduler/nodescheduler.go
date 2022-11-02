@@ -3,6 +3,7 @@ package nodescheduler
 import (
 	"encoding/json"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
@@ -16,6 +17,7 @@ const (
 )
 
 type NodeScheduler struct {
+	mu                          sync.Mutex
 	Version                     string
 	NodeID                      string
 	Config                      *NodeSchedulerConfig
@@ -25,31 +27,14 @@ type NodeScheduler struct {
 	APIServer                   *APIServer
 	SchedulingPolicy            policy.SchedulingPolicy
 	LogToBeehive                *interfacing.RabbitMQHandler
+	waitingQueue                datatype.Queue
+	readyQueue                  datatype.Queue
+	scheduledPlugins            datatype.Queue
 	chanContextEventToScheduler chan datatype.EventPluginContext
-	chanFromGoalManager         chan datatype.Event
 	chanFromResourceManager     chan datatype.Event
 	chanFromCloudScheduler      chan *datatype.Event
-	chanRunGoal                 chan *datatype.ScienceGoal
-	chanStopPlugin              chan *datatype.Plugin
-	chanPluginToResourceManager chan *datatype.Plugin
 	chanNeedScheduling          chan datatype.Event
-	chanAPIServerToGoalManager  chan *datatype.ScienceGoal
 }
-
-// func NewNodeScheduler(simulate bool) &NodeScheduler {
-// 	// schedulingPolicy := policy.NewSimpleSchedulingPolicy()
-// 	return &NodeScheduler{
-// 		Simulate:                    simulate,
-// 		SchedulingPolicy:            schedulingPolicy,
-// 		chanContextEventToScheduler: make(chan datatype.EventPluginContext, maxChannelBuffer),
-// 		chanFromGoalManager:         make(chan datatype.Event, maxChannelBuffer),
-// 		chanRunGoal:                 make(chan *datatype.ScienceGoal, maxChannelBuffer),
-// 		chanStopPlugin:              make(chan *datatype.Plugin, maxChannelBuffer),
-// 		chanPluginToResourceManager: make(chan *datatype.Plugin, maxChannelBuffer),
-// 		chanNeedScheduling:          make(chan string, 1),
-// 		chanAPIServerToGoalManager:  make(chan *datatype.ScienceGoal, maxChannelBuffer),
-// 	}
-// }
 
 // Configure sets up the followings in Kubernetes cluster
 //
@@ -86,23 +71,30 @@ func (ns *NodeScheduler) Configure() (err error) {
 
 // Run handles communications between components for scheduling
 func (ns *NodeScheduler) Run() {
-	go ns.GoalManager.Run(ns.chanFromGoalManager)
-	// go ns.Knowledgebase.Run()
-	go ns.ResourceManager.Run(ns.chanPluginToResourceManager)
+	go ns.ResourceManager.Run()
 	go ns.APIServer.Run()
-
-	// TODO: We generate a 30-second timer to (re)-evaluate given science rules
-	ticker := time.NewTicker(10 * time.Second)
+	ruleCheckingTicker := time.NewTicker(10 * time.Second)
 	for {
 		select {
-		case <-ticker.C:
+		case event := <-ns.chanFromCloudScheduler:
+			logger.Debug.Printf("%s", event.ToString())
+			goals := event.GetEntry("goals")
+			err := ns.ResourceManager.CreateConfigMap(
+				configMapNameForGoals,
+				map[string]string{"goals": goals},
+				"default",
+				true,
+			)
+			if err != nil {
+				logger.Error.Printf("Failed to update goals for event %q", event.Type)
+			}
+		case <-ruleCheckingTicker.C:
 			logger.Debug.Print("Rule evaluation triggered")
 			triggerScheduling := false
-			// ns.Knowledgebase.AddRawMeasure("sys.time.minute", time.Now().Minute())
-			for goalID, _ := range ns.GoalManager.ScienceGoals {
+			for goalID, _ := range ns.waitingQueue.GetGoalIDs() {
 				r, err := ns.Knowledgebase.EvaluateGoal(goalID)
 				if err != nil {
-					logger.Debug.Printf("Failed to evaluate goal %q: %s", goalID, err.Error())
+					logger.Error.Printf("Failed to evaluate goal %q: %s", goalID, err.Error())
 				} else {
 					for _, pluginName := range r {
 						sg, err := ns.GoalManager.GetScienceGoalByID(goalID)
@@ -110,9 +102,10 @@ func (ns *NodeScheduler) Run() {
 							logger.Debug.Printf("Failed to find goal %q: %s", goalID, err.Error())
 						} else {
 							plugin := sg.GetMySubGoal(ns.NodeID).GetPlugin(pluginName)
-							if plugin.Status.SchedulingStatus == datatype.Waiting {
-								plugin.UpdatePluginSchedulingStatus(datatype.Ready)
+							if p := ns.waitingQueue.Pop(plugin); p != nil {
+								ns.readyQueue.Push(p)
 								triggerScheduling = true
+								logger.Debug.Printf("Plugin %s is promoted by rules", plugin.Name)
 							}
 						}
 					}
@@ -120,58 +113,38 @@ func (ns *NodeScheduler) Run() {
 			}
 			if triggerScheduling {
 				response := datatype.NewEventBuilder(datatype.EventPluginStatusPromoted).AddReason("kb triggered").Build()
+				go ns.LogToBeehive.SendWaggleMessage(response.ToWaggleMessage(), "node")
 				ns.chanNeedScheduling <- response
 			}
-
-		// case contextEvent := <-ns.chanContextEventToScheduler:
-		// 	scienceGoal, err := ns.GoalManager.GetScienceGoal(contextEvent.GoalID)
-		// 	if err != nil {
-		// 		logger.Error.Printf("%s", err.Error())
-		// 		continue
-		// 	}
-		// 	subGoal := scienceGoal.GetMySubGoal(ns.GoalManager.NodeID)
-		// 	err = subGoal.UpdatePluginContext(contextEvent)
-		// 	if err != nil {
-		// 		logger.Error.Printf("%s", err.Error())
-		// 		continue
-		// 	}
-		// 	// When a plugin becomes runnable see if it can be scheduled
-		// 	if contextEvent.Status == datatype.Runnable {
-		// 		ns.chanRunGoal <- scienceGoal
-		// 	} else if contextEvent.Status == datatype.Stoppable {
-		// 		ns.chanStopPlugin <- subGoal.GetPlugin(contextEvent.PluginName)
-		// 	}
-		case event := <-ns.chanFromGoalManager:
-			// ns.Knowledgebase.RegisterRules(scienceGoal, ns.GoalManager.NodeID)
-			logger.Debug.Printf("%s: %q", event.ToString(), event.GetGoalName())
-			switch event.Type {
-			case datatype.EventGoalStatusReceived, datatype.EventGoalStatusUpdated:
-				sg, err := ns.GoalManager.GetScienceGoalByID(event.GetGoalID())
-				if err != nil {
-					logger.Error.Printf("Failed to find goal %q: %s", event.GetGoalID(), err.Error())
-				} else {
-					ns.Knowledgebase.AddRulesFromScienceGoal(sg)
-					ns.chanNeedScheduling <- event
-					go ns.LogToBeehive.SendWaggleMessage(event.ToWaggleMessage(), "all")
+		case event := <-ns.chanNeedScheduling:
+			logger.Debug.Printf("Reason for (re)scheduling %q", event.Type)
+			// Select the best task
+			plugins, err := ns.SchedulingPolicy.SelectBestPlugins(
+				&ns.readyQueue,
+				&ns.scheduledPlugins,
+				datatype.Resource{
+					CPU:       "999000m",
+					Memory:    "999999Gi",
+					GPUMemory: "999999Gi",
+				},
+			)
+			if err != nil {
+				logger.Error.Printf("Failed to get the best task to run %q", err.Error())
+			} else {
+				for _, plugin := range plugins {
+					e := datatype.NewEventBuilder(datatype.EventPluginStatusScheduled).AddReason("Fit to resource").AddPluginMeta(plugin).Build()
+					logger.Debug.Printf("%s: %q (%q)", e.ToString(), e.GetPluginName(), e.GetReason())
+					go ns.LogToBeehive.SendWaggleMessage(e.ToWaggleMessage(), "all")
+					ns.readyQueue.Pop(plugin)
+					ns.scheduledPlugins.Push(plugin)
+					go ns.ResourceManager.LaunchAndWatchPlugin(plugin)
 				}
-			case datatype.EventGoalStatusRemoved:
-				// TODO: Clean up plugins associated to the goal
-				go ns.LogToBeehive.SendWaggleMessage(event.ToWaggleMessage(), "all")
 			}
 		case event := <-ns.chanFromResourceManager:
 			logger.Debug.Printf("%s", event.ToString())
 			switch event.Type {
 			case datatype.EventPluginStatusLaunched:
-				scienceGoal, err := ns.GoalManager.GetScienceGoalByID(event.GetGoalID())
-				if err != nil {
-					logger.Error.Printf("Could not get goal to update plugin status: %q", err.Error())
-				} else {
-					pluginName := event.GetPluginName()
-					plugin := scienceGoal.GetMySubGoal(ns.NodeID).GetPlugin(pluginName)
-					if plugin != nil {
-						go ns.LogToBeehive.SendWaggleMessage(event.ToWaggleMessage(), "all")
-					}
-				}
+				go ns.LogToBeehive.SendWaggleMessage(event.ToWaggleMessage(), "all")
 			case datatype.EventPluginStatusComplete:
 				// publish plugin completion message locally so that
 				// rule checker knows when the last execution was
@@ -195,109 +168,91 @@ func (ns *NodeScheduler) Run() {
 					pluginName := event.GetPluginName()
 					plugin := scienceGoal.GetMySubGoal(ns.NodeID).GetPlugin(pluginName)
 					if plugin != nil {
-						plugin.UpdatePluginSchedulingStatus(datatype.Waiting)
+						ns.scheduledPlugins.Pop(plugin)
+						ns.waitingQueue.Push(plugin)
 						go ns.LogToBeehive.SendWaggleMessage(event.ToWaggleMessage(), "all")
 					}
 				}
-				ns.chanNeedScheduling <- event
-			case datatype.EventFailure:
-				logger.Debug.Printf("Error reported from resource manager: %q", event.GetReason())
-				go ns.LogToBeehive.SendWaggleMessage(event.ToWaggleMessage(), "all")
-				ns.chanNeedScheduling <- event
 			case datatype.EventGoalStatusReceivedBulk:
+				// A goal set is received. We add or update the goals.
 				logger.Debug.Printf("A bulk goal is received")
-				ns.ResourceManager.CleanUp()
 				data := event.GetEntry("goals")
 				var goals []datatype.ScienceGoal
 				err := json.Unmarshal([]byte(data), &goals)
 				if err != nil {
 					logger.Error.Printf("Failed to load bulk goals %q", err.Error())
 				} else {
-					ns.GoalManager.SetGoals(goals)
+					ns.handleBulkGoals(goals)
 				}
 			}
-			// case scheduledScienceGoal := <-ns.chanRunGoal:
-			// 	logger.Info.Printf("Goal %s needs scheduling", scheduledScienceGoal.Name)
-			// 	subGoal := scheduledScienceGoal.GetMySubGoal(ns.GoalManager.NodeID)
-			// 	pluginsSubjectToSchedule := subGoal.GetSchedulablePlugins()
-			// 	logger.Info.Printf("Plugins subject to run: %v", pluginsSubjectToSchedule)
-			// 	// TODO: Resource model is not applied here -- needs improvements
-			// 	orderedPluginsToRun := policy.SimpleSchedulingPolicy(pluginsSubjectToSchedule, datatype.Resource{
-			// 		CPU:       999999,
-			// 		Memory:    999999,
-			// 		GPUMemory: 999999,
-			// 	})
-			// 	logger.Debug.Printf("Ordered plugins subject to run: %v", orderedPluginsToRun)
-			// 	// Launch plugins
-			// 	for _, plugin := range orderedPluginsToRun {
-			// 		plugin.Status.SchedulingStatus = datatype.Running
-			// 		ns.chanPluginToResourceManager <- plugin
-			// 		logger.Info.Printf("Plugin %s has been scheduled to run", plugin.Name)
-			// 	}
-			// 	// // Launch plugins
-			// 	// if launchPlugins(schedulablePluginConfigs, pluginsToRun) {
-			// 	// 	// Track the plugin
-			// 	// 	// TODO: Later get status from k3s to track running plugins
-			// 	// 	currentPlugins = append(currentPlugins, pluginsToRun...)
-			// 	// }
-			// 	// logger.Info.Print("======================================")
-			// 	// scheduleTriggered = false
-			// case pluginToStop := <-ns.chanStopPlugin:
-			// 	if pluginToStop.Status.SchedulingStatus == datatype.Running {
-			// 		pluginToStop.Status.SchedulingStatus = datatype.Stopped
-			// 		ns.chanPluginToK3SClient <- pluginToStop
-			// 		logger.Info.Printf("Plugin %s has been triggered to stop", pluginToStop.Name)
-			// 	}
-		case event := <-ns.chanFromCloudScheduler:
-			logger.Debug.Printf("%s", event.ToString())
-			goals := event.GetEntry("goals")
-			err := ns.ResourceManager.CreateConfigMap(
-				configMapNameForGoals,
-				map[string]string{"goals": goals},
-				"default",
-				true,
-			)
-			if err != nil {
-				logger.Error.Printf("Failed to update goals for event %q", event.Type)
-			}
-		case event := <-ns.chanNeedScheduling:
-			logger.Debug.Printf("Reason for (re)scheduling %q", event.Type)
-			// Main logic: round robin + FIFO
-			// Promote any waiting plugins
-			// for id, goal := range ns.GoalManager.ScienceGoals {
-			// 	logger.Debug.Printf("Checking Goal %q (%s)", goal.Name, id)
-			// 	subGoal := goal.GetMySubGoal(ns.GoalManager.NodeID)
-			// 	events := ns.SchedulingPolicy.SimpleScheduler.PromotePlugins(subGoal)
-			// 	for _, e := range events {
-			// 		logger.Debug.Printf("%s: %q", e.ToString(), e.GetPluginName())
-			// 		go ns.LogToBeehive.SendWaggleMessage(e.ToWaggleMessage(), "all")
-			// 	}
-			// }
-			// Select the best task
-			plugins, err := ns.SchedulingPolicy.SelectBestPlugins(
-				ns.GoalManager.ScienceGoals,
-				datatype.Resource{
-					CPU:       "999000m",
-					Memory:    "999999Gi",
-					GPUMemory: "999999Gi",
-				},
-				ns.GoalManager.NodeID,
-			)
-			if err != nil {
-				logger.Error.Printf("Failed to get the best task to run %q", err.Error())
+		}
+	}
+}
+
+func (ns *NodeScheduler) registerGoal(goal *datatype.ScienceGoal) {
+	ns.GoalManager.AddGoal(goal)
+	ns.Knowledgebase.AddRulesFromScienceGoal(goal)
+	for _, p := range goal.GetMySubGoal(ns.NodeID).GetPlugins() {
+		ns.waitingQueue.Push(p)
+		logger.Debug.Printf("plugin %s is added to the watiting queue", p.Name)
+	}
+}
+
+func (ns *NodeScheduler) cleanUpGoal(goal *datatype.ScienceGoal) {
+	ns.Knowledgebase.DropRules(goal.Name)
+	for _, p := range goal.GetMySubGoal(ns.NodeID).GetPlugins() {
+		if a := ns.waitingQueue.Pop(p); a != nil {
+			logger.Debug.Printf("plugin %s is removed from the waiting queue", p.Name)
+		}
+		if a := ns.readyQueue.Pop(p); a != nil {
+			logger.Debug.Printf("plugin %s is removed from the ready queue", p.Name)
+		}
+		if a := ns.scheduledPlugins.Pop(p); a != nil {
+			ns.ResourceManager.RemovePlugin(a)
+			logger.Debug.Printf("plugin %s is removed from running", p.Name)
+		}
+	}
+	ns.GoalManager.DropGoal(goal.ID)
+}
+
+// handleBulkGoals adds or updates each goal in given goal list
+func (ns *NodeScheduler) handleBulkGoals(goals []datatype.ScienceGoal) {
+	// NOTE: There are multiple triggers that call this function
+	//       For example, k3s configmap change for goals and cloud scheduler pushing
+	//       new goals. We mutex lock this to secure adding/dropping goals.
+	ns.mu.Lock()
+	defer ns.mu.Unlock()
+	goalsToKeep := make(map[string]bool)
+	for _, goal := range goals {
+		if subGoal := goal.GetMySubGoal(ns.NodeID); subGoal != nil {
+			subGoal.AddChecksum()
+		}
+		goalsToKeep[goal.ID] = true
+		if existingGoal, _ := ns.GoalManager.GetScienceGoalByJobID(goal.JobID); existingGoal != nil {
+			// We assume that if the goal ID are the same, the goal has not changed.
+			if existingGoal.ID == goal.ID {
+				logger.Info.Printf("The goal %s exists and no changes in the goal. Skipping adding the goal", goal.Name)
+				continue
 			} else {
-				for _, plugin := range plugins {
-					// if ns.ResourceManager.WillItFit(plugin) {
-					e := datatype.NewEventBuilder(datatype.EventPluginStatusScheduled).AddReason("Fits to resource").AddPluginMeta(plugin).Build()
-					logger.Debug.Printf("%s: %q (%q)", e.ToString(), e.GetPluginName(), e.GetReason())
-					go ns.LogToBeehive.SendWaggleMessage(e.ToWaggleMessage(), "all")
-					plugin.UpdatePluginSchedulingStatus(datatype.Running)
-					go ns.ResourceManager.LaunchAndWatchPlugin(plugin)
-					// } else {
-					// 	logger.Debug.Printf("Resource is not availble for plugin %q", plugin.Name)
-					// }
-				}
+				logger.Info.Printf("The goal %s %q exists and has changed its content. Cleaning up the existing goal %q", goal.Name, goal.ID, existingGoal.ID)
+				ns.cleanUpGoal(existingGoal)
+				ns.registerGoal(&goal)
+				e := datatype.NewEventBuilder(datatype.EventGoalStatusUpdated).AddGoal(&goal).Build()
+				go ns.LogToBeehive.SendWaggleMessage(e.ToWaggleMessage(), "all")
 			}
+		} else {
+			logger.Info.Printf("Adding the new goal %s %q", goal.Name, goal.ID)
+			ns.registerGoal(&goal)
+			e := datatype.NewEventBuilder(datatype.EventGoalStatusReceived).AddGoal(&goal).Build()
+			go ns.LogToBeehive.SendWaggleMessage(e.ToWaggleMessage(), "all")
+		}
+	}
+	// Remove any existing goal that is not included in the new goal set
+	for _, goal := range ns.GoalManager.ScienceGoals {
+		if _, exist := goalsToKeep[goal.ID]; !exist {
+			ns.cleanUpGoal(&goal)
+			event := datatype.NewEventBuilder(datatype.EventGoalStatusRemoved).AddGoal(&goal).Build()
+			go ns.LogToBeehive.SendWaggleMessage(event.ToWaggleMessage(), "all")
 		}
 	}
 }

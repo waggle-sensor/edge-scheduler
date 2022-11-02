@@ -64,7 +64,7 @@ var cmdRun = &cobra.Command{
 				}
 				logger.Debug.Printf("Retrying with attempt count %d", errorCount)
 			}
-			if pluginStatus != apiv1.PodPending {
+			if pluginStatus == apiv1.PodRunning {
 				break
 			}
 			logger.Info.Printf("Plugin is in %q state. Waiting...", pluginStatus)

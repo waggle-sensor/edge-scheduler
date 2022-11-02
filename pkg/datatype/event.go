@@ -58,7 +58,6 @@ func (eb *EventBuilder) AddEntry(k string, v string) *EventBuilder {
 func (eb *EventBuilder) AddPluginMeta(plugin *Plugin) *EventBuilder {
 	eb.e.Meta["plugin_name"] = plugin.Name
 	eb.e.Meta["plugin_image"] = plugin.PluginSpec.Image
-	eb.e.Meta["plugin_status_by_scheduler"] = string(plugin.Status.SchedulingStatus)
 	eb.e.Meta["plugin_task"] = plugin.PluginSpec.Job
 	eb.e.Meta["plugin_args"] = strings.Join(plugin.PluginSpec.Args, " ")
 	selectors, err := json.Marshal(plugin.PluginSpec.Selector)

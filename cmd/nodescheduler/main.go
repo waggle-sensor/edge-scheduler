@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -25,6 +26,7 @@ func main() {
 	var config nodescheduler.NodeSchedulerConfig
 	var configPath string
 	config.Version = Version
+	flag.BoolVar(&config.Debug, "debug", false, "flag to debug")
 	flag.StringVar(&configPath, "config", "", "Path to config file")
 	flag.BoolVar(&config.Simulate, "simulate", false, "Simulate the scheduler")
 	flag.StringVar(&config.Name, "nodename", getenv("WAGGLE_NODE_VSN", "W000"), "node name (VSN)")
@@ -52,6 +54,9 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
+	}
+	if !config.Debug {
+		logger.Debug.SetOutput(io.Discard)
 	}
 	logger.Info.Printf("Node scheduler (%q) starts...", config.Name)
 	logger.Debug.Print("Creating node scheduler...")
