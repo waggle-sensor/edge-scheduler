@@ -972,7 +972,7 @@ func (rm *ResourceManager) Run() {
 	if rm.MetricsClient == nil {
 		logger.Info.Println("No metrics client is set. Metrics information cannot be obtained")
 	}
-	metricsTicker := time.NewTicker(5 * time.Second)
+	// metricsTicker := time.NewTicker(5 * time.Second)
 	// NOTE: The garbage collector runs to clean up completed/failed jobs
 	//       This should be done by Kubernetes with versions higher than v1.21
 	//       v1.20 could do it by enabling TTL controller, but could not set it
@@ -1005,28 +1005,28 @@ func (rm *ResourceManager) Run() {
 			// 	logger.Error.Printf("Failed on %q k3s watcher", configMapName)
 			// 	break
 			// }
-		case <-metricsTicker.C:
-			nodeMetrics, err := rm.MetricsClient.MetricsV1beta1().NodeMetricses().List(context.TODO(), metav1.ListOptions{})
-			if err != nil {
-				logger.Error.Println("Error:", err)
-				return
-			}
-			for _, nodeMetric := range nodeMetrics.Items {
-				cpuQuantity := nodeMetric.Usage.Cpu().String()
-				memQuantity := nodeMetric.Usage.Memory().String()
-				msg := fmt.Sprintf("Node Name: %s \n CPU usage: %s \n Memory usage: %s", nodeMetric.Name, cpuQuantity, memQuantity)
-				logger.Debug.Println(msg)
-			}
-			podMetrics, err := rm.MetricsClient.MetricsV1beta1().PodMetricses(rm.Namespace).List(context.TODO(), metav1.ListOptions{})
-			for _, podMetric := range podMetrics.Items {
-				podContainers := podMetric.Containers
-				for _, container := range podContainers {
-					cpuQuantity := container.Usage.Cpu().String()
-					memQuantity := container.Usage.Memory().String()
-					msg := fmt.Sprintf("Container Name: %s \n CPU usage: %s \n Memory usage: %s", container.Name, cpuQuantity, memQuantity)
-					logger.Debug.Println(msg)
-				}
-			}
+			// case <-metricsTicker.C:
+			// 	nodeMetrics, err := rm.MetricsClient.MetricsV1beta1().NodeMetricses().List(context.TODO(), metav1.ListOptions{})
+			// 	if err != nil {
+			// 		logger.Error.Println("Error:", err)
+			// 		return
+			// 	}
+			// 	for _, nodeMetric := range nodeMetrics.Items {
+			// 		cpuQuantity := nodeMetric.Usage.Cpu().String()
+			// 		memQuantity := nodeMetric.Usage.Memory().String()
+			// 		msg := fmt.Sprintf("Node Name: %s \n CPU usage: %s \n Memory usage: %s", nodeMetric.Name, cpuQuantity, memQuantity)
+			// 		logger.Debug.Println(msg)
+			// 	}
+			// 	podMetrics, err := rm.MetricsClient.MetricsV1beta1().PodMetricses(rm.Namespace).List(context.TODO(), metav1.ListOptions{})
+			// 	for _, podMetric := range podMetrics.Items {
+			// 		podContainers := podMetric.Containers
+			// 		for _, container := range podContainers {
+			// 			cpuQuantity := container.Usage.Cpu().String()
+			// 			memQuantity := container.Usage.Memory().String()
+			// 			msg := fmt.Sprintf("Container Name: %s \n CPU usage: %s \n Memory usage: %s", container.Name, cpuQuantity, memQuantity)
+			// 			logger.Debug.Println(msg)
+			// 		}
+			// 	}
 		}
 	}
 	// for {
