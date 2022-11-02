@@ -555,7 +555,10 @@ func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, err
 	if err != nil {
 		return nil, err
 	}
-	template := rm.createPodTemplateSpecForPlugin(plugin)
+	template, err := rm.createPodTemplateSpecForPlugin(plugin)
+	if err != nil {
+		return nil, err
+	}
 	template.Spec.RestartPolicy = apiv1.RestartPolicyNever
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
@@ -578,7 +581,10 @@ func (rm *ResourceManager) CreateDeployment(plugin *datatype.Plugin) (*appsv1.De
 	if err != nil {
 		return nil, err
 	}
-	template := rm.createPodTemplateSpecForPlugin(plugin)
+	template, err := rm.createPodTemplateSpecForPlugin(plugin)
+	if err != nil {
+		return nil, err
+	}
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -599,7 +605,10 @@ func (rm *ResourceManager) CreateDaemonSet(plugin *datatype.Plugin) (*appsv1.Dae
 	if err != nil {
 		return nil, err
 	}
-	template := rm.createPodTemplateSpecForPlugin(plugin)
+	template, err := rm.createPodTemplateSpecForPlugin(plugin)
+	if err != nil {
+		return nil, err
+	}
 	return &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
