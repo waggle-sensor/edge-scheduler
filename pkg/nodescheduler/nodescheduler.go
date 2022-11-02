@@ -208,8 +208,15 @@ func (ns *NodeScheduler) cleanUpGoal(goal *datatype.ScienceGoal) {
 			logger.Debug.Printf("plugin %s is removed from the ready queue", p.Name)
 		}
 		if a := ns.scheduledPlugins.Pop(p); a != nil {
+			if pod, err := ns.ResourceManager.GetPod(a.Name); err != nil {
+				logger.Error.Printf("Failed to get pod of the plugin %q", a.Name)
+			} else {
+				e := datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddPluginMeta(a).AddPodMeta(pod).AddReason("Cleaning up the plugin due to deletion of the goal").Build()
+				go ns.LogToBeehive.SendWaggleMessage(e.ToWaggleMessage(), "all")
+			}
 			ns.ResourceManager.RemovePlugin(a)
 			logger.Debug.Printf("plugin %s is removed from running", p.Name)
+
 		}
 	}
 	ns.GoalManager.DropGoal(goal.ID)
