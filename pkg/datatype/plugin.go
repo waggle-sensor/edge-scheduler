@@ -1,6 +1,7 @@
 package datatype
 
 import (
+	"fmt"
 	"path"
 	"strings"
 )
@@ -25,13 +26,18 @@ type PluginSpec struct {
 	DevelopMode bool              `json:"develop,omitempty" yaml:"develop,omitempty"`
 }
 
-func (ps *PluginSpec) GetImageVersion() string {
-	// split name:version from image string
-	parts := strings.Split(path.Base(ps.Image), ":")
-	if len(parts) != 2 {
-		return ""
+func (ps *PluginSpec) GetImageTag() (string, error) {
+	name := path.Base(ps.Image)
+	parts := strings.Split(name, ":")
+
+	switch len(parts) {
+	case 1:
+		return "latest", nil
+	case 2:
+		return parts[1], nil
+	default:
+		return "", fmt.Errorf("invalid image name")
 	}
-	return parts[1]
 }
 
 // ContextStatus represents contextual status of a plugin

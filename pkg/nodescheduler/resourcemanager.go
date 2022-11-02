@@ -138,10 +138,6 @@ func securityContextForConfig(pluginSpec *datatype.PluginSpec) *apiv1.SecurityCo
 	return nil
 }
 
-func getPriorityClassName(pluginSpec *datatype.PluginSpec) string {
-	return "wes-plugin-default"
-}
-
 func (rm *ResourceManager) ConfigureKubernetes(inCluster bool, kubeconfig string) error {
 	k3sClient, err := GetK3SClient(inCluster, kubeconfig)
 	if err != nil {
@@ -158,10 +154,15 @@ func (rm *ResourceManager) ConfigureKubernetes(inCluster bool, kubeconfig string
 
 // CreatePluginCredential creates a credential inside RabbitMQ server for the plugin
 func (rm *ResourceManager) CreatePluginCredential(plugin *datatype.Plugin) (datatype.PluginCredential, error) {
+	tag, err := plugin.PluginSpec.GetImageTag()
+	if err != nil {
+		return datatype.PluginCredential{}, err
+	}
+
 	// TODO: We will need to add instance of plugin as a aprt of Username
 	// username should follow "plugin.NAME:VERSION" format to publish messages via WES
 	credential := datatype.PluginCredential{
-		Username: fmt.Sprint("plugin.", strings.ToLower(plugin.Name), ":", plugin.PluginSpec.GetImageVersion()),
+		Username: fmt.Sprint("plugin.", strings.ToLower(plugin.Name), ":", tag),
 		Password: generatePassword(),
 	}
 	return credential, nil
@@ -320,18 +321,7 @@ func (rm *ResourceManager) WatchJobs(namespace string) (watch.Interface, error) 
 	return watcher, err
 }
 
-func generateUID() string {
-	var b [24]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		// we cannot recover from this error, so bail out now!
-		panic(err)
-	}
-	return hex.EncodeToString(b[:])
-}
-
-func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugin) v1.PodTemplateSpec {
-	uid := generateUID()
-
+func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugin) (v1.PodTemplateSpec, error) {
 	envs := []apiv1.EnvVar{
 		{
 			Name:  "PULSE_SERVER",
@@ -355,8 +345,12 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 		},
 		// NOTE WAGGLE_APP_ID is used to bind plugin <-> Pod identities.
 		{
-			Name:  "WAGGLE_APP_ID",
-			Value: uid,
+			Name: "WAGGLE_APP_ID",
+			ValueFrom: &apiv1.EnvVarSource{
+				FieldRef: &apiv1.ObjectFieldSelector{
+					FieldPath: "metadata.uid",
+				},
+			},
 		},
 		// Set pod IP for use by ROS clients.
 		{
@@ -394,12 +388,17 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 		})
 	}
 
+	tag, err := plugin.PluginSpec.GetImageTag()
+	if err != nil {
+		return v1.PodTemplateSpec{}, err
+	}
+
 	volumes := []apiv1.Volume{
 		{
 			Name: "uploads",
 			VolumeSource: apiv1.VolumeSource{
 				HostPath: &apiv1.HostPathVolumeSource{
-					Path: path.Join("/media/plugin-data/uploads", plugin.PluginSpec.Job, plugin.Name, plugin.PluginSpec.GetImageVersion()),
+					Path: path.Join("/media/plugin-data/uploads", plugin.PluginSpec.Job, plugin.Name, tag),
 					Type: &hostPathDirectoryOrCreate,
 				},
 			},
@@ -487,10 +486,18 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 				"-h",
 				"wes-app-meta-cache",
 				"SET",
-				"app-meta." + uid,
+				"app-meta.$(WAGGLE_APP_ID)",
 				string(appMetaData),
 			},
 			Env: []apiv1.EnvVar{
+				{
+					Name: "WAGGLE_APP_ID",
+					ValueFrom: &apiv1.EnvVarSource{
+						FieldRef: &apiv1.ObjectFieldSelector{
+							FieldPath: "metadata.uid",
+						},
+					},
+				},
 				{
 					Name: "HOST",
 					ValueFrom: &apiv1.EnvVarSource{
@@ -532,14 +539,14 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 			Labels: rm.labelsForPlugin(plugin),
 		},
 		Spec: apiv1.PodSpec{
-			NodeSelector: nodeSelectorForConfig(plugin.PluginSpec),
+			PriorityClassName: "wes-app-priority",
+			NodeSelector:      nodeSelectorForConfig(plugin.PluginSpec),
 			// TODO: The priority class will be revisited when using resource metrics to schedule plugins
-			// PriorityClassName: getPriorityClassName(plugin.PluginSpec),
 			InitContainers: initContainers,
 			Containers:     containers,
 			Volumes:        volumes,
 		},
-	}
+	}, nil
 }
 
 // CreateK3SJob creates and returns a Kubernetes job object of the pllugin
