@@ -894,12 +894,42 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 				logger.Debug.Printf("Plugin %s status %s: %s", job.Name, event.Type, job.Status.Conditions[0].Type)
 				switch job.Status.Conditions[0].Type {
 				case batchv1.JobComplete:
-					// rm.UpdateReservation(false)
 					rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusComplete).AddK3SJobMeta(job).AddPodMeta(pod).AddPluginMeta(plugin).Build())
 					return
 				case batchv1.JobFailed:
-					// rm.UpdateReservation(false)
-					rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason(pod.Status.Message).AddK3SJobMeta(job).AddPodMeta(pod).AddPluginMeta(plugin).Build())
+					eventBuilder := datatype.NewEventBuilder(datatype.EventPluginStatusFailed).
+						AddK3SJobMeta(job).
+						AddPodMeta(pod).
+						AddPluginMeta(plugin)
+					if state := pod.Status.ContainerStatuses[0].State.Terminated; state != nil {
+						eventBuilder = eventBuilder.AddReason(state.Reason).
+							AddEntry("return_code", fmt.Sprintf("%d", state.ExitCode))
+					}
+					if logReader, err := rm.GetPluginLog(job.Name, false); err == nil {
+						defer logReader.Close()
+						lastLog := make([]byte, 1024)
+						totalLength := 0
+						buffer := make([]byte, 1024)
+						for {
+							n, err := logReader.Read(buffer)
+							if err != nil {
+								if err == io.EOF {
+									if totalLength > n {
+										lastLog = append(lastLog[totalLength-n:], buffer[:n]...)
+									} else {
+										totalLength = n
+										copy(lastLog, buffer[:n])
+									}
+									break
+								}
+							}
+							copy(lastLog, buffer)
+							totalLength = n
+						}
+						// logger.Debug.Printf("")
+						eventBuilder = eventBuilder.AddEntry("error_log", string(lastLog[:totalLength]))
+					}
+					rm.Notifier.Notify(eventBuilder.Build())
 					return
 				}
 			} else {
