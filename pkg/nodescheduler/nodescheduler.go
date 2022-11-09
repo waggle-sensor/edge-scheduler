@@ -173,6 +173,8 @@ func (ns *NodeScheduler) Run() {
 						go ns.LogToBeehive.SendWaggleMessage(event.ToWaggleMessage(), "all")
 					}
 				}
+				// We trigger the scheduling logic for plugins that need to run
+				ns.chanNeedScheduling <- event
 			case datatype.EventGoalStatusReceivedBulk:
 				// A goal set is received. We add or update the goals.
 				logger.Debug.Printf("A bulk goal is received")

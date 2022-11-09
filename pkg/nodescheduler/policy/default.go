@@ -14,6 +14,8 @@ func GetSchedulingPolicyByName(policyName string) SchedulingPolicy {
 		return NewSimpleSchedulingPolicy()
 	case "roundrobin":
 		return NewRoundRobinSchedulingPolicy()
+	case "gpuaware":
+		return NewGPUAwareSchedulingPolicy()
 	default:
 		return NewSimpleSchedulingPolicy()
 	}
@@ -27,7 +29,7 @@ func NewSimpleSchedulingPolicy() *SimpleSchedulingPolicy {
 }
 
 // SelectBestPlugins returns the best plugin to run at the time
-// For SimpleSchedulingPolicy, it returns the oldest plugin amongst "ready" plugins
+// For SimpleSchedulingPolicy, it returns all "ready" plugins
 func (ss *SimpleSchedulingPolicy) SelectBestPlugins(readyQueue *datatype.Queue, scheduledPlugins *datatype.Queue, availableResource datatype.Resource) (pluginsToRun []*datatype.Plugin, err error) {
 	readyQueue.ResetIter()
 	for readyQueue.More() {

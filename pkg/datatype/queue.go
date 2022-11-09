@@ -9,7 +9,9 @@ type Queue struct {
 }
 
 func (q *Queue) ResetIter() {
+	q.mu.Lock()
 	q.index = 0
+	q.mu.Unlock()
 }
 
 func (q *Queue) More() bool {
@@ -17,11 +19,13 @@ func (q *Queue) More() bool {
 }
 
 func (q *Queue) Next() *Plugin {
+	q.mu.Lock()
 	if q.index > len(q.entities) {
 		return nil
 	}
 	p := q.entities[q.index]
 	q.index += 1
+	q.mu.Unlock()
 	return p
 }
 
@@ -42,6 +46,7 @@ func (q *Queue) Length() int {
 func (q *Queue) Push(p *Plugin) {
 	q.mu.Lock()
 	q.entities = append(q.entities, p)
+	q.index += 1
 	q.mu.Unlock()
 }
 
@@ -52,6 +57,7 @@ func (q *Queue) Pop(p *Plugin) *Plugin {
 		if _p.Name == p.Name {
 			q.entities = append(q.entities[:i], q.entities[i+1:]...)
 			found = _p
+			q.index -= 1
 			break
 		}
 	}
