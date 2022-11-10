@@ -928,8 +928,9 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 							totalLength = n
 						}
 						eventBuilder = eventBuilder.AddEntry("error_log", string(lastLog[:totalLength]))
-						logger.Error.Printf("Logs of the plugin %q: %s", job.Name, string(lastLog[:totalLength]))
+						logger.Debug.Printf("Logs of the plugin %q: %s", job.Name, string(lastLog[:totalLength]))
 					} else {
+						eventBuilder = eventBuilder.AddEntry("error_log", err.Error())
 						logger.Debug.Printf("Failed to get plugin log: %s", err.Error())
 					}
 					rm.Notifier.Notify(eventBuilder.Build())
