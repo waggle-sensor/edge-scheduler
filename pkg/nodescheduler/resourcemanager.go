@@ -897,6 +897,7 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 					rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusComplete).AddK3SJobMeta(job).AddPodMeta(pod).AddPluginMeta(plugin).Build())
 					return
 				case batchv1.JobFailed:
+					logger.Error.Printf("Plugin %q has failed. Pod name was %s", job.Name, pod.Name)
 					eventBuilder := datatype.NewEventBuilder(datatype.EventPluginStatusFailed).
 						AddK3SJobMeta(job).
 						AddPodMeta(pod).
@@ -926,8 +927,10 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 							copy(lastLog, buffer)
 							totalLength = n
 						}
-						// logger.Debug.Printf("")
 						eventBuilder = eventBuilder.AddEntry("error_log", string(lastLog[:totalLength]))
+						logger.Error.Printf("Logs of the plugin %q: %s", job.Name, string(lastLog[:totalLength]))
+					} else {
+						logger.Debug.Printf("Failed to get plugin log: %s", err.Error())
 					}
 					rm.Notifier.Notify(eventBuilder.Build())
 					return
