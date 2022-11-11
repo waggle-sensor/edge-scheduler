@@ -118,6 +118,7 @@ func (ns *NodeScheduler) Run() {
 			}
 		case event := <-ns.chanNeedScheduling:
 			logger.Debug.Printf("Reason for (re)scheduling %q", event.Type)
+			logger.Debug.Printf("Plugins in ready queue: %+v", ns.readyQueue.GetPluginNames())
 			// Select the best task
 			plugins, err := ns.SchedulingPolicy.SelectBestPlugins(
 				&ns.readyQueue,
@@ -173,6 +174,8 @@ func (ns *NodeScheduler) Run() {
 						go ns.LogToBeehive.SendWaggleMessage(event.ToWaggleMessage(), "all")
 					}
 				}
+				// We trigger the scheduling logic for plugins that need to run
+				ns.chanNeedScheduling <- event
 			case datatype.EventGoalStatusReceivedBulk:
 				// A goal set is received. We add or update the goals.
 				logger.Debug.Printf("A bulk goal is received")
@@ -208,8 +211,15 @@ func (ns *NodeScheduler) cleanUpGoal(goal *datatype.ScienceGoal) {
 			logger.Debug.Printf("plugin %s is removed from the ready queue", p.Name)
 		}
 		if a := ns.scheduledPlugins.Pop(p); a != nil {
+			if pod, err := ns.ResourceManager.GetPod(a.Name); err != nil {
+				logger.Error.Printf("Failed to get pod of the plugin %q", a.Name)
+			} else {
+				e := datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddPluginMeta(a).AddPodMeta(pod).AddReason("Cleaning up the plugin due to deletion of the goal").Build()
+				go ns.LogToBeehive.SendWaggleMessage(e.ToWaggleMessage(), "all")
+			}
 			ns.ResourceManager.RemovePlugin(a)
 			logger.Debug.Printf("plugin %s is removed from running", p.Name)
+
 		}
 	}
 	ns.GoalManager.DropGoal(goal.ID)

@@ -40,6 +40,18 @@ func (ps *PluginSpec) GetImageTag() (string, error) {
 	}
 }
 
+func (ps *PluginSpec) IsGPURequired() bool {
+	if v, found := ps.Selector["resource.gpu"]; found {
+		if v == "true" {
+			return true
+		} else {
+			return false
+		}
+	} else {
+		return false
+	}
+}
+
 // ContextStatus represents contextual status of a plugin
 type ContextStatus string
 
