@@ -2,6 +2,7 @@ package policy
 
 import (
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
+	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
 )
 
 type SchedulingPolicy interface {
@@ -11,12 +12,16 @@ type SchedulingPolicy interface {
 func GetSchedulingPolicyByName(policyName string) SchedulingPolicy {
 	switch policyName {
 	case "default":
+		logger.Info.Println("Default policy is selected")
 		return NewSimpleSchedulingPolicy()
 	case "roundrobin":
+		logger.Info.Println("Round-robin policy is selected")
 		return NewRoundRobinSchedulingPolicy()
 	case "gpuaware":
+		logger.Info.Println("GPU-aware policy is selected")
 		return NewGPUAwareSchedulingPolicy()
 	default:
+		logger.Error.Printf("Given policy name %q does not exist. Default policy is selected", policyName)
 		return NewSimpleSchedulingPolicy()
 	}
 }

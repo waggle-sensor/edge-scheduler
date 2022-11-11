@@ -32,6 +32,15 @@ func TestGPUAwarePolicy(t *testing.T) {
 			Image: "plugin-c:latest",
 		},
 	})
+	readyQueue.Push(&datatype.Plugin{
+		Name: "gpu-plugin-d",
+		PluginSpec: &datatype.PluginSpec{
+			Image: "plugin-d:latest",
+			Selector: map[string]string{
+				"resource.gpu": "true",
+			},
+		},
+	})
 	schedulingPolicy := GetSchedulingPolicyByName("gpuaware")
 	pluginsToSchedule, err := schedulingPolicy.SelectBestPlugins(
 		&readyQueue,

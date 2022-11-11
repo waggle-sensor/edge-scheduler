@@ -2,6 +2,7 @@ package policy
 
 import (
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
+	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
 )
 
 type GPUAwareSchedulingPolicy struct {
@@ -22,6 +23,7 @@ func (rs *GPUAwareSchedulingPolicy) SelectBestPlugins(readyQueue *datatype.Queue
 		p := scheduledPlugins.Next()
 		if p.PluginSpec.IsGPURequired() {
 			GPUPluginExists = true
+			logger.Debug.Printf("GPU-demand plugin %q exists in scheduled plugin list.", p.Name)
 			break
 		}
 	}
@@ -30,12 +32,13 @@ func (rs *GPUAwareSchedulingPolicy) SelectBestPlugins(readyQueue *datatype.Queue
 		p := readyQueue.Next()
 		if p.PluginSpec.IsGPURequired() {
 			if GPUPluginExists == false {
-				readyQueue.Pop(p)
 				pluginsToRun = append(pluginsToRun, p)
+				logger.Debug.Printf("GPU-demand plugin %q is added to scheduled plugin list.", p.Name)
 				GPUPluginExists = true
+			} else {
+				logger.Debug.Printf("GPU-demand plugin %q needs to wait because other GPU-demand plugin is scheduled or being run.", p.Name)
 			}
 		} else {
-			readyQueue.Pop(p)
 			pluginsToRun = append(pluginsToRun, p)
 		}
 	}

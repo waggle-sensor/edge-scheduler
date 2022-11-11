@@ -29,6 +29,15 @@ func (q *Queue) Next() *Plugin {
 	return p
 }
 
+func (q *Queue) GetPluginNames() (list []string) {
+	q.ResetIter()
+	for q.More() {
+		plugin := q.Next()
+		list = append(list, plugin.Name)
+	}
+	return
+}
+
 func (q *Queue) GetGoalIDs() (list map[string]bool) {
 	list = make(map[string]bool)
 	q.ResetIter()

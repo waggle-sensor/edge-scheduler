@@ -118,6 +118,7 @@ func (ns *NodeScheduler) Run() {
 			}
 		case event := <-ns.chanNeedScheduling:
 			logger.Debug.Printf("Reason for (re)scheduling %q", event.Type)
+			logger.Debug.Printf("Plugins in ready queue: %+v", ns.readyQueue.GetPluginNames())
 			// Select the best task
 			plugins, err := ns.SchedulingPolicy.SelectBestPlugins(
 				&ns.readyQueue,
