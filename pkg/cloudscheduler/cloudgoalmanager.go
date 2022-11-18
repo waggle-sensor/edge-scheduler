@@ -51,6 +51,7 @@ func (cgm *CloudGoalManager) GetJobs(userName string) (jobs []*datatype.Job) {
 		}
 		return b.ForEach(func(k, v []byte) error {
 			var j datatype.Job
+			// TODO: This needs to return the error to the caller. It does not for now.
 			if err := json.Unmarshal(v, &j); err != nil {
 				return err
 			}

@@ -7,11 +7,11 @@ import (
 )
 
 type ScienceRule struct {
-	Rule             string
-	ActionType       ScienceRuleActionType
-	ActionObject     string
-	ActionParameters map[string]string
-	Condition        string
+	Rule             string                `json:"rule" yaml:"rule"`
+	ActionType       ScienceRuleActionType `json:"-" yaml:"-"`
+	ActionObject     string                `json:"-" yaml:"-"`
+	ActionParameters map[string]string     `json:"-" yaml:"-"`
+	Condition        string                `json:"-" yaml:"-"`
 }
 
 func NewScienceRule(rule string) (*ScienceRule, error) {

@@ -1,6 +1,7 @@
 package datatype
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 )
@@ -44,10 +45,14 @@ type APIMessage struct {
 }
 
 func (m *APIMessage) ToJson() []byte {
-	s, err := json.MarshalIndent(m.body, "", "  ")
+	bf := bytes.NewBuffer([]byte{})
+	encoder := json.NewEncoder(bf)
+	encoder.SetEscapeHTML(false)
+	encoder.SetIndent("", " ")
+	err := encoder.Encode(m.body)
 	if err != nil {
 		fmt.Printf("hack%s", err.Error())
 		return nil
 	}
-	return s
+	return bf.Bytes()
 }

@@ -42,6 +42,7 @@ func main() {
 	flag.StringVar(&config.RabbitmqPassword, "rabbitmq-password", getenv("RABBITMQ_PASSWORD", "service"), "RabbitMQ management password")
 	flag.StringVar(&config.GoalStreamURL, "goalstream-url", "", "URL to receive goal stream")
 	flag.StringVar(&config.RuleCheckerURI, "rulechecker-uri", "http://wes-sciencerule-checker:5000", "rulechecker URI")
+	flag.StringVar(&config.ScoreboardURI, "scoreboard-uri", "wes-scoreboard:6379", "scoreboard URI")
 	flag.StringVar(&config.SchedulingPolicy, "policy", "default", "Name of the scheduling policy")
 	flag.Parse()
 	if configPath != "" {
@@ -67,6 +68,7 @@ func main() {
 		AddResourceManager().
 		AddAPIServer().
 		AddLoggerToBeehive(appID).
+		AddConnToScoreboard().
 		Build()
 	err := ns.Configure()
 	if err != nil {

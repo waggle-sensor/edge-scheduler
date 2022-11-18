@@ -27,6 +27,7 @@ type NodeScheduler struct {
 	APIServer                   *APIServer
 	SchedulingPolicy            policy.SchedulingPolicy
 	LogToBeehive                *interfacing.RabbitMQHandler
+	ToScoreboard                *interfacing.RedisClient
 	waitingQueue                datatype.Queue
 	readyQueue                  datatype.Queue
 	scheduledPlugins            datatype.Queue
@@ -104,6 +105,8 @@ func (ns *NodeScheduler) Run() {
 						logger.Debug.Printf("Science rule %q is valid", r)
 						switch r.ActionType {
 						case datatype.ScienceRuleActionSchedule:
+							// TODO: We will need to find a way to pass parameters to the plugin
+							//       For example, schedule(plugin-a, duration=5m) <<
 							pluginName := r.ActionObject
 							plugin := sg.GetMySubGoal(ns.NodeID).GetPlugin(pluginName)
 							if p := ns.waitingQueue.Pop(plugin); p != nil {
@@ -128,7 +131,19 @@ func (ns *NodeScheduler) Run() {
 							}
 							go ns.LogToBeehive.SendWaggleMessage(message, to)
 						case datatype.ScienceRuleActionSet:
-
+							stateName := r.ActionObject
+							var value interface{}
+							if v, found := r.ActionParameters["value"]; found {
+								value = v
+							} else {
+								value = 1.
+							}
+							go func() {
+								err := ns.ToScoreboard.Set(stateName, value)
+								if err != nil {
+									logger.Error.Printf("Failed to set %q: %s", stateName, err.Error())
+								}
+							}()
 						}
 					}
 				}

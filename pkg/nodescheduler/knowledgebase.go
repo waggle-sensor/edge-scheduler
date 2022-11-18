@@ -44,6 +44,10 @@ func (kb *KnowledgeBase) add(obj interface{}, k string, v interface{}) {
 
 func (kb *KnowledgeBase) AddRulesFromScienceGoal(s *datatype.ScienceGoal) {
 	mySubGoal := s.GetMySubGoal(kb.nodeID)
+	// This is to make sure the rules are parsed before evaluated
+	for _, r := range mySubGoal.ScienceRules {
+		r.Parse(r.Rule)
+	}
 	kb.rules[s.ID] = mySubGoal.ScienceRules
 }
 

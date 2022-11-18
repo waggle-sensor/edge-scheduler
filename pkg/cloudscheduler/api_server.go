@@ -1,6 +1,7 @@
 package cloudscheduler
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -464,7 +465,7 @@ func (api *APIServer) handlerGoalForNode(w http.ResponseWriter, r *http.Request)
 	for _, g := range api.cloudScheduler.GoalManager.GetScienceGoalsForNode(nodeName) {
 		goals = append(goals, g.ShowMyScienceGoal(nodeName))
 	}
-	blob, err := json.MarshalIndent(goals, "", "  ")
+	blob, err := httpSensitiveJsonMarshal(goals)
 	if err != nil {
 		response := datatype.NewAPIMessageBuilder().AddError(err.Error()).Build()
 		respondJSON(w, http.StatusOK, response.ToJson())
@@ -504,7 +505,7 @@ func (api *APIServer) handlerGoalStreamForNode(w http.ResponseWriter, r *http.Re
 		}
 		flusher.Flush()
 	} else {
-		blob, err := json.MarshalIndent(goals, "", "  ")
+		blob, err := httpSensitiveJsonMarshal(goals)
 		if err != nil {
 			logger.Error.Printf("Failed to compress goals for node %q before pushing", nodeName)
 		} else {
@@ -594,4 +595,13 @@ func extractToken(r *http.Request) (string, error) {
 		return "", fmt.Errorf("Token not found")
 	}
 	return token, nil
+}
+
+func httpSensitiveJsonMarshal(o interface{}) ([]byte, error) {
+	bf := bytes.NewBuffer([]byte{})
+	encoder := json.NewEncoder(bf)
+	encoder.SetEscapeHTML(false)
+	encoder.SetIndent("", " ")
+	err := encoder.Encode(o)
+	return bf.Bytes(), err
 }

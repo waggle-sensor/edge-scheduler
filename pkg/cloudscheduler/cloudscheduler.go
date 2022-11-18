@@ -167,19 +167,17 @@ func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(jobID string, user *Us
 		// Check 4: conditions of job are valid
 
 		// Check 5: valiables are valid
-		if len(approvedPlugins) > 0 {
-			var rules []*datatype.ScienceRule
-			for _, rule := range job.ScienceRules {
-				r, err := datatype.NewScienceRule(rule)
-				if err != nil {
-					errorList = append(errorList,
-						fmt.Errorf("Failed to parse science rule %q: %s", rule, err.Error()))
-					continue
-				}
-				rules = append(rules, r)
+		var rules []*datatype.ScienceRule
+		for _, rule := range job.ScienceRules {
+			r, err := datatype.NewScienceRule(rule)
+			if err != nil {
+				errorList = append(errorList,
+					fmt.Errorf("Failed to parse science rule %q: %s", rule, err.Error()))
+				continue
 			}
-			scienceGoalBuilder = scienceGoalBuilder.AddSubGoal(nodeName, approvedPlugins, rules)
+			rules = append(rules, r)
 		}
+		scienceGoalBuilder = scienceGoalBuilder.AddSubGoal(nodeName, approvedPlugins, rules)
 	}
 	if len(errorList) > 0 {
 		logger.Info.Printf("Validation failed for Job ID %q: %v", jobID, errorList)
