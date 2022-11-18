@@ -91,22 +91,44 @@ func (ns *NodeScheduler) Run() {
 		case <-ruleCheckingTicker.C:
 			logger.Debug.Print("Rule evaluation triggered")
 			triggerScheduling := false
-			for goalID, _ := range ns.waitingQueue.GetGoalIDs() {
-				r, err := ns.Knowledgebase.EvaluateGoal(goalID)
+			// for goalID, _ := range ns.waitingQueue.GetGoalIDs() {
+			// NOTE: Getting only goals of the plugins from the ready queue is useful only for scheduling action.
+			//       To accommodate other types of action (i.e. publishing data to beehive) we need to
+			//       evaluate all science rules no matter what plugins in the waiting queue.
+			for goalID, sg := range ns.GoalManager.ScienceGoals {
+				validRules, err := ns.Knowledgebase.EvaluateGoal(goalID)
 				if err != nil {
 					logger.Error.Printf("Failed to evaluate goal %q: %s", goalID, err.Error())
 				} else {
-					for _, pluginName := range r {
-						sg, err := ns.GoalManager.GetScienceGoalByID(goalID)
-						if err != nil {
-							logger.Debug.Printf("Failed to find goal %q: %s", goalID, err.Error())
-						} else {
+					for _, r := range validRules {
+						logger.Debug.Printf("Science rule %q is valid", r)
+						switch r.ActionType {
+						case datatype.ScienceRuleActionSchedule:
+							pluginName := r.ActionObject
 							plugin := sg.GetMySubGoal(ns.NodeID).GetPlugin(pluginName)
 							if p := ns.waitingQueue.Pop(plugin); p != nil {
 								ns.readyQueue.Push(p)
 								triggerScheduling = true
 								logger.Debug.Printf("Plugin %s is promoted by rules", plugin.Name)
 							}
+						case datatype.ScienceRuleActionPublish:
+							eventName := r.ActionObject
+							var value interface{}
+							if v, found := r.ActionParameters["value"]; found {
+								value = v
+							} else {
+								value = 1.
+							}
+							message := datatype.NewMessage(eventName, value, time.Now().UnixNano(), nil)
+							var to string
+							if v, found := r.ActionParameters["to"]; found {
+								to = v
+							} else {
+								to = "all"
+							}
+							go ns.LogToBeehive.SendWaggleMessage(message, to)
+						case datatype.ScienceRuleActionSet:
+
 						}
 					}
 				}

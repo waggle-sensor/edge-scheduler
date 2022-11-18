@@ -1,6 +1,10 @@
 package nodescheduler
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
+)
 
 func TestKnowledgeBaseEvaluate(t *testing.T) {
 	// NOTE(sean) I noticed that this test seems to be missing something during setup and
@@ -12,8 +16,8 @@ func TestKnowledgeBaseEvaluate(t *testing.T) {
 			K string
 			V interface{}
 		}
-		Rule []string
-		Want string
+		Rules []string
+		Want  bool
 	}{
 		"test1": {
 			Input: struct {
@@ -23,8 +27,8 @@ func TestKnowledgeBaseEvaluate(t *testing.T) {
 				K: "a.b.c",
 				V: 123.12,
 			},
-			Rule: []string{"hello: a.b.c == 123"},
-			Want: "hello",
+			Rules: []string{"hello: a.b.c == 123"},
+			Want:  true,
 		},
 		// "test2": {
 		// 	Input: struct {
@@ -42,17 +46,20 @@ func TestKnowledgeBaseEvaluate(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			kb := NewKnowledgeBase("W000", "")
 			kb.AddRawMeasure(tc.Input.K, tc.Input.V)
-			for _, r := range tc.Rule {
-				result, err := kb.EvaluateRule(r)
+			for _, r := range tc.Rules {
+				scienceRule, err := datatype.NewScienceRule(r)
+				if err != nil {
+					t.Fatal(err.Error())
+				}
+				result, err := kb.EvaluateRule(scienceRule)
 				if err != nil {
 					t.Fatal(err.Error())
 				} else {
 					if result != tc.Want {
-						t.Fatalf("result %s: wanted %s", result, tc.Want)
+						t.Fatalf("result %t: wanted %t", result, tc.Want)
 					}
 				}
 			}
-
 		})
 	}
 }

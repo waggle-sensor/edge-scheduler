@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"strconv"
@@ -12,7 +11,6 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
 	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
-	yaml "gopkg.in/yaml.v2"
 	// "github.com/urfave/negroni"
 )
 
@@ -137,32 +135,5 @@ func (api *APIServer) handlerGoals(w http.ResponseWriter, r *http.Request) {
 		}
 		response := datatype.NewAPIMessageBuilder().AddEntity("status", "success").Build()
 		respondJSON(w, http.StatusOK, response.ToJson())
-	case http.MethodPut:
-		log.Printf("hit PUT")
-		// mReader, err := r.MultipartReader()
-		// if err != nil {
-		// 	respondJSON(w, http.StatusOK, "ERROR")
-		// }
-		yamlFile, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-			fmt.Println(err)
-		}
-		var jobTemplates []datatype.JobTemplate
-		_ = yaml.Unmarshal(yamlFile, &jobTemplates)
-		for _, j := range jobTemplates {
-			scienceGoal := j.ConvertJobTemplateToScienceGoal(api.nodeScheduler.NodeID)
-			if scienceGoal != nil {
-				logger.Debug.Printf("%v", scienceGoal)
-				// RegisterGoal(goal)
-				// chanTriggerSchedule <- "received new goal via api"
-				// scienceGoal := NewScienceGoal()
-				api.nodeScheduler.GoalManager.AddGoal(scienceGoal)
-			} else {
-				logger.Debug.Printf("Could not convert %q into a science goal", j.Name)
-			}
-
-		}
-
-		respondJSON(w, http.StatusOK, "")
 	}
 }

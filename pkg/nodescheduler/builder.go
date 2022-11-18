@@ -66,7 +66,7 @@ func (nsb *NodeSchedulerBuilder) AddResourceManager() *NodeSchedulerBuilder {
 func (nsb *NodeSchedulerBuilder) AddKnowledgebase() *NodeSchedulerBuilder {
 	nsb.nodeScheduler.Knowledgebase = &KnowledgeBase{
 		nodeID:         nsb.nodeScheduler.Config.Name,
-		rules:          make(map[string][]string),
+		rules:          make(map[string][]*datatype.ScienceRule),
 		measures:       map[string]interface{}{},
 		ruleCheckerURI: nsb.nodeScheduler.Config.RuleCheckerURI,
 	}
