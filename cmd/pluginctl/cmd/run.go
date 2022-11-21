@@ -49,11 +49,10 @@ var cmdRun = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer pluginCtl.TerminatePlugin(pluginName)
-
-		fmt.Printf("Launched the plugin %s successfully \n", pluginName)
+		fmt.Printf("Scheduled the plugin %s successfully \n", pluginName)
 		maxErrorCount := 5
 		errorCount := 0
+	checkStatusLoop:
 		for {
 			pluginStatus, err := pluginCtl.GetPluginStatus(pluginName)
 			if err != nil {
@@ -64,12 +63,18 @@ var cmdRun = &cobra.Command{
 				}
 				logger.Debug.Printf("Retrying with attempt count %d", errorCount)
 			}
-			if pluginStatus == apiv1.PodRunning {
-				break
+			logger.Debug.Printf("Current pod status: %s", pluginStatus)
+			switch pluginStatus {
+			case apiv1.PodRunning:
+				break checkStatusLoop
+			case apiv1.PodFailed:
+				// TODO: We will need to extract error on why it was pending or failed.
+				return fmt.Errorf("Plugin failed to run. The plugin remains in the system. Please investigate the problem and clean it up.")
 			}
 			logger.Info.Printf("Plugin is in %q state. Waiting...", pluginStatus)
 			time.Sleep(2 * time.Second)
 		}
+		defer pluginCtl.TerminatePlugin(pluginName)
 		c := make(chan os.Signal, 1)
 		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 		go func() {

@@ -325,11 +325,11 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 	envs := []apiv1.EnvVar{
 		{
 			Name:  "PULSE_SERVER",
-			Value: "tcp:wes-audio-server:4713",
+			Value: "tcp:wes-audio-server.default.svc.cluster.local:4713",
 		},
 		{
 			Name:  "WAGGLE_PLUGIN_HOST",
-			Value: "wes-rabbitmq",
+			Value: "wes-rabbitmq.default.svc.cluster.local",
 		},
 		{
 			Name:  "WAGGLE_PLUGIN_PORT",
@@ -342,6 +342,10 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 		{
 			Name:  "WAGGLE_PLUGIN_PASSWORD",
 			Value: "plugin",
+		},
+		{
+			Name:  "WAGGLE_GPS_SERVER",
+			Value: "wes-gps-server.default.svc.cluster.local",
 		},
 		// NOTE WAGGLE_APP_ID is used to bind plugin <-> Pod identities.
 		{
@@ -368,7 +372,7 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 		},
 		// Use WES scoreboard
 		{
-			Name:  "REDIS_HOST",
+			Name:  "WAGGLE_SCOREBOARD",
 			Value: "wes-scoreboard.default.svc.cluster.local",
 		},
 		{
