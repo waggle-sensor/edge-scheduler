@@ -7,6 +7,8 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"os/user"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -86,7 +88,14 @@ func (p *PluginCtl) GetMetrcisServerURL() (string, error) {
 }
 
 func (p *PluginCtl) ConnectToMetricsServer(config MetricsServerConfig) error {
-	tokenBlob, err := ioutil.ReadFile(config.InfluxDBTokenPath)
+	var path string
+	if strings.HasPrefix(config.InfluxDBTokenPath, "~/") {
+		usr, _ := user.Current()
+		path = filepath.Join(usr.HomeDir, config.InfluxDBTokenPath[2:])
+	} else {
+		path = config.InfluxDBTokenPath
+	}
+	tokenBlob, err := ioutil.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("Failed to read token at %s: %s", config.InfluxDBTokenPath, err)
 	}
