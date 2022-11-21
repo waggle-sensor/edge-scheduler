@@ -12,7 +12,7 @@ Pluginctl supports for amd64 and arm64 architecture. Please check [Releases](htt
 
 ```bash
 # For arm64 architecture
-wget -O /usr/bin/pluginctl https://github.com/waggle-sensor/edge-scheduler/releases/download/0.8.3/pluginctl-arm64
+wget -O /usr/bin/pluginctl https://github.com/waggle-sensor/edge-scheduler/releases/download/0.18.0/pluginctl-arm64
 chmod +x /usr/bin/pluginctl
 ```
 

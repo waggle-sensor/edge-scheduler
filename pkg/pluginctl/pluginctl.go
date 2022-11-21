@@ -111,7 +111,10 @@ func (p *PluginCtl) ConnectToMetricsServer(config MetricsServerConfig) error {
 	if p.MetricsServer == nil {
 		p.MetricsServer = &MetricsServer{}
 	}
-	p.MetricsServer.Client = influxdb2.NewClient(influxURL, string(token))
+	p.MetricsServer.Client = influxdb2.NewClientWithOptions(
+		influxURL,
+		string(token),
+		influxdb2.DefaultOptions().SetHTTPRequestTimeout(60))
 	// Ping to the server
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

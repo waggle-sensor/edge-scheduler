@@ -17,8 +17,13 @@ import (
 
 var metricsServerConfig pluginctl.MetricsServerConfig
 
+var (
+	start string
+	end   string
+)
+
 func init() {
-	flags := cmdProfile.Flags()
+	flags := cmdProfileRun.Flags()
 	flags.StringVarP(&deployment.Name, "name", "n", "", "Specify plugin name")
 	flags.StringVar(&deployment.Node, "node", "", "run plugin on node")
 	flags.StringVar(&deployment.SelectorString, "selector", "", "Specify where plugin can run")
@@ -28,12 +33,19 @@ func init() {
 	flags.StringVarP(&deployment.EnvFromFile, "env-from", "", "", "Set environment variables from file")
 	flags.BoolVar(&deployment.DevelopMode, "develop", false, "Enable the following development time features: access to wan network")
 	flags.StringVar(&metricsServerConfig.InfluxDBTokenPath, "influxdb-token-path", getenv("INFLUXDB_TOKEN_PATH", "~/.influxdb2/token"), "Path to valid token to access InfluxDB")
+	cmdProfile.AddCommand(cmdProfileRun)
+	flags = cmdProfileGet.Flags()
+	flags.StringVar(&start, "start", "", "Search data since the start time in UTC. Should be formatted as RFC3339")
+	flags.StringVar(&end, "end", "", "Search data until the end time in UTC. Should be formatted as RFC3339")
+	cmdProfileGet.MarkFlagRequired("start")
+	cmdProfileGet.MarkFlagRequired("end")
+	cmdProfile.AddCommand(cmdProfileGet)
 	rootCmd.AddCommand(cmdProfile)
 }
 
-var cmdProfile = &cobra.Command{
+var cmdProfileRun = &cobra.Command{
 	Use:              "profile [FLAGS] PLUGIN_IMAGE [-- PLUGIN ARGUMENTS]",
-	Short:            "Profile performance of a plugin",
+	Short:            "profile performance of a plugin",
 	TraverseChildren: true,
 	Args:             cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -131,4 +143,41 @@ var cmdProfile = &cobra.Command{
 			}
 		}
 	},
+}
+
+var cmdProfileGet = &cobra.Command{
+	Use:              "get [FLAGS] PLUGIN_K3S_POD_NAME",
+	Short:            "get existing performance data of a plugin",
+	TraverseChildren: true,
+	Args:             cobra.MinimumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		pluginName := args[0]
+		logger.Debug.Printf("kubeconfig: %s", kubeconfig)
+		pluginCtl, err := pluginctl.NewPluginCtl(kubeconfig)
+		if err != nil {
+			return err
+		}
+		// Metrics server will provide performance data after the run
+		err = pluginCtl.ConnectToMetricsServer(metricsServerConfig)
+		if err != nil {
+			logger.Error.Printf("Failed to check metrics server: %s", err.Error())
+			logger.Error.Println("Abort profiling due to the error")
+			return err
+		}
+		s, err := time.Parse(time.RFC3339Nano, start)
+		if err != nil {
+			return err
+		}
+		e, err := time.Parse(time.RFC3339Nano, end)
+		if err != nil {
+			return err
+		}
+		pluginCtl.GetPerformanceData(s, e, pluginName)
+		return nil
+	},
+}
+
+var cmdProfile = &cobra.Command{
+	Use:   "profile",
+	Short: "Profile performance of a plugin",
 }
