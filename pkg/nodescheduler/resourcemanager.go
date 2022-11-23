@@ -886,12 +886,13 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 	defer watcher.Stop()
 	for {
 		event := <-chanEvent
-		job := event.Object.(*batchv1.Job)
 		switch event.Type {
 		case watch.Added:
+			job := event.Object.(*batchv1.Job)
 			pod, _ := rm.GetPod(job.Name)
 			rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusLaunched).AddK3SJobMeta(job).AddPodMeta(pod).AddPluginMeta(plugin).Build())
 		case watch.Modified:
+			job := event.Object.(*batchv1.Job)
 			if len(job.Status.Conditions) > 0 {
 				logger.Debug.Printf("Plugin %s status %s: %s", job.Name, event.Type, job.Status.Conditions[0].Type)
 				switch job.Status.Conditions[0].Type {
