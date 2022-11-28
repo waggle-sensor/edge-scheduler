@@ -118,7 +118,12 @@ func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(jobID string, user *Us
 			continue
 		}
 		for _, plugin := range job.Plugins {
-			pluginManifest := cs.Validator.GetPluginManifest(plugin)
+			pluginImage, err := plugin.GetPluginImage()
+			if err != nil {
+				errorList = append(errorList, fmt.Errorf("%s does not specify plugin image", plugin.Name))
+				continue
+			}
+			pluginManifest := cs.Validator.GetPluginManifest(pluginImage)
 			if pluginManifest == nil {
 				errorList = append(errorList, fmt.Errorf("%s does not exist in ECR", plugin.PluginSpec.Image))
 				continue
