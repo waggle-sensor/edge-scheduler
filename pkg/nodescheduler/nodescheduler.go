@@ -231,10 +231,17 @@ func (ns *NodeScheduler) Run() {
 
 func (ns *NodeScheduler) registerGoal(goal *datatype.ScienceGoal) {
 	ns.GoalManager.AddGoal(goal)
-	ns.Knowledgebase.AddRulesFromScienceGoal(goal)
-	for _, p := range goal.GetMySubGoal(ns.NodeID).GetPlugins() {
-		ns.waitingQueue.Push(p)
-		logger.Debug.Printf("plugin %s is added to the watiting queue", p.Name)
+	if mySubGoal := goal.GetMySubGoal(ns.NodeID); mySubGoal == nil {
+		logger.Error.Printf("Failed to find my sub goal from science goal %q. Failed to register the goal.", goal.ID)
+	} else {
+		err := ns.Knowledgebase.AddRulesFromScienceGoal(goal)
+		if err != nil {
+			logger.Error.Printf("Failed to add science rules of goal %q: %s", goal.ID, err.Error())
+		}
+		for _, p := range mySubGoal.GetPlugins() {
+			ns.waitingQueue.Push(p)
+			logger.Debug.Printf("plugin %s is added to the watiting queue", p.Name)
+		}
 	}
 }
 

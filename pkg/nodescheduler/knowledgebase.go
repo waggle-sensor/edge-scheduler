@@ -42,13 +42,17 @@ func (kb *KnowledgeBase) add(obj interface{}, k string, v interface{}) {
 	}
 }
 
-func (kb *KnowledgeBase) AddRulesFromScienceGoal(s *datatype.ScienceGoal) {
-	mySubGoal := s.GetMySubGoal(kb.nodeID)
-	// This is to make sure the rules are parsed before evaluated
-	for _, r := range mySubGoal.ScienceRules {
-		r.Parse(r.Rule)
+func (kb *KnowledgeBase) AddRulesFromScienceGoal(s *datatype.ScienceGoal) error {
+	if mySubGoal := s.GetMySubGoal(kb.nodeID); mySubGoal != nil {
+		// This is to make sure the rules are parsed before evaluated
+		for _, r := range mySubGoal.ScienceRules {
+			r.Parse(r.Rule)
+		}
+		kb.rules[s.ID] = mySubGoal.ScienceRules
+		return nil
+	} else {
+		return fmt.Errorf("Failed to find my sub goal from science goal %q", s.ID)
 	}
-	kb.rules[s.ID] = mySubGoal.ScienceRules
 }
 
 func (kb *KnowledgeBase) DropRules(goalID string) {
