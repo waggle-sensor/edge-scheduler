@@ -418,7 +418,7 @@ from(bucket:"waggle")
 	q = fmt.Sprintf(`
 from(bucket:"waggle")
   |> range(start: %s, stop: %s)
-  |> filter(fn: (r) => r._measurement == sys.metrics.gpu.average.1s)`,
+  |> filter(fn: (r) => r._measurement == "sys.metrics.gpu.average.1s")`,
 		s.Format(time.RFC3339),
 		e.Format(time.RFC3339))
 	logger.Debug.Println(q)

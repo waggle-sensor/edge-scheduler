@@ -406,8 +406,8 @@ func (api *APIServer) handlerJobRemove(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusBadRequest, response.Build().ToJson())
 		return
 	}
-	queries := r.URL.Query()
-	jobID := queries.Get("id")
+	vars := mux.Vars(r)
+	jobID := vars["id"]
 	job, err := api.cloudScheduler.GoalManager.GetJob(jobID)
 	if err != nil {
 		response.AddError(err.Error())
@@ -419,6 +419,7 @@ func (api *APIServer) handlerJobRemove(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusBadRequest, response.Build().ToJson())
 		return
 	}
+	queries := r.URL.Query()
 	// Suspend the job instead of removal if suspend flag is given
 	suspend := queries.Get("suspend")
 	if suspend == "true" {
