@@ -31,6 +31,7 @@ type PluginSpec struct {
 	Entrypoint  string            `json:"entrypoint,omitempty" yaml:"entrypoint,omitempty"`
 	Env         map[string]string `json:"env,omitempty" yaml:"env,omitempty"`
 	DevelopMode bool              `json:"develop,omitempty" yaml:"develop,omitempty"`
+	Resource    map[string]string `json:"resource,omitempty" yaml:"resource,omitempty"`
 }
 
 func (ps *PluginSpec) GetImageTag() (string, error) {
