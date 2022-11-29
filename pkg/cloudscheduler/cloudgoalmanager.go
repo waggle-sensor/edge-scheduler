@@ -3,7 +3,9 @@ package cloudscheduler
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"path"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -241,6 +243,21 @@ func (cgm *CloudGoalManager) GetScienceGoalsForNode(nodeName string) (goals []*d
 	return
 }
 
+func (cgm *CloudGoalManager) EditRecord(job *datatype.Job) error {
+	return cgm.jobDB.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(jobBucketName))
+		if b == nil {
+			return fmt.Errorf("Bucket %s does not exist", jobBucketName)
+		}
+		buf, err := json.Marshal(job)
+		if err != nil {
+			return err
+		}
+		b.Put([]byte(job.JobID), []byte(buf))
+		return nil
+	})
+}
+
 func (cgm *CloudGoalManager) OpenJobDB() error {
 	db, err := bolt.Open(path.Join(cgm.dataPath, "job.db"), 0600, &bolt.Options{Timeout: 1 * time.Second})
 	if err != nil {
@@ -252,6 +269,20 @@ func (cgm *CloudGoalManager) OpenJobDB() error {
 		return err
 	})
 	return nil
+}
+
+func (cgm *CloudGoalManager) DumpDB(w http.ResponseWriter) error {
+	return cgm.jobDB.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(jobBucketName))
+		if b == nil {
+			return fmt.Errorf("Bucket %s does not exist", jobBucketName)
+		}
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Disposition", `attachment; filename="my.db"`)
+		w.Header().Set("Content-Length", strconv.Itoa(int(tx.Size())))
+		_, err := tx.WriteTo(w)
+		return err
+	})
 }
 
 func (cgm *CloudGoalManager) LoadScienceGoalsFromJobDB() error {
