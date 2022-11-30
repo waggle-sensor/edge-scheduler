@@ -36,7 +36,9 @@ const (
 	MANAGEMENT_API_PATH_DB_DUMP        = "/db/dump"
 	MANAGEMENT_API_PATH_DB_LOAD        = "/db/load"
 	MANAGEMENT_API_PATH_RECORD_GET     = "/records/get"
-	MANAGEMENT_API_PATH_RECORD_EDIT    = "/records/edit"
+	MANAGEMENT_API_PATH_RECORD_SET     = "/records/set"
+	MANAGEMENT_API_PATH_RELOAD_PLUGINS = "/actions/reload/plugins"
+	MANAGEMENT_API_PATH_RELOAD_NODES   = "/actions/reload/nodes"
 )
 
 type APIServer struct {
@@ -117,6 +119,8 @@ func (api *APIServer) ConfigureAPIs(prometheusGatherer *prometheus.Registry) {
 	}
 	management_route.Handle(MANAGEMENT_API_PATH_DB_DUMP, http.HandlerFunc(api.handleDBDump)).Methods(http.MethodGet)
 	management_route.Handle(MANAGEMENT_API_PATH_DB_LOAD, http.HandlerFunc(api.handleDBLoad)).Methods(http.MethodPost, http.MethodPut)
+	management_route.Handle(MANAGEMENT_API_PATH_RECORD_GET, http.HandlerFunc(api.handleRecordGet)).Methods(http.MethodGet)
+	management_route.Handle(MANAGEMENT_API_PATH_RECORD_SET, http.HandlerFunc(api.handleRecordSet)).Methods(http.MethodPost, http.MethodPut)
 }
 
 func (api *APIServer) Run() {
@@ -158,6 +162,7 @@ func (api *APIServer) handlerCreateJob(w http.ResponseWriter, r *http.Request) {
 			User: user.GetUserName(),
 		}
 	case http.MethodPost:
+		defer r.Body.Close()
 		// The query includes a full job description
 		blob, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -207,6 +212,7 @@ func (api *APIServer) handlerEditJob(w http.ResponseWriter, r *http.Request) {
 			respondJSON(w, http.StatusBadRequest, response.ToJson())
 			return
 		}
+		defer r.Body.Close()
 		// TODO: the API always assumes that the body contains job content
 		updatedJob := datatype.NewJob("", "", "")
 		// The query includes a full job description
@@ -293,6 +299,7 @@ func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	case http.MethodPost:
+		defer r.Body.Close()
 		newJob := datatype.NewJob("", "", "")
 		// The query includes a full job description
 		blob, err := io.ReadAll(r.Body)
@@ -566,6 +573,45 @@ func (api *APIServer) handleDBLoad(w http.ResponseWriter, r *http.Request) {
 	//       1. overwrite the db file specified in the config with given byte blob
 	//       2. terminate the schedueler to safely load the overwritten db file
 	http.Error(w, "Not implemented", http.StatusInternalServerError)
+}
+
+func (api *APIServer) handleRecordGet(w http.ResponseWriter, r *http.Request) {
+	queries := r.URL.Query()
+	jobID := queries.Get("id")
+	if jobID == "" {
+		http.Error(w, "No id is specified", http.StatusBadRequest)
+		return
+	}
+	blob, err := api.cloudScheduler.GoalManager.GetRecord(jobID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	respondJSON(w, http.StatusOK, blob)
+}
+
+func (api *APIServer) handleRecordSet(w http.ResponseWriter, r *http.Request) {
+	queries := r.URL.Query()
+	jobID := queries.Get("id")
+	if jobID == "" {
+		http.Error(w, "No id is specified", http.StatusBadRequest)
+		return
+	}
+	switch r.Method {
+	case http.MethodPost:
+		defer r.Body.Close()
+		blob, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		err = api.cloudScheduler.GoalManager.SetRecord(jobID, blob)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
 func (api *APIServer) authenticate(r *http.Request) (*User, error) {

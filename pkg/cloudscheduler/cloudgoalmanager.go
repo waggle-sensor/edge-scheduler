@@ -13,6 +13,7 @@ import (
 	"github.com/boltdb/bolt"
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
 	"github.com/waggle-sensor/edge-scheduler/pkg/interfacing"
+	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
 )
 
 const jobBucketName = "jobs"
@@ -46,7 +47,7 @@ func (cgm *CloudGoalManager) AddJob(job *datatype.Job) string {
 }
 
 func (cgm *CloudGoalManager) GetJobs(userName string) (jobs []*datatype.Job) {
-	cgm.jobDB.View(func(tx *bolt.Tx) error {
+	err := cgm.jobDB.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(jobBucketName))
 		if b == nil {
 			return fmt.Errorf("Bucket %s does not exist", jobBucketName)
@@ -68,6 +69,9 @@ func (cgm *CloudGoalManager) GetJobs(userName string) (jobs []*datatype.Job) {
 			return nil
 		})
 	})
+	if err != nil {
+		logger.Error.Printf("Error from DB: %s", err.Error())
+	}
 	return
 }
 
@@ -89,6 +93,33 @@ func (cgm *CloudGoalManager) GetJob(jobID string) (job *datatype.Job, err error)
 		return nil
 	})
 	return
+}
+
+// GetRecord returns a job as a byte blob. This function should only be used for management purpose.
+func (cgm *CloudGoalManager) GetRecord(jobID string) (blob []byte, err error) {
+	err = cgm.jobDB.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(jobBucketName))
+		if b == nil {
+			return fmt.Errorf("Bucket %s does not exist", jobBucketName)
+		}
+		blob = b.Get([]byte(jobID))
+		if len(blob) < 1 {
+			return fmt.Errorf("Job ID %q does not exist", jobID)
+		}
+		return nil
+	})
+	return
+}
+
+func (cgm *CloudGoalManager) SetRecord(jobID string, blob []byte) error {
+	return cgm.jobDB.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(jobBucketName))
+		if b == nil {
+			return fmt.Errorf("Bucket %s does not exist", jobBucketName)
+		}
+		b.Put([]byte(jobID), []byte(blob))
+		return nil
+	})
 }
 
 func (cgm *CloudGoalManager) UpdateJob(job *datatype.Job, submit bool) (err error) {
@@ -244,6 +275,8 @@ func (cgm *CloudGoalManager) GetScienceGoalsForNode(nodeName string) (goals []*d
 }
 
 func (cgm *CloudGoalManager) EditRecord(job *datatype.Job) error {
+	cgm.mu.Lock()
+	defer cgm.mu.Unlock()
 	return cgm.jobDB.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(jobBucketName))
 		if b == nil {
