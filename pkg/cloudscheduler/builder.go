@@ -15,6 +15,7 @@ type CloudSchedulerConfig struct {
 	RabbitmqCaCertPath            string `json:"rabbitmq_cacert_path" yaml:"rabbitMQCacertPath"`
 	ECRURI                        string `json:"ecr_uri" yaml:"ecrURI"`
 	Port                          int    `json:"port" yaml:"port"`
+	ManagementPort                int    `json:"management_port" yaml:"managementPort"`
 	DataDir                       string `json:"data_dir,omitempty" yaml:"dataDir,omitempty"`
 	PushNotification              bool   `json:"push_notification" yaml:"PushNotification"`
 	AuthServerURL                 string `json:"auth_server_url" yaml:"authServerURL"`
@@ -54,6 +55,7 @@ func (csb *CloudSchedulerBuilder) AddAPIServer() *CloudSchedulerBuilder {
 		cloudScheduler:         csb.cloudScheduler,
 		version:                csb.cloudScheduler.Version,
 		port:                   csb.cloudScheduler.Config.Port,
+		managementPort:         csb.cloudScheduler.Config.ManagementPort,
 		enablePushNotification: csb.cloudScheduler.Config.PushNotification,
 		subscribers:            make(map[string]map[chan *datatype.Event]bool),
 		authenticator:          NewAuthenticator(csb.cloudScheduler.Config.AuthServerURL, csb.cloudScheduler.Config.AuthToken),

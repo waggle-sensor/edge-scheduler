@@ -31,29 +31,22 @@ func init() {
 					if err != nil {
 						return err
 					}
-					var body map[string]interface{}
-					decoder.Decode(&body)
-					if blob, exist := body[r.JobID]; exist {
-						jobBlob, err := json.MarshalIndent(blob, "", "  ")
+					var job datatype.Job
+					err = decoder.Decode(&job)
+					if err != nil {
+						return err
+					}
+					if r.OutPath != "" {
+						jobBlob, err := json.MarshalIndent(job, "", "  ")
 						if err != nil {
 							return err
 						}
-						if r.OutPath != "" {
-							err := ioutil.WriteFile(r.OutPath, jobBlob, 0644)
-							if err != nil {
-								return err
-							}
-						} else {
-							var job datatype.Job
-							err := json.Unmarshal(jobBlob, &job)
-							if err != nil {
-								return err
-							}
-							fmt.Print(printJob(&job))
+						err = ioutil.WriteFile(r.OutPath, jobBlob, 0644)
+						if err != nil {
+							return err
 						}
-						return nil
 					} else {
-						return fmt.Errorf("Failed to get the job %q: Job does not exist", r.JobID)
+						fmt.Print(printJob(&job))
 					}
 				} else {
 					subPathString := path.Join(cloudscheduler.API_V1_VERSION, cloudscheduler.API_PATH_JOB_LIST)

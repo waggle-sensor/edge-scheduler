@@ -27,6 +27,7 @@ import (
 	apiv1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
@@ -129,6 +130,32 @@ func nodeSelectorForConfig(pluginSpec *datatype.PluginSpec) map[string]string {
 		vals[k] = v
 	}
 	return vals
+}
+
+func resourceListForConfig(pluginSpec *datatype.PluginSpec) (apiv1.ResourceRequirements, error) {
+	resources := apiv1.ResourceRequirements{
+		Limits:   apiv1.ResourceList{},
+		Requests: apiv1.ResourceList{},
+	}
+	for resourceName, quantityString := range pluginSpec.Resource {
+		quantity, err := resource.ParseQuantity(quantityString)
+		if err != nil {
+			return resources, fmt.Errorf("Failed to parse %q: %s", quantityString, err.Error())
+		}
+		switch resourceName {
+		case "limit.cpu":
+			resources.Limits[apiv1.ResourceCPU] = quantity
+		case "limit.memory":
+			resources.Limits[apiv1.ResourceMemory] = quantity
+		case "request.cpu":
+			resources.Requests[apiv1.ResourceCPU] = quantity
+		case "request.memory":
+			resources.Requests[apiv1.ResourceMemory] = quantity
+		default:
+			return resources, fmt.Errorf("Unknown resource name %q", resourceName)
+		}
+	}
+	return resources, nil
 }
 
 func securityContextForConfig(pluginSpec *datatype.PluginSpec) *apiv1.SecurityContext {
@@ -325,11 +352,11 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 	envs := []apiv1.EnvVar{
 		{
 			Name:  "PULSE_SERVER",
-			Value: "tcp:wes-audio-server:4713",
+			Value: "tcp:wes-audio-server.default.svc.cluster.local:4713",
 		},
 		{
 			Name:  "WAGGLE_PLUGIN_HOST",
-			Value: "wes-rabbitmq",
+			Value: "wes-rabbitmq.default.svc.cluster.local",
 		},
 		{
 			Name:  "WAGGLE_PLUGIN_PORT",
@@ -342,6 +369,10 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 		{
 			Name:  "WAGGLE_PLUGIN_PASSWORD",
 			Value: "plugin",
+		},
+		{
+			Name:  "WAGGLE_GPS_SERVER",
+			Value: "wes-gps-server.default.svc.cluster.local",
 		},
 		// NOTE WAGGLE_APP_ID is used to bind plugin <-> Pod identities.
 		{
@@ -368,7 +399,7 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 		},
 		// Use WES scoreboard
 		{
-			Name:  "REDIS_HOST",
+			Name:  "WAGGLE_SCOREBOARD",
 			Value: "wes-scoreboard.default.svc.cluster.local",
 		},
 		{
@@ -510,6 +541,11 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 		},
 	}
 
+	resources, err := resourceListForConfig(plugin.PluginSpec)
+	if err != nil {
+		return v1.PodTemplateSpec{}, err
+	}
+
 	containers := []apiv1.Container{
 		{
 			SecurityContext: securityContextForConfig(plugin.PluginSpec),
@@ -517,16 +553,8 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 			Image:           plugin.PluginSpec.Image,
 			Args:            plugin.PluginSpec.Args,
 			Env:             envs,
-			Resources: apiv1.ResourceRequirements{
-				Limits:   apiv1.ResourceList{},
-				Requests: apiv1.ResourceList{},
-				// TODO: this should be revisited when talking about resource-aware scheduling
-				// Requests: apiv1.ResourceList{
-				// 	apiv1.ResourceCPU:    resource.MustParse("1500m"),
-				// 	apiv1.ResourceMemory: resource.MustParse("1.5Gi"),
-				// },
-			},
-			VolumeMounts: volumeMounts,
+			Resources:       resources,
+			VolumeMounts:    volumeMounts,
 		},
 	}
 
@@ -882,12 +910,13 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 	defer watcher.Stop()
 	for {
 		event := <-chanEvent
-		job := event.Object.(*batchv1.Job)
 		switch event.Type {
 		case watch.Added:
+			job := event.Object.(*batchv1.Job)
 			pod, _ := rm.GetPod(job.Name)
 			rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusLaunched).AddK3SJobMeta(job).AddPodMeta(pod).AddPluginMeta(plugin).Build())
 		case watch.Modified:
+			job := event.Object.(*batchv1.Job)
 			if len(job.Status.Conditions) > 0 {
 				logger.Debug.Printf("Plugin %s status %s: %s", job.Name, event.Type, job.Status.Conditions[0].Type)
 				switch job.Status.Conditions[0].Type {

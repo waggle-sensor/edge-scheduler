@@ -32,8 +32,8 @@ func (jv *JobValidator) GetNodeManifest(nodeName string) *datatype.NodeManifest 
 	}
 }
 
-func (jv *JobValidator) GetPluginManifest(plugin *datatype.Plugin) *datatype.PluginManifest {
-	if p, exist := jv.Plugins[plugin.PluginSpec.Image]; exist {
+func (jv *JobValidator) GetPluginManifest(pluginImage string) *datatype.PluginManifest {
+	if p, exist := jv.Plugins[pluginImage]; exist {
 		return p
 	} else {
 		return nil

@@ -7,6 +7,8 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"os/user"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -47,6 +49,7 @@ type Deployment struct {
 	EnvFromFile    string
 	DevelopMode    bool
 	Type           string
+	ResourceString string
 }
 
 func NewPluginCtl(kubeconfig string) (*PluginCtl, error) {
@@ -86,7 +89,14 @@ func (p *PluginCtl) GetMetrcisServerURL() (string, error) {
 }
 
 func (p *PluginCtl) ConnectToMetricsServer(config MetricsServerConfig) error {
-	tokenBlob, err := ioutil.ReadFile(config.InfluxDBTokenPath)
+	var path string
+	if strings.HasPrefix(config.InfluxDBTokenPath, "~/") {
+		usr, _ := user.Current()
+		path = filepath.Join(usr.HomeDir, config.InfluxDBTokenPath[2:])
+	} else {
+		path = config.InfluxDBTokenPath
+	}
+	tokenBlob, err := ioutil.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("Failed to read token at %s: %s", config.InfluxDBTokenPath, err)
 	}
@@ -102,7 +112,10 @@ func (p *PluginCtl) ConnectToMetricsServer(config MetricsServerConfig) error {
 	if p.MetricsServer == nil {
 		p.MetricsServer = &MetricsServer{}
 	}
-	p.MetricsServer.Client = influxdb2.NewClient(influxURL, string(token))
+	p.MetricsServer.Client = influxdb2.NewClientWithOptions(
+		influxURL,
+		string(token),
+		influxdb2.DefaultOptions().SetHTTPRequestTimeout(60))
 	// Ping to the server
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -119,7 +132,22 @@ func (p *PluginCtl) ConnectToMetricsServer(config MetricsServerConfig) error {
 func (p *PluginCtl) Deploy(dep *Deployment) (string, error) {
 	selector, err := ParseSelector(dep.SelectorString)
 	if err != nil {
-		return "", fmt.Errorf("Failed to parse selector %q", err.Error())
+		return "", fmt.Errorf("Failed to parse selector %q: %s", dep.SelectorString, err.Error())
+	}
+	if dep.EnvFromFile != "" {
+		logger.Debug.Printf("Reading env file %q...", dep.EnvFromFile)
+		file, err := os.Open(dep.EnvFromFile)
+		if err != nil {
+			return "", fmt.Errorf("Failed to open env-from file %q: %s", dep.EnvFromFile, err.Error())
+		}
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			dep.EnvVarString = append(dep.EnvVarString, scanner.Text())
+		}
+	}
+	resource, err := ParseSelector(dep.ResourceString)
+	if err != nil {
+		return "", fmt.Errorf("Failed to parse resource %q: %s", dep.ResourceString, err.Error())
 	}
 	if dep.EnvFromFile != "" {
 		logger.Debug.Printf("Reading env file %q...", dep.EnvFromFile)
@@ -148,6 +176,7 @@ func (p *PluginCtl) Deploy(dep *Deployment) (string, error) {
 			Entrypoint:  dep.Entrypoint,
 			Env:         envs,
 			DevelopMode: dep.DevelopMode,
+			Resource:    resource,
 		},
 	}
 	switch dep.Type {
@@ -348,10 +377,12 @@ func (p *PluginCtl) GetPlugins() (formattedList string, err error) {
 			}
 		} else {
 			podPhase, err := p.ResourceManager.GetPluginStatus(plugin.Name)
-			if err == nil {
+			if err != nil {
+				status = "ERROR"
+			} else {
 				status = string(podPhase)
+				duration = time.Since(plugin.Status.StartTime.Time).String()
 			}
-			duration = time.Since(plugin.Status.StartTime.Time).String()
 		}
 		formattedList += fmt.Sprintf("%-*s%-*s%-*s%-*s\n", maxLengthName+3, plugin.Name, maxLengthStatus+3, status, maxLengthStartTime+3, startTime, maxLengthDuration+3, duration)
 	}
@@ -387,7 +418,7 @@ from(bucket:"waggle")
 	q = fmt.Sprintf(`
 from(bucket:"waggle")
   |> range(start: %s, stop: %s)
-  |> filter(fn: (r) => r._measurement =~ /^sys.metrics.gpu.*/)`,
+  |> filter(fn: (r) => r._measurement == "sys.metrics.gpu.average.1s")`,
 		s.Format(time.RFC3339),
 		e.Format(time.RFC3339))
 	logger.Debug.Println(q)

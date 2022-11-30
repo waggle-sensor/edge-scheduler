@@ -20,7 +20,7 @@ func init() {
 			jobRequest.JobID = args[0]
 			rmFunc := func(r *JobRequest) error {
 				subPathString := path.Join(cloudscheduler.API_V1_VERSION, cloudscheduler.API_PATH_JOB_REMOVE_REGEX)
-				q, err := url.ParseQuery("id=" + r.JobID + "&suspend=" + strconv.FormatBool(r.Suspend) + "&force=" + strconv.FormatBool(r.Force))
+				q, err := url.ParseQuery("suspend=" + strconv.FormatBool(r.Suspend) + "&force=" + strconv.FormatBool(r.Force))
 				if err != nil {
 					return err
 				}

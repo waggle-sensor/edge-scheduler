@@ -13,7 +13,7 @@ import (
 
 type KnowledgeBase struct {
 	nodeID         string
-	rules          map[string][]string
+	rules          map[string][]*datatype.ScienceRule
 	measures       map[string]interface{}
 	ruleCheckerURI string
 }
@@ -21,7 +21,7 @@ type KnowledgeBase struct {
 func NewKnowledgeBase(nodeID string, ruleCheckerURI string) *KnowledgeBase {
 	return &KnowledgeBase{
 		nodeID:         nodeID,
-		rules:          make(map[string][]string),
+		rules:          make(map[string][]*datatype.ScienceRule),
 		measures:       map[string]interface{}{},
 		ruleCheckerURI: ruleCheckerURI,
 	}
@@ -42,9 +42,17 @@ func (kb *KnowledgeBase) add(obj interface{}, k string, v interface{}) {
 	}
 }
 
-func (kb *KnowledgeBase) AddRulesFromScienceGoal(s *datatype.ScienceGoal) {
-	mySubGoal := s.GetMySubGoal(kb.nodeID)
-	kb.rules[s.ID] = mySubGoal.ScienceRules
+func (kb *KnowledgeBase) AddRulesFromScienceGoal(s *datatype.ScienceGoal) error {
+	if mySubGoal := s.GetMySubGoal(kb.nodeID); mySubGoal != nil {
+		// This is to make sure the rules are parsed before evaluated
+		for _, r := range mySubGoal.ScienceRules {
+			r.Parse(r.Rule)
+		}
+		kb.rules[s.ID] = mySubGoal.ScienceRules
+		return nil
+	} else {
+		return fmt.Errorf("Failed to find my sub goal from science goal %q", s.ID)
+	}
 }
 
 func (kb *KnowledgeBase) DropRules(goalID string) {
@@ -83,53 +91,40 @@ func (kb *KnowledgeBase) AddMeasure(v *datatype.WaggleMessage) {
 
 }
 
-func (kb *KnowledgeBase) EvaluateRule(rule string) (string, error) {
-	condition, result, err := parseRule(rule)
-	if err != nil {
-		return "", fmt.Errorf("Failed to parse rule")
-	}
+func (kb *KnowledgeBase) EvaluateRule(rule *datatype.ScienceRule) (bool, error) {
 	r := interfacing.NewHTTPRequest(kb.ruleCheckerURI)
 	data, _ := json.Marshal(map[string]interface{}{
-		"rule": condition,
+		"rule": rule.Condition,
 	})
 	resp, err := r.RequestPost("evaluate", data, nil)
 	if err != nil {
-		return "", fmt.Errorf("Failed to get data from checker: %s", err.Error())
+		return false, fmt.Errorf("Failed to get data from checker: %s", err.Error())
 	}
 	decoder, err := r.ParseJSONHTTPResponse(resp)
 	if err != nil {
-		return "", fmt.Errorf("Failed to parse response: %s", err.Error())
+		return false, fmt.Errorf("Failed to parse response: %s", err.Error())
 	}
 	var body map[string]interface{}
 	decoder.Decode(&body)
 	if r, exists := body["response"]; exists {
 		if r.(string) == "failed" {
-			return "", fmt.Errorf("Failed to evaluate rule: %s", body["error"])
+			return false, fmt.Errorf("Failed to evaluate rule: %s", body["error"])
 		}
 	}
 	if v, exists := body["result"]; exists {
-		if v.(bool) == true {
-			return result, nil
-		} else {
-			return "", nil
-		}
+		return v.(bool), nil
 	} else {
-		return "", fmt.Errorf("Response does not contain result: %v", body)
+		return false, fmt.Errorf("Response does not contain result: %v", body)
 	}
-	// if parser.Evaluate(condition, kb.measures) {
-	// 	return result, nil
-	// } else {
-	// 	return "", nil
-	// }
 }
 
-func (kb *KnowledgeBase) EvaluateGoal(goalID string) (results []string, err error) {
+func (kb *KnowledgeBase) EvaluateGoal(goalID string) (results []*datatype.ScienceRule, err error) {
 	if rules, exist := kb.rules[goalID]; exist {
 		for _, rule := range rules {
-			if result, err := kb.EvaluateRule(rule); err != nil {
+			if valid, err := kb.EvaluateRule(rule); err != nil {
 				logger.Error.Printf("Failed to evaluate rule %q: %s", rule, err.Error())
-			} else if result != "" {
-				results = append(results, result)
+			} else if valid {
+				results = append(results, rule)
 			}
 		}
 	} else {

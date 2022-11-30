@@ -29,7 +29,8 @@ func main() {
 	flag.StringVar(&config.Name, "name", "cloudscheduler-sage", "Name of cloud scheduler")
 	// TODO: Add ECRURL to query meta information for plugins when validating a job
 	// flag.StringVar(&ECRURI, "ECRURL", "SOMEWHERE", "Path to ECR URL")
-	flag.IntVar(&config.Port, "port", 9770, "Port to listen")
+	flag.IntVar(&config.Port, "port", 9770, "API Port to listen")
+	flag.IntVar(&config.ManagementPort, "management-port", 19770, "Management Port to listen")
 	flag.StringVar(&config.DataDir, "data-dir", "data", "Path to meta directory")
 	// TODO: a RMQ client for goal manager will be needed
 	flag.BoolVar(&config.NoRabbitMQ, "no-rabbitmq", false, "No RabbitMQ to talk to edge schedulers")

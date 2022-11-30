@@ -1,6 +1,7 @@
 package cloudscheduler
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,23 +23,31 @@ import (
 )
 
 const (
-	API_V1_VERSION                   = "/api/v1"
-	API_PATH_SYSTEM_METRICS          = "/system/metrics"
-	API_PATH_JOB_CREATE              = "/create"
-	API_PATH_JOB_EDIT                = "/edit"
-	API_PATH_JOB_SUBMIT              = "/submit"
-	API_PATH_JOB_LIST                = "/jobs/list"
-	API_PATH_JOB_STATUS_REGEX        = "/jobs/%s/status"
-	API_PATH_JOB_REMOVE_REGEX        = "/jobs/%s/rm"
-	API_PATH_GOALS_NODE_REGEX        = "/goals/%s"
-	API_PATH_GOALS_NODE_STREAM_REGEX = "/goals/%s/stream"
+	API_V1_VERSION                     = "/api/v1"
+	API_PATH_JOB_CREATE                = "/create"
+	API_PATH_JOB_EDIT                  = "/edit"
+	API_PATH_JOB_SUBMIT                = "/submit"
+	API_PATH_JOB_LIST                  = "/jobs/list"
+	API_PATH_JOB_STATUS_REGEX          = "/jobs/%s/status"
+	API_PATH_JOB_REMOVE_REGEX          = "/jobs/%s/rm"
+	API_PATH_GOALS_NODE_REGEX          = "/goals/%s"
+	API_PATH_GOALS_NODE_STREAM_REGEX   = "/goals/%s/stream"
+	MANAGEMENT_API_PATH_SYSTEM_METRICS = "/system/metrics"
+	MANAGEMENT_API_PATH_DB_DUMP        = "/db/dump"
+	MANAGEMENT_API_PATH_DB_LOAD        = "/db/load"
+	MANAGEMENT_API_PATH_RECORD_GET     = "/records/get"
+	MANAGEMENT_API_PATH_RECORD_SET     = "/records/set"
+	MANAGEMENT_API_PATH_RELOAD_PLUGINS = "/actions/reload/plugins"
+	MANAGEMENT_API_PATH_RELOAD_NODES   = "/actions/reload/nodes"
 )
 
 type APIServer struct {
 	version                string
 	port                   int
+	managementPort         int
 	enablePushNotification bool
-	mainRouter             *mux.Router
+	apiRouter              *mux.Router
+	managementRouter       *mux.Router
 	cloudScheduler         *CloudScheduler
 	subscribers            map[string]map[chan *datatype.Event]bool
 	subscriberMutex        sync.Mutex
@@ -80,8 +89,8 @@ func (api *APIServer) Push(nodeName string, event *datatype.Event) {
 }
 
 func (api *APIServer) ConfigureAPIs(prometheusGatherer *prometheus.Registry) {
-	api.mainRouter = mux.NewRouter()
-	r := api.mainRouter
+	api.apiRouter = mux.NewRouter()
+	r := api.apiRouter
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		response := datatype.NewAPIMessageBuilder().
 			AddEntity("id", fmt.Sprintf("Cloud Scheduler (%s)", api.cloudScheduler.Name)).
@@ -90,9 +99,6 @@ func (api *APIServer) ConfigureAPIs(prometheusGatherer *prometheus.Registry) {
 		fmt.Fprintln(w)
 	})
 	api_route := r.PathPrefix(API_V1_VERSION).Subrouter()
-	if prometheusGatherer != nil {
-		api_route.Handle(API_PATH_SYSTEM_METRICS, promhttp.HandlerFor(prometheusGatherer, promhttp.HandlerOpts{EnableOpenMetrics: true})).Methods(http.MethodGet)
-	}
 	api_route.Handle(API_PATH_JOB_CREATE, http.HandlerFunc(api.handlerCreateJob)).Methods(http.MethodGet, http.MethodPost)
 	api_route.Handle(API_PATH_JOB_EDIT, http.HandlerFunc(api.handlerEditJob)).Methods(http.MethodPost)
 	api_route.Handle(API_PATH_JOB_SUBMIT, http.HandlerFunc(api.handlerSubmitJobs)).Methods(http.MethodGet, http.MethodPost)
@@ -105,19 +111,32 @@ func (api *APIServer) ConfigureAPIs(prometheusGatherer *prometheus.Registry) {
 		logger.Info.Printf("Enabling push notification. Nodes can connect to /goals/{nodeName}/stream to get notification from the cloud scheduler.")
 		api_route.Handle(fmt.Sprintf(API_PATH_GOALS_NODE_STREAM_REGEX, "{nodeName}"), http.HandlerFunc(api.handlerGoalStreamForNode)).Methods(http.MethodGet)
 	}
+	api.managementRouter = mux.NewRouter()
+	mr := api.managementRouter
+	management_route := mr.PathPrefix(API_V1_VERSION).Subrouter()
+	if prometheusGatherer != nil {
+		management_route.Handle(MANAGEMENT_API_PATH_SYSTEM_METRICS, promhttp.HandlerFor(prometheusGatherer, promhttp.HandlerOpts{EnableOpenMetrics: true})).Methods(http.MethodGet)
+	}
+	management_route.Handle(MANAGEMENT_API_PATH_DB_DUMP, http.HandlerFunc(api.handleDBDump)).Methods(http.MethodGet)
+	management_route.Handle(MANAGEMENT_API_PATH_DB_LOAD, http.HandlerFunc(api.handleDBLoad)).Methods(http.MethodPost, http.MethodPut)
+	management_route.Handle(MANAGEMENT_API_PATH_RECORD_GET, http.HandlerFunc(api.handleRecordGet)).Methods(http.MethodGet)
+	management_route.Handle(MANAGEMENT_API_PATH_RECORD_SET, http.HandlerFunc(api.handleRecordSet)).Methods(http.MethodPost, http.MethodPut)
 }
 
 func (api *APIServer) Run() {
-	api_address_port := fmt.Sprintf("0.0.0.0:%d", api.port)
-	logger.Info.Printf("API server starts at %q...", api_address_port)
+	APIAddressPort := fmt.Sprintf("0.0.0.0:%d", api.port)
+	logger.Info.Printf("API server starts at %q...", APIAddressPort)
+	managementAddressPort := fmt.Sprintf("0.0.0.0:%d", api.managementPort)
+	logger.Info.Printf("Management server starts at %q...", managementAddressPort)
 
 	// Added as requested for browser support
 	headersOk := handlers.AllowedHeaders([]string{"X-Requested-With", "Authorization"})
 	originsOk := handlers.AllowedOrigins([]string{"*"})
 	methodsOk := handlers.AllowedMethods([]string{"GET", "HEAD", "POST", "PUT", "OPTIONS"})
 	credentialOK := handlers.AllowCredentials()
-	cors := handlers.CORS(headersOk, originsOk, methodsOk, credentialOK)(api.mainRouter)
-	logger.Info.Fatalln(http.ListenAndServe(api_address_port, handlers.LoggingHandler(os.Stdout, cors)))
+	cors := handlers.CORS(headersOk, originsOk, methodsOk, credentialOK)(api.apiRouter)
+	go http.ListenAndServe(managementAddressPort, handlers.LoggingHandler(os.Stdout, api.managementRouter))
+	logger.Info.Fatalln(http.ListenAndServe(APIAddressPort, handlers.LoggingHandler(os.Stdout, cors)))
 }
 
 func (api *APIServer) handlerCreateJob(w http.ResponseWriter, r *http.Request) {
@@ -143,6 +162,7 @@ func (api *APIServer) handlerCreateJob(w http.ResponseWriter, r *http.Request) {
 			User: user.GetUserName(),
 		}
 	case http.MethodPost:
+		defer r.Body.Close()
 		// The query includes a full job description
 		blob, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -192,6 +212,7 @@ func (api *APIServer) handlerEditJob(w http.ResponseWriter, r *http.Request) {
 			respondJSON(w, http.StatusBadRequest, response.ToJson())
 			return
 		}
+		defer r.Body.Close()
 		// TODO: the API always assumes that the body contains job content
 		updatedJob := datatype.NewJob("", "", "")
 		// The query includes a full job description
@@ -278,6 +299,7 @@ func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	case http.MethodPost:
+		defer r.Body.Close()
 		newJob := datatype.NewJob("", "", "")
 		// The query includes a full job description
 		blob, err := io.ReadAll(r.Body)
@@ -371,8 +393,15 @@ func (api *APIServer) handlerJobStatus(w http.ResponseWriter, r *http.Request) {
 		// 	respondJSON(w, http.StatusBadRequest, response.Build().ToJson())
 		// 	return
 		// }
-		response.AddEntity(vars["id"], job)
-		respondJSON(w, http.StatusOK, response.Build().ToJson())
+		// response.AddEntity(vars["id"], job)
+		blob, err := httpSensitiveJsonMarshal(job)
+		if err != nil {
+			response.AddError(err.Error())
+			respondJSON(w, http.StatusBadRequest, response.Build().ToJson())
+			return
+		}
+		respondJSON(w, http.StatusOK, blob)
+		// respondYAML(w, http.StatusOK, job)
 	}
 }
 
@@ -384,8 +413,8 @@ func (api *APIServer) handlerJobRemove(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusBadRequest, response.Build().ToJson())
 		return
 	}
-	queries := r.URL.Query()
-	jobID := queries.Get("id")
+	vars := mux.Vars(r)
+	jobID := vars["id"]
 	job, err := api.cloudScheduler.GoalManager.GetJob(jobID)
 	if err != nil {
 		response.AddError(err.Error())
@@ -397,6 +426,7 @@ func (api *APIServer) handlerJobRemove(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusBadRequest, response.Build().ToJson())
 		return
 	}
+	queries := r.URL.Query()
 	// Suspend the job instead of removal if suspend flag is given
 	suspend := queries.Get("suspend")
 	if suspend == "true" {
@@ -464,7 +494,7 @@ func (api *APIServer) handlerGoalForNode(w http.ResponseWriter, r *http.Request)
 	for _, g := range api.cloudScheduler.GoalManager.GetScienceGoalsForNode(nodeName) {
 		goals = append(goals, g.ShowMyScienceGoal(nodeName))
 	}
-	blob, err := json.MarshalIndent(goals, "", "  ")
+	blob, err := httpSensitiveJsonMarshal(goals)
 	if err != nil {
 		response := datatype.NewAPIMessageBuilder().AddError(err.Error()).Build()
 		respondJSON(w, http.StatusOK, response.ToJson())
@@ -504,7 +534,7 @@ func (api *APIServer) handlerGoalStreamForNode(w http.ResponseWriter, r *http.Re
 		}
 		flusher.Flush()
 	} else {
-		blob, err := json.MarshalIndent(goals, "", "  ")
+		blob, err := httpSensitiveJsonMarshal(goals)
 		if err != nil {
 			logger.Error.Printf("Failed to compress goals for node %q before pushing", nodeName)
 		} else {
@@ -529,6 +559,59 @@ func (api *APIServer) handlerGoalStreamForNode(w http.ResponseWriter, r *http.Re
 			return
 		}
 	}
+}
+
+func (api *APIServer) handleDBDump(w http.ResponseWriter, r *http.Request) {
+	err := api.cloudScheduler.GoalManager.DumpDB(w)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func (api *APIServer) handleDBLoad(w http.ResponseWriter, r *http.Request) {
+	// TODO: To be implemented. This will
+	//       1. overwrite the db file specified in the config with given byte blob
+	//       2. terminate the schedueler to safely load the overwritten db file
+	http.Error(w, "Not implemented", http.StatusInternalServerError)
+}
+
+func (api *APIServer) handleRecordGet(w http.ResponseWriter, r *http.Request) {
+	queries := r.URL.Query()
+	jobID := queries.Get("id")
+	if jobID == "" {
+		http.Error(w, "No id is specified", http.StatusBadRequest)
+		return
+	}
+	blob, err := api.cloudScheduler.GoalManager.GetRecord(jobID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	respondJSON(w, http.StatusOK, blob)
+}
+
+func (api *APIServer) handleRecordSet(w http.ResponseWriter, r *http.Request) {
+	queries := r.URL.Query()
+	jobID := queries.Get("id")
+	if jobID == "" {
+		http.Error(w, "No id is specified", http.StatusBadRequest)
+		return
+	}
+	switch r.Method {
+	case http.MethodPost:
+		defer r.Body.Close()
+		blob, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		err = api.cloudScheduler.GoalManager.SetRecord(jobID, blob)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
 func (api *APIServer) authenticate(r *http.Request) (*User, error) {
@@ -594,4 +677,13 @@ func extractToken(r *http.Request) (string, error) {
 		return "", fmt.Errorf("Token not found")
 	}
 	return token, nil
+}
+
+func httpSensitiveJsonMarshal(o interface{}) ([]byte, error) {
+	bf := bytes.NewBuffer([]byte{})
+	encoder := json.NewEncoder(bf)
+	encoder.SetEscapeHTML(false)
+	encoder.SetIndent("", " ")
+	err := encoder.Encode(o)
+	return bf.Bytes(), err
 }

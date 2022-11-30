@@ -14,6 +14,13 @@ type Plugin struct {
 	GoalID     string      `json:"goal_id,omitempty" yaml:"goalID,omitempty"`
 }
 
+func (p *Plugin) GetPluginImage() (string, error) {
+	if p.PluginSpec == nil {
+		return "", fmt.Errorf("Plugin does not have plugin spec")
+	}
+	return p.PluginSpec.Image, nil
+}
+
 type PluginSpec struct {
 	Image       string            `json:"image" yaml:"image"`
 	Args        []string          `json:"args,omitempty" yaml:"args,omitempty"`
@@ -24,6 +31,7 @@ type PluginSpec struct {
 	Entrypoint  string            `json:"entrypoint,omitempty" yaml:"entrypoint,omitempty"`
 	Env         map[string]string `json:"env,omitempty" yaml:"env,omitempty"`
 	DevelopMode bool              `json:"develop,omitempty" yaml:"develop,omitempty"`
+	Resource    map[string]string `json:"resource,omitempty" yaml:"resource,omitempty"`
 }
 
 func (ps *PluginSpec) GetImageTag() (string, error) {

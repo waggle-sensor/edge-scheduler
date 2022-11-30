@@ -18,6 +18,7 @@ type NodeSchedulerConfig struct {
 	Kubeconfig       string `json:"kubeconfig" yaml:"kubeConfig"`
 	InCluster        bool   `json:"in_cluster" yaml:"inCluster"`
 	RuleCheckerURI   string `json:"rulechecker_uri" yaml:"ruleCheckerURI"`
+	ScoreboardURI    string `json:"scoreboard_uri" yaml:"scoreboardURI"`
 	Simulate         bool   `json:"simulate" yaml:"simulate"`
 	GoalStreamURL    string `json:"goalstream_URI" yaml:"goalStreamURL"`
 	SchedulingPolicy string `json:"policy" yaml:"policy"`
@@ -66,7 +67,7 @@ func (nsb *NodeSchedulerBuilder) AddResourceManager() *NodeSchedulerBuilder {
 func (nsb *NodeSchedulerBuilder) AddKnowledgebase() *NodeSchedulerBuilder {
 	nsb.nodeScheduler.Knowledgebase = &KnowledgeBase{
 		nodeID:         nsb.nodeScheduler.Config.Name,
-		rules:          make(map[string][]string),
+		rules:          make(map[string][]*datatype.ScienceRule),
 		measures:       map[string]interface{}{},
 		ruleCheckerURI: nsb.nodeScheduler.Config.RuleCheckerURI,
 	}
@@ -88,6 +89,11 @@ func (nsb *NodeSchedulerBuilder) AddLoggerToBeehive(appID string) *NodeScheduler
 		nsb.nodeScheduler.Config.RabbitmqPassword,
 		"",
 		appID)
+	return nsb
+}
+
+func (nsb *NodeSchedulerBuilder) AddConnToScoreboard() *NodeSchedulerBuilder {
+	nsb.nodeScheduler.ToScoreboard = interfacing.NewRedisClient(nsb.nodeScheduler.Config.ScoreboardURI)
 	return nsb
 }
 

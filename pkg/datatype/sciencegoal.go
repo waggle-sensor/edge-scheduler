@@ -24,7 +24,7 @@ func NewScienceGoalBuilder(goalName string, jobID string) *ScienceGoalBuilder {
 	}
 }
 
-func (sgb *ScienceGoalBuilder) AddSubGoal(nodeID string, plugins []*Plugin, scienceRules []string) *ScienceGoalBuilder {
+func (sgb *ScienceGoalBuilder) AddSubGoal(nodeID string, plugins []*Plugin, scienceRules []*ScienceRule) *ScienceGoalBuilder {
 	subGoal := &SubGoal{
 		Name:         nodeID,
 		Plugins:      plugins,
@@ -85,10 +85,10 @@ func (g *ScienceGoal) GetSubjectNodes() (nodes []string) {
 
 // SubGoal structs node-specific goal along with conditions and rules
 type SubGoal struct {
-	Name         string    `json:"name" yaml:"name"`
-	Plugins      []*Plugin `json:"plugins" yaml:"plugins"`
-	ScienceRules []string  `json:"science_rules" yaml:"scienceRules"`
-	checksum     string    `json:"-" yaml:"-"`
+	Name         string         `json:"name" yaml:"name"`
+	Plugins      []*Plugin      `json:"plugins" yaml:"plugins"`
+	ScienceRules []*ScienceRule `json:"science_rules" yaml:"scienceRules"`
+	checksum     string         `json:"-" yaml:"-"`
 }
 
 func (sg *SubGoal) GetPlugins() []*Plugin {
@@ -165,16 +165,4 @@ func (sg *SubGoal) GetPlugin(pluginName string) *Plugin {
 		}
 	}
 	return nil
-}
-
-type JobTemplate struct {
-	Name         string `yaml:"name"`
-	Plugins      []*Plugin
-	ScienceRules []string `yaml:"science_rules"`
-}
-
-func (j *JobTemplate) ConvertJobTemplateToScienceGoal(nodeID string) *ScienceGoal {
-	return NewScienceGoalBuilder(j.Name, "-1").
-		AddSubGoal(nodeID, j.Plugins, j.ScienceRules).
-		Build()
 }

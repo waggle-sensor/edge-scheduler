@@ -118,7 +118,12 @@ func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(jobID string, user *Us
 			continue
 		}
 		for _, plugin := range job.Plugins {
-			pluginManifest := cs.Validator.GetPluginManifest(plugin)
+			pluginImage, err := plugin.GetPluginImage()
+			if err != nil {
+				errorList = append(errorList, fmt.Errorf("%s does not specify plugin image", plugin.Name))
+				continue
+			}
+			pluginManifest := cs.Validator.GetPluginManifest(pluginImage)
 			if pluginManifest == nil {
 				errorList = append(errorList, fmt.Errorf("%s does not exist in ECR", plugin.PluginSpec.Image))
 				continue
@@ -167,9 +172,17 @@ func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(jobID string, user *Us
 		// Check 4: conditions of job are valid
 
 		// Check 5: valiables are valid
-		if len(approvedPlugins) > 0 {
-			scienceGoalBuilder = scienceGoalBuilder.AddSubGoal(nodeName, approvedPlugins, job.ScienceRules)
+		var rules []*datatype.ScienceRule
+		for _, rule := range job.ScienceRules {
+			r, err := datatype.NewScienceRule(rule)
+			if err != nil {
+				errorList = append(errorList,
+					fmt.Errorf("Failed to parse science rule %q: %s", rule, err.Error()))
+				continue
+			}
+			rules = append(rules, r)
 		}
+		scienceGoalBuilder = scienceGoalBuilder.AddSubGoal(nodeName, approvedPlugins, rules)
 	}
 	if len(errorList) > 0 {
 		logger.Info.Printf("Validation failed for Job ID %q: %v", jobID, errorList)

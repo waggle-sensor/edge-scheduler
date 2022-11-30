@@ -3,7 +3,9 @@ package cloudscheduler
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"path"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -11,6 +13,7 @@ import (
 	"github.com/boltdb/bolt"
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
 	"github.com/waggle-sensor/edge-scheduler/pkg/interfacing"
+	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
 )
 
 const jobBucketName = "jobs"
@@ -44,13 +47,14 @@ func (cgm *CloudGoalManager) AddJob(job *datatype.Job) string {
 }
 
 func (cgm *CloudGoalManager) GetJobs(userName string) (jobs []*datatype.Job) {
-	cgm.jobDB.View(func(tx *bolt.Tx) error {
+	err := cgm.jobDB.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(jobBucketName))
 		if b == nil {
 			return fmt.Errorf("Bucket %s does not exist", jobBucketName)
 		}
 		return b.ForEach(func(k, v []byte) error {
 			var j datatype.Job
+			// TODO: This needs to return the error to the caller. It does not for now.
 			if err := json.Unmarshal(v, &j); err != nil {
 				return err
 			}
@@ -65,6 +69,9 @@ func (cgm *CloudGoalManager) GetJobs(userName string) (jobs []*datatype.Job) {
 			return nil
 		})
 	})
+	if err != nil {
+		logger.Error.Printf("Error from DB: %s", err.Error())
+	}
 	return
 }
 
@@ -86,6 +93,33 @@ func (cgm *CloudGoalManager) GetJob(jobID string) (job *datatype.Job, err error)
 		return nil
 	})
 	return
+}
+
+// GetRecord returns a job as a byte blob. This function should only be used for management purpose.
+func (cgm *CloudGoalManager) GetRecord(jobID string) (blob []byte, err error) {
+	err = cgm.jobDB.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(jobBucketName))
+		if b == nil {
+			return fmt.Errorf("Bucket %s does not exist", jobBucketName)
+		}
+		blob = b.Get([]byte(jobID))
+		if len(blob) < 1 {
+			return fmt.Errorf("Job ID %q does not exist", jobID)
+		}
+		return nil
+	})
+	return
+}
+
+func (cgm *CloudGoalManager) SetRecord(jobID string, blob []byte) error {
+	return cgm.jobDB.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(jobBucketName))
+		if b == nil {
+			return fmt.Errorf("Bucket %s does not exist", jobBucketName)
+		}
+		b.Put([]byte(jobID), []byte(blob))
+		return nil
+	})
 }
 
 func (cgm *CloudGoalManager) UpdateJob(job *datatype.Job, submit bool) (err error) {
@@ -240,6 +274,23 @@ func (cgm *CloudGoalManager) GetScienceGoalsForNode(nodeName string) (goals []*d
 	return
 }
 
+func (cgm *CloudGoalManager) EditRecord(job *datatype.Job) error {
+	cgm.mu.Lock()
+	defer cgm.mu.Unlock()
+	return cgm.jobDB.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(jobBucketName))
+		if b == nil {
+			return fmt.Errorf("Bucket %s does not exist", jobBucketName)
+		}
+		buf, err := json.Marshal(job)
+		if err != nil {
+			return err
+		}
+		b.Put([]byte(job.JobID), []byte(buf))
+		return nil
+	})
+}
+
 func (cgm *CloudGoalManager) OpenJobDB() error {
 	db, err := bolt.Open(path.Join(cgm.dataPath, "job.db"), 0600, &bolt.Options{Timeout: 1 * time.Second})
 	if err != nil {
@@ -251,6 +302,20 @@ func (cgm *CloudGoalManager) OpenJobDB() error {
 		return err
 	})
 	return nil
+}
+
+func (cgm *CloudGoalManager) DumpDB(w http.ResponseWriter) error {
+	return cgm.jobDB.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(jobBucketName))
+		if b == nil {
+			return fmt.Errorf("Bucket %s does not exist", jobBucketName)
+		}
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Disposition", `attachment; filename="my.db"`)
+		w.Header().Set("Content-Length", strconv.Itoa(int(tx.Size())))
+		_, err := tx.WriteTo(w)
+		return err
+	})
 }
 
 func (cgm *CloudGoalManager) LoadScienceGoalsFromJobDB() error {
