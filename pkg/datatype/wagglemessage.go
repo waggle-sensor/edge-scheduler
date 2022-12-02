@@ -9,8 +9,8 @@ type WaggleMessage struct {
 	Name      string            `json:"name"`
 	Value     interface{}       `json:"val"`
 	Timestamp int64             `json:"ts"`
-	Meta      map[string]string `json:"meta"`
-	Enc       string            `json:"enc"`
+	Meta      map[string]string `json:"meta,omitempty"`
+	Enc       string            `json:"enc,omitempty"`
 }
 
 func NewMessage(name string, value interface{}, timestamp int64, meta map[string]string) *WaggleMessage {

@@ -249,15 +249,18 @@ func (cs *CloudScheduler) Run() {
 				scienceGoal, err := cs.GoalManager.GetScienceGoal(goalID)
 				if err != nil {
 					logger.Error.Printf("Failed to find science goal %s", goalID)
+					break
 				}
 				job, err := cs.GoalManager.GetJob(scienceGoal.JobID)
 				if err != nil {
 					logger.Error.Printf("Failed to get job of the science goal %q: %s", goalID, err.Error())
+					break
 				}
 				job.Runs()
 				err = cs.GoalManager.UpdateJob(job, false)
 				if err != nil {
 					logger.Error.Printf("Failed to update status of job %q: %s", scienceGoal.JobID, err.Error())
+					break
 				}
 			}
 			// TODO: How do we determine if a job is failed
