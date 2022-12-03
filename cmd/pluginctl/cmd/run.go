@@ -66,7 +66,7 @@ var cmdRun = &cobra.Command{
 			}
 			logger.Debug.Printf("Current pod status: %s", pluginStatus)
 			switch pluginStatus {
-			case apiv1.PodRunning:
+			case apiv1.PodRunning, apiv1.PodSucceeded:
 				break checkStatusLoop
 			case apiv1.PodFailed:
 				// TODO: We will need to extract error on why it was pending or failed.

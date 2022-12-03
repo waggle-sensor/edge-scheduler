@@ -147,6 +147,8 @@ func resourceListForConfig(pluginSpec *datatype.PluginSpec) (apiv1.ResourceRequi
 			resources.Limits[apiv1.ResourceCPU] = quantity
 		case "limit.memory":
 			resources.Limits[apiv1.ResourceMemory] = quantity
+		case "limit.gpu":
+			resources.Limits["nvidia.com/gpu"] = quantity
 		case "request.cpu":
 			resources.Requests[apiv1.ResourceCPU] = quantity
 		case "request.memory":
@@ -908,8 +910,8 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 	}
 	chanEvent := watcher.ResultChan()
 	defer watcher.Stop()
-	for {
-		event := <-chanEvent
+	for event := range chanEvent {
+		logger.Debug.Printf("Plugin %s received an event %s", job.Name, event.Type)
 		switch event.Type {
 		case watch.Added:
 			job := event.Object.(*batchv1.Job)
@@ -986,6 +988,7 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 			return
 		}
 	}
+	logger.Error.Printf("Watcher of the plugin %s is unexpectidly closed", job.Name)
 }
 
 func (rm *ResourceManager) GatherResourceUse() {
