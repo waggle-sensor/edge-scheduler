@@ -986,6 +986,10 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 			logger.Debug.Printf("Error on watcher. Returning resource and notify")
 			rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason("Error on watcher").AddK3SJobMeta(job).AddPluginMeta(plugin).Build())
 			return
+		default:
+			logger.Error.Printf("Watcher of plugin %q received unknown event %q", job.Name, event.Type)
+			rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason("Unknown error on watcher").AddK3SJobMeta(job).AddPluginMeta(plugin).Build())
+			return
 		}
 	}
 	logger.Error.Printf("Watcher of the plugin %s is unexpectidly closed", job.Name)
