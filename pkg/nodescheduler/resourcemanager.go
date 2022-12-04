@@ -945,7 +945,6 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 								AddEntry("return_code", fmt.Sprintf("%d", state.ExitCode))
 						}
 						if logReader, err := rm.GetPluginLog(job.Name, false); err == nil {
-							defer logReader.Close()
 							lastLog := make([]byte, 1024)
 							totalLength := 0
 							buffer := make([]byte, 1024)
@@ -965,6 +964,7 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 								copy(lastLog, buffer)
 								totalLength = n
 							}
+							logReader.Close()
 							eventBuilder = eventBuilder.AddEntry("error_log", string(lastLog[:totalLength]))
 							logger.Debug.Printf("Logs of the plugin %q: %s", job.Name, string(lastLog[:totalLength]))
 						} else {
@@ -992,7 +992,8 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 			return
 		}
 	}
-	logger.Error.Printf("Watcher of the plugin %s is unexpectidly closed", job.Name)
+	logger.Error.Printf("Watcher of the plugin %s is unexpectedly closed", job.Name)
+	rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason("watcher closed unexpectedly").AddK3SJobMeta(job).AddPluginMeta(plugin).Build())
 }
 
 func (rm *ResourceManager) GatherResourceUse() {
