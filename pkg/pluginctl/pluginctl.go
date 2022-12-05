@@ -290,7 +290,7 @@ func (p *PluginCtl) RunAsync(dep *Deployment, chEvent chan<- datatype.Event, out
 }
 
 func (p *PluginCtl) PrintLog(pluginName string, follow bool) (func(), chan os.Signal, error) {
-	podLog, err := p.ResourceManager.GetPluginLog(pluginName, follow)
+	podLog, err := p.ResourceManager.GetPluginLogHandler(pluginName, follow)
 	if err != nil {
 		return nil, nil, err
 	}
