@@ -260,6 +260,7 @@ func (cs *CloudScheduler) Run() {
 				err = cs.GoalManager.UpdateJob(job, false)
 				if err != nil {
 					logger.Error.Printf("Failed to update status of job %q: %s", scienceGoal.JobID, err.Error())
+					break
 				}
 			}
 			// TODO: How do we determine if a job is failed

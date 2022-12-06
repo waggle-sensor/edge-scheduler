@@ -147,6 +147,8 @@ func resourceListForConfig(pluginSpec *datatype.PluginSpec) (apiv1.ResourceRequi
 			resources.Limits[apiv1.ResourceCPU] = quantity
 		case "limit.memory":
 			resources.Limits[apiv1.ResourceMemory] = quantity
+		case "limit.gpu":
+			resources.Limits["nvidia.com/gpu"] = quantity
 		case "request.cpu":
 			resources.Requests[apiv1.ResourceCPU] = quantity
 		case "request.memory":
@@ -323,7 +325,7 @@ func (rm *ResourceManager) WatchJob(name string, namespace string, retry int) (w
 	for i := 0; i <= retry; i++ {
 		job, err := rm.Clientset.BatchV1().Jobs(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 		if err != nil {
-			logger.Debug.Printf("Failed to job %q", err.Error())
+			logger.Debug.Printf("Failed to get job %q", err.Error())
 			time.Sleep(3 * time.Second)
 			continue
 		}
@@ -827,7 +829,7 @@ func (rm *ResourceManager) GetPodName(jobName string) (string, error) {
 	return pod.Name, nil
 }
 
-func (rm *ResourceManager) GetPluginLog(jobName string, follow bool) (io.ReadCloser, error) {
+func (rm *ResourceManager) GetPluginLogHandler(jobName string, follow bool) (io.ReadCloser, error) {
 	pod, err := rm.GetPod(jobName)
 	if err != nil {
 		return nil, err
@@ -845,6 +847,34 @@ func (rm *ResourceManager) GetPluginLog(jobName string, follow bool) (io.ReadClo
 	}
 	return nil, fmt.Errorf("The plugin (pod) is in %q state", string(pod.Status.Phase))
 	// podWatcher, err = rm.Clientset.CoreV1().Pods(rm.Namespace).Watch(ctx, metav1.ListOptions{LabelSelector: selector.String()})
+}
+
+// GetLastPluginLog fills up given buffer with the last plugin log.
+func (rm *ResourceManager) GetLastPluginLog(jobName string, lastLog []byte) (int, error) {
+	logReader, err := rm.GetPluginLogHandler(jobName, false)
+	if err != nil {
+		return 0, nil
+	}
+	defer logReader.Close()
+	totalLength := 0
+	buffer := make([]byte, len(lastLog))
+	for {
+		n, err := logReader.Read(buffer)
+		if err != nil {
+			if err == io.EOF {
+				if totalLength > n {
+					lastLog = append(lastLog[totalLength-n:], buffer[:n]...)
+				} else {
+					totalLength = n
+					copy(lastLog, buffer[:n])
+				}
+				break
+			}
+		}
+		copy(lastLog, buffer)
+		totalLength = n
+	}
+	return totalLength, nil
 }
 
 func (rm *ResourceManager) GetServiceClusterIP(serviceName string, namespace string) (string, error) {
@@ -898,94 +928,83 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 		rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason(err.Error()).AddPluginMeta(plugin).Build())
 		return
 	}
-	logger.Info.Printf("Plugin %q deployed", job.Name)
+	logger.Info.Printf("Plugin %q is scheduled", job.Name)
 	plugin.PluginSpec.Job = job.Name
-	watcher, err := rm.WatchJob(job.Name, rm.Namespace, 3)
-	if err != nil {
-		logger.Error.Printf("Failed to watch %q. Abort the execution", job.Name)
-		rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason(err.Error()).AddK3SJobMeta(job).AddPluginMeta(plugin).Build())
-		return
-	}
-	chanEvent := watcher.ResultChan()
-	defer watcher.Stop()
+	// NOTE: The for loop helps to re-connect to Kubernetes watcher when the connection
+	//       gets closed while the plugin is running
 	for {
-		event := <-chanEvent
-		switch event.Type {
-		case watch.Added:
-			job := event.Object.(*batchv1.Job)
-			pod, _ := rm.GetPod(job.Name)
-			rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusLaunched).AddK3SJobMeta(job).AddPodMeta(pod).AddPluginMeta(plugin).Build())
-		case watch.Modified:
-			job := event.Object.(*batchv1.Job)
-			if len(job.Status.Conditions) > 0 {
-				logger.Debug.Printf("Plugin %s status %s: %s", job.Name, event.Type, job.Status.Conditions[0].Type)
-				switch job.Status.Conditions[0].Type {
-				case batchv1.JobComplete:
-					eventBuilder := datatype.NewEventBuilder(datatype.EventPluginStatusComplete).AddK3SJobMeta(job).AddPluginMeta(plugin)
-					if pod, err := rm.GetPod(job.Name); err != nil {
-						logger.Debug.Printf("Failed to get pod for job %q: %s", job.Name, err.Error())
-					} else {
-						eventBuilder = eventBuilder.AddPodMeta(pod)
-					}
-					rm.Notifier.Notify(eventBuilder.Build())
-					return
-				case batchv1.JobFailed:
-					logger.Error.Printf("Plugin %q has failed.", job.Name)
-					eventBuilder := datatype.NewEventBuilder(datatype.EventPluginStatusFailed).
-						AddK3SJobMeta(job).
-						AddPluginMeta(plugin)
-					if pod, err := rm.GetPod(job.Name); err != nil {
-						logger.Error.Printf("Failed to get pod for job %q: %s", job.Name, err.Error())
-					} else {
-						eventBuilder = eventBuilder.AddPodMeta(pod)
-						if state := pod.Status.ContainerStatuses[0].State.Terminated; state != nil {
-							eventBuilder = eventBuilder.AddReason(state.Reason).
-								AddEntry("return_code", fmt.Sprintf("%d", state.ExitCode))
-						}
-						if logReader, err := rm.GetPluginLog(job.Name, false); err == nil {
-							defer logReader.Close()
-							lastLog := make([]byte, 1024)
-							totalLength := 0
-							buffer := make([]byte, 1024)
-							for {
-								n, err := logReader.Read(buffer)
-								if err != nil {
-									if err == io.EOF {
-										if totalLength > n {
-											lastLog = append(lastLog[totalLength-n:], buffer[:n]...)
-										} else {
-											totalLength = n
-											copy(lastLog, buffer[:n])
-										}
-										break
-									}
-								}
-								copy(lastLog, buffer)
-								totalLength = n
-							}
-							eventBuilder = eventBuilder.AddEntry("error_log", string(lastLog[:totalLength]))
-							logger.Debug.Printf("Logs of the plugin %q: %s", job.Name, string(lastLog[:totalLength]))
-						} else {
-							eventBuilder = eventBuilder.AddEntry("error_log", err.Error())
-							logger.Debug.Printf("Failed to get plugin log: %s", err.Error())
-						}
-					}
-					rm.Notifier.Notify(eventBuilder.Build())
-					return
-				}
-			} else {
-				logger.Debug.Printf("Plugin %s status %s: %s", job.Name, event.Type, "UNKNOWN")
-			}
-		case watch.Deleted:
-			logger.Debug.Printf("Plugin got deleted. Returning resource and notify")
-			rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason("Plugin deleted").AddK3SJobMeta(job).AddPluginMeta(plugin).Build())
-			return
-		case watch.Error:
-			logger.Debug.Printf("Error on watcher. Returning resource and notify")
-			rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason("Error on watcher").AddK3SJobMeta(job).AddPluginMeta(plugin).Build())
+		watcher, err := rm.WatchJob(job.Name, rm.Namespace, 3)
+		if err != nil {
+			logger.Error.Printf("Failed to watch %q. Abort the execution", job.Name)
+			rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason(err.Error()).AddK3SJobMeta(job).AddPluginMeta(plugin).Build())
 			return
 		}
+		chanEvent := watcher.ResultChan()
+		for event := range chanEvent {
+			logger.Debug.Printf("Plugin %s received an event %s", job.Name, event.Type)
+			switch event.Type {
+			case watch.Added:
+				job := event.Object.(*batchv1.Job)
+				pod, _ := rm.GetPod(job.Name)
+				rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusLaunched).AddK3SJobMeta(job).AddPodMeta(pod).AddPluginMeta(plugin).Build())
+			case watch.Modified:
+				job := event.Object.(*batchv1.Job)
+				if len(job.Status.Conditions) > 0 {
+					logger.Debug.Printf("Plugin %s status %s: %s", job.Name, event.Type, job.Status.Conditions[0].Type)
+					switch job.Status.Conditions[0].Type {
+					case batchv1.JobComplete:
+						eventBuilder := datatype.NewEventBuilder(datatype.EventPluginStatusComplete).AddK3SJobMeta(job).AddPluginMeta(plugin)
+						if pod, err := rm.GetPod(job.Name); err != nil {
+							logger.Debug.Printf("Failed to get pod for job %q: %s", job.Name, err.Error())
+						} else {
+							eventBuilder = eventBuilder.AddPodMeta(pod)
+						}
+						rm.Notifier.Notify(eventBuilder.Build())
+						return
+					case batchv1.JobFailed:
+						logger.Error.Printf("Plugin %q has failed.", job.Name)
+						eventBuilder := datatype.NewEventBuilder(datatype.EventPluginStatusFailed).
+							AddK3SJobMeta(job).
+							AddPluginMeta(plugin)
+						if pod, err := rm.GetPod(job.Name); err != nil {
+							logger.Error.Printf("Failed to get pod for job %q: %s", job.Name, err.Error())
+						} else {
+							eventBuilder = eventBuilder.AddPodMeta(pod)
+							if state := pod.Status.ContainerStatuses[0].State.Terminated; state != nil {
+								eventBuilder = eventBuilder.AddReason(state.Reason).
+									AddEntry("return_code", fmt.Sprintf("%d", state.ExitCode))
+							}
+							lastLog := make([]byte, 1024)
+							if lengthRead, err := rm.GetLastPluginLog(job.Name, lastLog); err == nil {
+								eventBuilder = eventBuilder.AddEntry("error_log", string(lastLog[:lengthRead]))
+								logger.Debug.Printf("Logs of the plugin %q: %s", job.Name, string(lastLog[:lengthRead]))
+							} else {
+								eventBuilder = eventBuilder.AddEntry("error_log", err.Error())
+								logger.Debug.Printf("Failed to get plugin log: %s", err.Error())
+							}
+						}
+						rm.Notifier.Notify(eventBuilder.Build())
+						return
+					}
+				} else {
+					logger.Debug.Printf("Plugin %s status %s: %s", job.Name, event.Type, "UNKNOWN")
+				}
+			case watch.Deleted:
+				logger.Debug.Printf("Plugin got deleted. Returning resource and notify")
+				rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason("Plugin deleted").AddK3SJobMeta(job).AddPluginMeta(plugin).Build())
+				return
+			case watch.Error:
+				logger.Debug.Printf("Error on watcher. Returning resource and notify")
+				rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason("Error on watcher").AddK3SJobMeta(job).AddPluginMeta(plugin).Build())
+				return
+			default:
+				logger.Error.Printf("Watcher of plugin %q received unknown event %q", job.Name, event.Type)
+			}
+		}
+		logger.Error.Printf("Watcher of the plugin %s is unexpectedly closed. Attemping to re-connect...", job.Name)
+		watcher.Stop()
 	}
+
 }
 
 func (rm *ResourceManager) GatherResourceUse() {

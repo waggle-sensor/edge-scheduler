@@ -222,9 +222,13 @@ func (rh *RabbitMQHandler) SubscribeEvents(exchange string, queueName string, to
 	go func() {
 		for {
 			err := backoff.Retry(operation, backoff.NewExponentialBackOff())
-			logger.Error.Printf("Failed to subscribe %q: %s", exchange, err.Error())
-			time.Sleep(5 * time.Second)
+			if err != nil {
+				logger.Error.Printf("Failed to subscribe %q: %s", exchange, err.Error())
+			} else {
+				logger.Info.Printf("Connection to %q is closed", exchange)
+			}
 			logger.Info.Printf("Retrying to connect to %q in 5 seconds...", exchange)
+			time.Sleep(5 * time.Second)
 		}
 
 	}()

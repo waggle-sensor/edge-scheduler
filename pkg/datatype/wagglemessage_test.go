@@ -3,9 +3,25 @@ package datatype
 import (
 	"bytes"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestDumpMustNotContainMetaIfNotGiven(t *testing.T) {
+	noMetaMessage := NewMessage("does.not.contain", 1, time.Now().UnixNano(), nil)
+	noMetaEncodedMessage := Dump(noMetaMessage)
+	if strings.Contains(string(noMetaEncodedMessage), "meta") {
+		t.Errorf("Meta field must not exist when not given")
+	}
+	metaMessage := NewMessage("contains", 2, time.Now().UnixNano(), map[string]string{
+		"hello": "world",
+	})
+	metaEncodedMessage := Dump(metaMessage)
+	if !strings.Contains(string(metaEncodedMessage), "meta") {
+		t.Errorf("Meta field must exist when given")
+	}
+}
 
 func TestNewWaggleMessage(t *testing.T) {
 	name := "new"
@@ -57,7 +73,6 @@ func TestWaggleMessageValueTypes(t *testing.T) {
 				map[string]string{}),
 		},
 	}
-
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			originalMessage := NewMessage(tc.message.Name, tc.message.Value, tc.message.Timestamp, tc.message.Meta)
