@@ -4,7 +4,7 @@ In this tutorial we use pluginctl to run a plugin container and print "hello wor
 
 The `run` subcommand runs the plugin container image (waggle/plugin-base:1.1.1-base) with the arguments specified after `--`.
 ```bash
-$ pluginctl run --name helloworld waggle/plugin-base:1.1.1-base -- bash -c 'echo "hello world"'
+pluginctl run --name helloworld waggle/plugin-base:1.1.1-base -- bash -c 'echo "hello world"'
 ```
 
 The arguments were executed inside container and resulted in echoing "hello world",

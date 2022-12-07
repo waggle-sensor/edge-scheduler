@@ -10,7 +10,7 @@ git clone https://github.com/waggle-sensor/plugin-hello-world.git
 
 The pluginctl's `build` subcommand utilizes Docker engine as a backend to build a container. The plugin-hello-world repository has a Dockerfile. To see the Dockerfile,
 ```bash
-$ cat plugin-hello-world/Dockerfile
+cat plugin-hello-world/Dockerfile
 ```
 
 Content of the Dockerfile is,
@@ -34,7 +34,7 @@ ENTRYPOINT [ "python3", "main.py" ]
 
 Let's build the plugin,
 ```bash
-$ pluginctl build plugin-hello-world
+pluginctl build plugin-hello-world
 ```
 
 The command will output logs of the build,
@@ -56,7 +56,7 @@ Successfully built plugin
 
 In the end, it outputs the full path of the plugin container image for you to use. To run the plugin on the node,
 ```bash
-$ pluginctl run --name builtplugin --selector node-role.kubernetes.io/master=true 10.31.81.1:5000/local/plugin-hello-world
+pluginctl run --name builtplugin --selector node-role.kubernetes.io/master=true 10.31.81.1:5000/local/plugin-hello-world
 ```
 
 The `run` subcommand will run the plugin and output "publishing hello world!",

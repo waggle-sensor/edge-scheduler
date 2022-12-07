@@ -27,7 +27,7 @@ COPY . .
 ARG VERSION
 ENV VERSION=${VERSION}
 RUN export PATH=$PATH:/usr/local/go/bin:/usr/bin/pkg-config \
-  && make scheduler-${TARGETARCH} cli-${TARGETARCH} \
+  && make scheduler-${TARGETARCH} cli-linux-${TARGETARCH} \
   && mkdir -p /app \
   && cp ./out/* /app/ \
   && cp pkg/knowledgebase/kb.py /app/ \
@@ -44,9 +44,9 @@ RUN chmod +x /app/cloudscheduler-${TARGETARCH} \
   && ln -s /app/cloudscheduler-${TARGETARCH} /usr/bin/cloudscheduler \
   && chmod +x /app/nodescheduler-${TARGETARCH} \
   && ln -s /app/nodescheduler-${TARGETARCH} /usr/bin/nodescheduler \
-  && chmod +x /app/pluginctl-${TARGETARCH} \
-  && ln -s /app/pluginctl-${TARGETARCH} /usr/bin/pluginctl \
-  && chmod +x /app/runplugin-${TARGETARCH} \
-  && ln -s /app/runplugin-${TARGETARCH} /usr/bin/runplugin
+  && chmod +x /app/pluginctl-linux-${TARGETARCH} \
+  && ln -s /app/pluginctl-linux-${TARGETARCH} /usr/bin/pluginctl \
+  && chmod +x /app/runplugin-linux-${TARGETARCH} \
+  && ln -s /app/runplugin-linux-${TARGETARCH} /usr/bin/runplugin
 
 WORKDIR /app

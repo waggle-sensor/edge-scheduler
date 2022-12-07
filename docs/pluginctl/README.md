@@ -2,8 +2,12 @@
 Pluginctl is a command-line tool to run edge applications (i.e., plugins) for development and testing. The tool requires a kubeconfig for cluster access (by default use `${USER}/.kube/config`) inside a Waggle node.
 
 ```bash
-$ pluginctl --kubeconfig /PATH/TO/KUBECONFIG
-SAGE plugin control for running plugins
+pluginctl --kubeconfig /PATH/TO/KUBECONFIG
+```
+
+The output would be,
+```bash
+SAGE plugin control for running plugins: 0.18.0
 pluginctl --help for more information
 ```
 
@@ -12,7 +16,7 @@ Pluginctl supports for amd64 and arm64 architecture. Please check [Releases](htt
 
 ```bash
 # For arm64 architecture
-wget -O /usr/bin/pluginctl https://github.com/waggle-sensor/edge-scheduler/releases/download/0.18.0/pluginctl-arm64
+wget -O /usr/bin/pluginctl https://github.com/waggle-sensor/edge-scheduler/releases/download/0.18.2/pluginctl-linux-arm64
 chmod +x /usr/bin/pluginctl
 ```
 

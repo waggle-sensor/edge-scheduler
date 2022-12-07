@@ -3,7 +3,7 @@ This tutorial demonstrates how to print out logs from a running plugin. This wil
 
 We first deploy a plugin that prints current date inside the container,
 ```bash
-$ pluginctl deploy --name printlog waggle/plugin-base:1.1.1-base -- bash -c 'while true; do date; sleep 1; done'
+pluginctl deploy --name printlog waggle/plugin-base:1.1.1-base -- bash -c 'while true; do date; sleep 1; done'
 ```
 The output would look like,
 ```bash
@@ -14,7 +14,7 @@ To terminate the job: pluginctl rm printlog
 
 We use `logs` subcommand to access to logs of a plugin. It brings the log to user terminal,
 ```bash
-$ pluginctl logs printlog
+pluginctl logs printlog
 ```
 
 Dates are printed with 1 second interval,
@@ -26,7 +26,7 @@ Wed Jan 19 21:12:30 UTC 2022
 
 The `logs` subcommand can follow logs using `-f` option. This will be useful to keep monitoring what the plugin outputs,
 ```bash
-$ pluginctl logs -f printlog
+pluginctl logs -f printlog
 ```
 
 Again, the output would be printed dates,
@@ -47,7 +47,7 @@ You can interrupt the terminal (e.g., by ctrl + c) to close the logging. Or, it 
 
 Finally, we clean up the plugin as it would be running indefinitely.
 ```bash
-$ pluginctl rm printlog
+pluginctl rm printlog
 ```
 
 The output would look like,
