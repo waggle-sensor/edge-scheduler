@@ -1,26 +1,36 @@
 # Printing Logs
-This tutorial demonstrates how to print logs out from a running container. This will be useful to check if your container is doing what it is supposed to do with sensors and inputs in our system.
+This tutorial demonstrates how to print out logs from a running plugin. This will be useful to check if your container is doing what it is supposed to do with sensors and inputs in our system.
 
+We first deploy a plugin that prints current date inside the container,
 ```bash
 $ pluginctl deploy --name printlog waggle/plugin-base:1.1.1-base -- bash -c 'while true; do date; sleep 1; done'
-Launched the plugin printlog-1642626747-1642626747 successfully 
-You may check the log: pluginctl logs printlog-1642626747-1642626747
-To terminate the job: pluginctl rm printlog-1642626747-1642626747
+```
+The output would look like,
+```bash
+Launched the plugin printlog successfully 
+You may check the log: pluginctl logs printlog
+To terminate the job: pluginctl rm printlog
 ```
 
-We again use `deploy` subcommand to run a container that this time prints current time with 1 second interval. The print is being logged inside the container.
-
+We use `logs` subcommand to access to logs of a plugin. It brings the log to user terminal,
 ```bash
-$ pluginctl logs printlog-1642626747-1642626747
+$ pluginctl logs printlog
+```
+
+Dates are printed with 1 second interval,
+```bash
 Wed Jan 19 21:12:28 UTC 2022
 Wed Jan 19 21:12:29 UTC 2022
 Wed Jan 19 21:12:30 UTC 2022
 ```
 
-The `logs` subcommand brings log messages from the container to the terminal.
-
+The `logs` subcommand can follow logs using `-f` option. This will be useful to keep monitoring what the plugin outputs,
 ```bash
-$ pluginctl logs -f printlog-1642626747-1642626747
+$ pluginctl logs -f printlog
+```
+
+Again, the output would be printed dates,
+```bash
 Wed Jan 19 21:12:28 UTC 2022
 Wed Jan 19 21:12:29 UTC 2022
 Wed Jan 19 21:12:30 UTC 2022
@@ -33,11 +43,14 @@ Wed Jan 19 21:12:36 UTC 2022
 Wed Jan 19 21:12:37 UTC 2022
 ```
 
-The `-f` -- follow -- option makes the log keep printed until interrupted (e.g., by ctrl + c).
+You can interrupt the terminal (e.g., by ctrl + c) to close the logging. Or, it can end when the plugin terminates, however in this tutorial it is not possible because the plugin runs forever.
 
+Finally, we clean up the plugin as it would be running indefinitely.
 ```bash
-$ pluginctl rm printlog-1642626747-1642626747
-Terminated the plugin printlog-1642626747-1642626747 successfully
+$ pluginctl rm printlog
 ```
 
-Finally we clean up the container as it would be running indefinitely.
+The output would look like,
+```bash
+Terminated the plugin printlog successfully
+```

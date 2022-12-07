@@ -933,7 +933,7 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 	// NOTE: The for loop helps to re-connect to Kubernetes watcher when the connection
 	//       gets closed while the plugin is running
 	for {
-		watcher, err := rm.WatchJob(job.Name, rm.Namespace, 3)
+		watcher, err := rm.WatchJob(job.Name, rm.Namespace, 1)
 		if err != nil {
 			logger.Error.Printf("Failed to watch %q. Abort the execution", job.Name)
 			rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason(err.Error()).AddK3SJobMeta(job).AddPluginMeta(plugin).Build())

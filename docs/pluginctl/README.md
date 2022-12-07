@@ -1,9 +1,9 @@
 # Command-line Tool For Running Plugin
-Pluginctl is a command-line tool to run edge applications (i.e., plugins) for development and testing. The tool requires a kubeconfig for cluster access (by default use `${USER}/.kube/config`).
+Pluginctl is a command-line tool to run edge applications (i.e., plugins) for development and testing. The tool requires a kubeconfig for cluster access (by default use `${USER}/.kube/config`) inside a Waggle node.
 
 ```bash
 $ pluginctl --kubeconfig /PATH/TO/KUBECONFIG
-SAGE edge scheduler client version: 0.8.3
+SAGE plugin control for running plugins
 pluginctl --help for more information
 ```
 
@@ -17,10 +17,14 @@ chmod +x /usr/bin/pluginctl
 ```
 
 # Tutorials
-The tutorials show how to use `pluginctl` on Waggle/Sage nodes to test, debug, and finalize plugin development.
+The tutorials demonstrate how to use `pluginctl` on Waggle/Sage nodes to test, debug, and finalize plugin development.
 
-1. [Hello World](tutorial_helloworld.md) shows how to create and run a Docker container
+1. [Hello World](tutorial_helloworld.md) shows how to create and run a plugin container
 
-2. [Getting into Container](tutorial_getintocontainer.md) lets you get into a container for development and testing
+2. [Getting into plugin](tutorial_getintoplugin.md) lets you get into a plugin container for development and testing
 
-3. [Printing Logs](tutorial_printlog.md) prints logs of a container
+3. [Printing logs](tutorial_printlog.md) prints logs of a plugin
+
+4. [Build plugin](tutorial_build.md) builds a plugin from AI/ML code hosted on a public code repository
+
+5. [Profiling Edge Applications](tutorial_profiling.md) runs an AI plugin and saves plugin performance data into a file after the run

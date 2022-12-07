@@ -44,8 +44,8 @@ func init() {
 }
 
 var cmdProfileRun = &cobra.Command{
-	Use:              "profile [FLAGS] PLUGIN_IMAGE [-- PLUGIN ARGUMENTS]",
-	Short:            "profile performance of a plugin",
+	Use:              "run [FLAGS] PLUGIN_IMAGE [-- PLUGIN ARGUMENTS]",
+	Short:            "run and profile performance of a plugin",
 	TraverseChildren: true,
 	Args:             cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
