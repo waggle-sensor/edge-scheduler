@@ -28,7 +28,7 @@ func init() {
 	// rootCmd.SilenceUsage = true
 	rootCmd.SilenceErrors = true
 	rootCmd.PersistentFlags().StringVar(&jobRequest.ServerHostString, "server", getenv("SES_HOST", "http://localhost:9770"), "Path to the kubeconfig file")
-	rootCmd.PersistentFlags().StringVar(&jobRequest.UserToken, "token", getenv("SES_USER_TOKEN", ""), "User token")
+	rootCmd.PersistentFlags().StringVar(&jobRequest.UserToken, "token", "", "User token")
 	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "flag to debug")
 }
 
@@ -41,7 +41,12 @@ var rootCmd = &cobra.Command{
 	},
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		if jobRequest.UserToken == "" {
-			return fmt.Errorf("Must provide a valid token")
+			tokenFromEnv := getenv("SES_USER_TOKEN", "")
+			if tokenFromEnv == "" {
+				return fmt.Errorf("must provide a valid token")
+			} else {
+				jobRequest.UserToken = tokenFromEnv
+			}
 		}
 		return nil
 	},

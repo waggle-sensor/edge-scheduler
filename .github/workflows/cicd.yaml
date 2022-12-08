@@ -26,12 +26,18 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
-            ./out/runplugin-amd64
-            ./out/runplugin-arm64
-            ./out/pluginctl-amd64
-            ./out/pluginctl-arm64
-            ./out/sesctl-amd64
-            ./out/sesctl-arm64
+            ./out/runplugin-linux-amd64
+            ./out/runplugin-linux-arm64
+            ./out/runplugin-darwin-amd64
+            ./out/runplugin-windows-amd64
+            ./out/pluginctl-linux-amd64
+            ./out/pluginctl-linux-arm64
+            ./out/pluginctl-darwin-amd64
+            ./out/pluginctl-windows-amd64
+            ./out/sesctl-linux-amd64
+            ./out/sesctl-linux-arm64
+            ./out/sesctl-darwin-amd64
+            ./out/sesctl-windows-amd64
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   push_to_registry:
