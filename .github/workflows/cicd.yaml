@@ -3,7 +3,7 @@ on: push
 jobs:
   test_and_release:
     name: CI/CD
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - name: Setup Go
         uses: actions/setup-go@v2
