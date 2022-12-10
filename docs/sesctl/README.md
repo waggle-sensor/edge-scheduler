@@ -6,9 +6,13 @@ __NOTE: Users will need to explore Edge code repository (ECR) (https://portal.sa
 To connect to SES,
 ```bash
 $ sesctl --server ${SES_SERVER_ADDRESS} ping
+```
+
+The scheduler in the cloud would respond as,
+```bash
 {
- "id": "Cloud Scheduler (ses-sage)",
- "version": "0.9.8"
+ "id": "Cloud Scheduler (cloudscheduler-sage)",
+ "version": "0.18.2"
 }
 ```
 
@@ -28,10 +32,12 @@ A job consists of attributes used to detail the job.
 
 ## Tutorials
 
-1. [create_job](tutorial_createjob.md) creates a job in SES
+1. [create job](tutorial_createjob.md) creates a job in SES
 
-2. [submit_job](tutorial_submitjob.md) submits already created job in SES
+2. [edit job](tutorial_editjob.md) edits existing job in SES
 
-3. [status_job](tutorial_statjob.md) shows status of job(s)
+2. [submit job](tutorial_submitjob.md) submits already created job in SES
 
-4. [delete_job](tutorial_deletejob.md) suspends and deletes a job
+3. [status job](tutorial_statjob.md) shows status of job(s)
+
+4. [delete job](tutorial_deletejob.md) suspends and deletes a job

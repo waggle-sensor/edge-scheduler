@@ -1,33 +1,38 @@
 # Tutorial: Create A Job
-In this tutorial, we will create a job with a job specification already specified.
+In this tutorial, we will create a job with a job description.
 
-To create a job specification,
+To create a job description,
 ```bash
 cat << EOF > myjob.yaml
 ---
 name: myjob
 plugins:
-- name: imagesampler-bottom
+- name: image-sampler
   pluginSpec:
-    image: waggle/plugin-image-sampler:0.2.5
+    image: registry.sagecontinuum.org/theone/imagesampler:0.3.0
     args:
     - -stream
     - bottom
 nodes:
   W023:
+scienceRules:
+- "schedule(image-sampler): cronjob('image-sampler', '* * * * *')"
 successcriteria:
 - WallClock(1d)
 EOF
 ```
 
-This specifies the intention that the user wants to run an edge application registered at `waggle/plugin-image-sampler:0.2.5` on the node named `W023` for a day.
+The job specifies the intention that the user wants to run an edge application registered at `registry.sagecontinuum.org/theone/imagesampler:0.3.0` on the node named `W023` for a day.
 
 __NOTE: Please explore Edge code repository at https://portal.sagecontinuum.org for more edge applications__
 
-To submit the specification to SES,
-
+To upload the job description to the scheduler,
 ```bash
-$ sesctl create --file-path myjob.yaml 
+sesctl create --file-path myjob.yaml
+```
+
+The scheduler would respond as,
+```bash
 {
  "job_id": "17",
  "job_name": "myjob",
@@ -35,9 +40,13 @@ $ sesctl create --file-path myjob.yaml
 }
 ```
 
-To verify if the job is submitted to SES,
+To verify if the job is created in the scheduler,
 ```bash
-$ sesctl stat
+sesctl stat
+```
+
+You should be able to see an entry of the job as follows,
+```
 JOB_ID  NAME     USER       STATUS     START_TIME            RUNNING_TIME          
 ====================================================================================
 17      myjob               Created    -                     -                     
