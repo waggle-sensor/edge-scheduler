@@ -1,4 +1,4 @@
-# Printing Logs
+# Tutorial: printing logs
 This tutorial demonstrates how to print out logs from a running plugin. This will be useful to check if your container is doing what it is supposed to do with sensors and inputs in our system.
 
 We first deploy a plugin that prints current date inside the container,

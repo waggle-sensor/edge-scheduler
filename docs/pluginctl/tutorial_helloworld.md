@@ -1,4 +1,4 @@
-# Tutorial: Hello World 
+# Tutorial: hello world 
 In this tutorial we use pluginctl to run a plugin container and print "hello world" from inside of the container.
 
 

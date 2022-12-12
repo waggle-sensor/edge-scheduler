@@ -1,4 +1,4 @@
-# Tutorial: Getting into Plugin
+# Tutorial: getting into a plugin
 This tutorial creates and runs a plugin. Then, it allows you to get into the plugin container to execute commands interactively.
 
 We first use `deploy` to run a plugin named "getintoplugin" with the arguments that has an infinite loop to sleep. This sleep is needed for us to buy time while we are executing commands inside the plugin. Without this sleep mechanism, the plugin would execute default command which does nothing and terminate almost immediately.
