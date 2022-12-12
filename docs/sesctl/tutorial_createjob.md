@@ -47,7 +47,8 @@ sesctl stat
 
 You should be able to see an entry of the job as follows,
 ```
-JOB_ID  NAME     USER       STATUS     START_TIME            RUNNING_TIME          
-====================================================================================
-17      myjob               Created    -                     -                     
+JOB_ID  NAME                USER       STATUS     AGE     
+====================================================================
+...
+17      myjob               yonghokim  Created    
 ```

@@ -35,9 +35,10 @@ sesctl stat
 
 You should be able to see the job as follows,
 ```
-JOB_ID  NAME     USER       STATUS     START_TIME            RUNNING_TIME          
-====================================================================================
-17      myjob               Created    -                     -                     
+JOB_ID  NAME                USER       STATUS     AGE     
+====================================================================
+...
+17      myjob               yonghokim  Created    
 ```
 
 Then, we take the job ID (which may be different on your case) and edit the job,
@@ -60,7 +61,8 @@ sesctl stat
 
 You should be able to see the updated job name as well as the status as "Drafted",
 ```bash
-JOB_ID  NAME     USER       STATUS     START_TIME            RUNNING_TIME          
-====================================================================================
-17      updatedmyjob        Drafted    -                     -                     
+JOB_ID  NAME                USER       STATUS     AGE     
+====================================================================
+...
+17      updatedmyjob        yonghokim  Drafted   
 ```

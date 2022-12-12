@@ -38,6 +38,6 @@ A job consists of attributes used to detail the job.
 
 2. [submit job](tutorial_submitjob.md) submits already created job in SES
 
-3. [status job](tutorial_statjob.md) shows status of job(s)
+3. [stat job](tutorial_statjob.md) shows status of job(s)
 
-4. [delete job](tutorial_deletejob.md) suspends and deletes a job
+4. [remove job](tutorial_removejob.md) suspends and removes a job
