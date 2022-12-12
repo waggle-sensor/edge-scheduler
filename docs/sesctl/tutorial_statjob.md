@@ -1,4 +1,4 @@
-# Tutorial: Get Details of A Job
+# Tutorial: get details of a job
 Once your job is submitted you may want to check how the job is being served by Waggle nodes.
 
 __NOTE: This has many rooms to improve in order to provide in-depth information about jobs. This will be updated frequently as we bring more functionalities to the tool__

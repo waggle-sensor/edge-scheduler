@@ -1,4 +1,4 @@
-# Tutorial: Submit A Job
+# Tutorial: submit a job
 In this tutorial, we will submit a job to the scheduler.
 
 ## Submit an existing job

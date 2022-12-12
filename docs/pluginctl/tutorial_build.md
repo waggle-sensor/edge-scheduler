@@ -1,4 +1,4 @@
-# Tutorial: Building A Plugin
+# Tutorial: building a plugin
 This tutorial demonstrates how plugin developer can download their AI code into a Waggle node and build a plugin container inside the node to test the code.
 
 First, we download our example code (plugin-hello-world) to a Waggle node. If you have a code ready for running you can download yours instead.

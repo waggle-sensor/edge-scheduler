@@ -1,4 +1,4 @@
-# Command-line Tool For Scheduling Jobs
+# Command-line tool for scheduling jobs
 sesctl is design to support job submission process for users. Users can use this tool to create, edit, and submit jobs to the Sage edge scheduler (SES). Later, user can query job status and scheduling events associated to the job using the tool.
 
 __NOTE: Users will need to explore Edge code repository (ECR) (https://portal.sagecontinuum.org) to pick edge applications they want to run before submitting a job. Users can also register their application to ECR.__
@@ -16,7 +16,7 @@ The scheduler in the cloud would respond as,
 }
 ```
 
-## Attributes of A Job
+## Attributes of a job
 A job consists of attributes used to detail the job.
 
 - `json:"job_id" yaml:"jobID"`: ID of a job given from scheduler 

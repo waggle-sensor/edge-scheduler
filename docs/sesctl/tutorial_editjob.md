@@ -1,4 +1,4 @@
-# Tutorial: Edit A Job
+# Tutorial: edit a job
 In this tutorial, we will modify the exiting job we created in the [previous tutorial](tutorial_createjob.md).
 
 The job we created has a science rule that is expected to be triggered every minute by [cronjob](https://github.com/waggle-sensor/sciencerule-checker/blob/master/docs/supported_functions.md#cronjobprogram_name-cronjob_time),

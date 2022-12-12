@@ -1,4 +1,4 @@
-# Tutorial: Create A Job
+# Tutorial: create a job
 In this tutorial, we will create a job with a job description.
 
 To create a job description,

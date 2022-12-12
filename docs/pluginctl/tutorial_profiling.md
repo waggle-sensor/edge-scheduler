@@ -1,4 +1,4 @@
-# Tutorial: Performance Profiling of A Plugin
+# Tutorial: performance profiling of a plugin
 This tutorial runs an AI plugin and aggregates performance data of the plugin after the run. This will not only show resource footprint of the plugin, but also help plugin developers understand the resource requirement of the plugin on a Waggle node.
 
 To profile a plugin,

@@ -1,4 +1,4 @@
-# Tutorial: Suspend or Remove An Existing Job
+# Tutorial: suspend or remove an existing job
 You may suspend or remove your job from the scheduler when you think it should.
 
 To suspend the job we submitted from the [submit tutorial](./tutorial_submitjob.md),
