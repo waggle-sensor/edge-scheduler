@@ -109,10 +109,14 @@ func (ns *NodeScheduler) Run() {
 							//       For example, schedule(plugin-a, duration=5m) <<
 							pluginName := r.ActionObject
 							plugin := sg.GetMySubGoal(ns.NodeID).GetPlugin(pluginName)
-							if p := ns.waitingQueue.Pop(plugin); p != nil {
-								ns.readyQueue.Push(p)
-								triggerScheduling = true
-								logger.Debug.Printf("Plugin %s is promoted by rules", plugin.Name)
+							if plugin == nil {
+								logger.Error.Printf("failed to promote plugin: plugin name %q does not exist in goal %q", pluginName, goalID)
+							} else {
+								if p := ns.waitingQueue.Pop(plugin); p != nil {
+									ns.readyQueue.Push(p)
+									triggerScheduling = true
+									logger.Debug.Printf("Plugin %s is promoted by rules", plugin.Name)
+								}
 							}
 						case datatype.ScienceRuleActionPublish:
 							eventName := r.ActionObject
