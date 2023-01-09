@@ -29,6 +29,26 @@ func TestScienceRule(t *testing.T) {
 				ShouldFailToParse: true,
 			},
 		},
+		"Quotes should not be considered test1": {
+			ScienceRule: `schedule("plugin-b"): True`,
+			Wants: ScienceRuleTestWants{
+				ShouldFailToParse: false,
+				ActionType:        ScienceRuleActionSchedule,
+				ActionObject:      "plugin-b",
+				ActionArguments:   nil,
+			},
+		},
+		"Quotes should not be considered test2": {
+			ScienceRule: `schedule('plugin-b', duration="5m"): True`,
+			Wants: ScienceRuleTestWants{
+				ShouldFailToParse: false,
+				ActionType:        ScienceRuleActionSchedule,
+				ActionObject:      "plugin-b",
+				ActionArguments: map[string]string{
+					"duration": "5m",
+				},
+			},
+		},
 		"Schedule type test1": {
 			ScienceRule: "schedule(plugin-b): True",
 			Wants: ScienceRuleTestWants{
