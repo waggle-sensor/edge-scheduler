@@ -513,12 +513,12 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 	initContainers := []apiv1.Container{
 		{
 			Name:  "init-app-meta-cache",
-			Image: "redis:7.0.4",
+			Image: "waggle/app-meta-cache:0.0.0",
 			Command: []string{
-				"redis-cli",
-				"-h",
-				"wes-app-meta-cache",
-				"SET",
+				"/update-app-cache",
+				"set",
+				"--nodename",
+				"$(HOST)",
 				"app-meta.$(WAGGLE_APP_ID)",
 				string(appMetaData),
 			},
@@ -569,8 +569,9 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 			Labels: rm.labelsForPlugin(plugin),
 		},
 		Spec: apiv1.PodSpec{
-			PriorityClassName: "wes-app-priority",
-			NodeSelector:      nodeSelectorForConfig(plugin.PluginSpec),
+			ServiceAccountName: "wes-plugin-account",
+			PriorityClassName:  "wes-app-priority",
+			NodeSelector:       nodeSelectorForConfig(plugin.PluginSpec),
 			// TODO: The priority class will be revisited when using resource metrics to schedule plugins
 			InitContainers: initContainers,
 			Containers:     containers,
