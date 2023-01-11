@@ -30,6 +30,7 @@ const (
 	API_PATH_JOB_LIST                  = "/jobs/list"
 	API_PATH_JOB_STATUS_REGEX          = "/jobs/%s/status"
 	API_PATH_JOB_REMOVE_REGEX          = "/jobs/%s/rm"
+	API_PATH_JOB_TEMPLATE_REGEX        = "/jobs/%s/template"
 	API_PATH_GOALS_NODE_REGEX          = "/goals/%s"
 	API_PATH_GOALS_NODE_STREAM_REGEX   = "/goals/%s/stream"
 	MANAGEMENT_API_PATH_SYSTEM_METRICS = "/system/metrics"
@@ -105,6 +106,7 @@ func (api *APIServer) ConfigureAPIs(prometheusGatherer *prometheus.Registry) {
 	api_route.Handle(API_PATH_JOB_LIST, http.HandlerFunc(api.handlerJobs)).Methods(http.MethodGet)
 	api_route.Handle(fmt.Sprintf(API_PATH_JOB_STATUS_REGEX, "{id}"), http.HandlerFunc(api.handlerJobStatus)).Methods(http.MethodGet)
 	api_route.Handle(fmt.Sprintf(API_PATH_JOB_REMOVE_REGEX, "{id}"), http.HandlerFunc(api.handlerJobRemove)).Methods(http.MethodGet)
+	api_route.Handle(fmt.Sprintf(API_PATH_JOB_TEMPLATE_REGEX, "{id}"), http.HandlerFunc(api.handlerJobTemplate)).Methods(http.MethodGet)
 	// api_route.Handle("/goals", http.HandlerFunc(api.handlerGoals)).Methods(http.MethodGet, http.MethodPost, http.MethodPut)
 	api_route.Handle(fmt.Sprintf(API_PATH_GOALS_NODE_REGEX, "{nodeName}"), http.HandlerFunc(api.handlerGoalForNode)).Methods(http.MethodGet)
 	if api.enablePushNotification {
@@ -461,6 +463,27 @@ func (api *APIServer) handlerJobRemove(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (api *APIServer) handlerJobTemplate(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	if r.Method == http.MethodGet {
+		response := datatype.NewAPIMessageBuilder()
+		job, err := api.cloudScheduler.GoalManager.GetJob(vars["id"])
+		if err != nil {
+			response.AddError(err.Error())
+			respondJSON(w, http.StatusBadRequest, response.Build().ToJson())
+			return
+		}
+		blob, err := httpSensitiveYamlMarshal(job.ConvertToTemplate())
+		if err != nil {
+			response.AddError(err.Error())
+			respondJSON(w, http.StatusBadRequest, response.Build().ToJson())
+			return
+		}
+		respondJSON(w, http.StatusOK, blob)
+		// respondYAML(w, http.StatusOK, job.ConvertToTemplate())
+	}
+}
+
 func (api *APIServer) handlerGoals(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 
@@ -686,4 +709,12 @@ func httpSensitiveJsonMarshal(o interface{}) ([]byte, error) {
 	encoder.SetIndent("", " ")
 	err := encoder.Encode(o)
 	return bf.Bytes(), err
+}
+
+func httpSensitiveYamlMarshal(o interface{}) ([]byte, error) {
+	return yaml.Marshal(o)
+	// bf := bytes.NewBuffer([]byte{})
+	// encoder := yaml.NewEncoder(bf)
+	// err := encoder.Encode(o)
+	// return bf.Bytes(), err
 }

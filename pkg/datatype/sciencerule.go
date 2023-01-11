@@ -54,13 +54,18 @@ func (r *ScienceRule) Parse(rule string) error {
 		return fmt.Errorf("Failed to parse rule %q: no action object found", r.Rule)
 	}
 	r.ActionObject = strings.Trim(actionParams[0], " ")
+	r.ActionObject = strings.Trim(r.ActionObject, `'`)
+	r.ActionObject = strings.Trim(r.ActionObject, `"`)
 	r.ActionParameters = make(map[string]string)
 	for _, param := range actionParams[1:] {
 		kv := strings.Split(param, "=")
 		if len(kv) != 2 {
 			return fmt.Errorf("Failed to parse rule %q: failed to parse param %s", r.Rule, param)
 		} else {
-			r.ActionParameters[strings.Trim(kv[0], " ")] = strings.Trim(kv[1], " ")
+			v := strings.Trim(kv[1], " ")
+			v = strings.Trim(v, `"`)
+			v = strings.Trim(v, `'`)
+			r.ActionParameters[strings.Trim(kv[0], " ")] = v
 		}
 	}
 	r.Condition = strings.Trim(sp[3], " ")

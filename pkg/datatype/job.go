@@ -3,6 +3,7 @@ package datatype
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v2"
@@ -74,17 +75,17 @@ func (s *State) UpdateState(newState JobState) {
 // Job structs user request for jobs
 type Job struct {
 	Name            string                 `json:"name" yaml:"name"`
-	JobID           string                 `json:"job_id" yaml:"jobID"`
-	User            string                 `json:"user" yaml:"user"`
-	Email           string                 `json:"email" yaml:"email"`
-	NotificationOn  []JobState             `json:"notification_on" yaml:"notificationOn"`
+	JobID           string                 `json:"job_id,omitempty" yaml:"jobID,omitempty"`
+	User            string                 `json:"user,omitempty" yaml:"user,omitempty"`
+	Email           string                 `json:"email,omitempty" yaml:"email,omitempty"`
+	NotificationOn  []JobState             `json:"notification_on,omitempty" yaml:"notificationOn,omitempty"`
 	Plugins         []*Plugin              `json:"plugins,omitempty" yaml:"plugins,omitempty"`
 	NodeTags        []string               `json:"node_tags" yaml:"nodeTags"`
 	Nodes           map[string]interface{} `json:"nodes" yaml:"nodes"`
 	ScienceRules    []string               `json:"science_rules" yaml:"scienceRules"`
 	SuccessCriteria []string               `json:"success_criteria" yaml:"successCriteria"`
 	ScienceGoal     *ScienceGoal           `json:"science_goal,omitempty" yaml:"scienceGoal,omitempty"`
-	State           State                  `json:"state" yaml:"state"`
+	State           State                  `json:"state,omitempty" yaml:"state,omitempty"`
 }
 
 func NewJob(name string, user string, jobID string) *Job {
@@ -137,6 +138,38 @@ func (j *Job) DropNode(nodeName string) {
 	if _, exist := j.Nodes[nodeName]; exist {
 		delete(j.Nodes, nodeName)
 	}
+}
+
+// ConvertToTemplate returns a new job object that contains the job description. The new job object does
+// not contain user-specific information such as job ID, owner, email, etc. This is mostly useful
+// when someone creates a new job from an existing job.
+func (j *Job) ConvertToTemplate() (template Job) {
+	template.Name = j.Name
+	nodeTags := j.NodeTags
+	template.NodeTags = nodeTags
+	template.Nodes = make(map[string]interface{})
+	for k, v := range j.Nodes {
+		template.Nodes[k] = v
+	}
+	for _, plugin := range j.Plugins {
+		p := *plugin
+		p.GoalID = ""
+		template.Plugins = append(template.Plugins, &p)
+	}
+	for _, scienceRule := range j.ScienceRules {
+		// In case the converted job is used in yaml.Marshal(),
+		// we make sure the single quote is replaced with a double quote
+		// otherwise, YAML-converted science rule has invalid format
+		// For example,
+		// schedule(imagesampler-bottom): cronjob('imagesampler-bottom', '0 * * * *')
+		// will be YAML-converted as,
+		// schedule(imagesampler-bottom): cronjob(''imagesampler-bottom'', ''0 * * * *'')
+		convertedRule := strings.ReplaceAll(scienceRule, "'", "\"")
+		template.ScienceRules = append(template.ScienceRules, convertedRule)
+	}
+	successCriteria := j.SuccessCriteria
+	template.SuccessCriteria = successCriteria
+	return
 }
 
 // EncodeToJson returns encoded json of the job.
