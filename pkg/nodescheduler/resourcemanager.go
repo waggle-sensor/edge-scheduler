@@ -513,7 +513,7 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 	initContainers := []apiv1.Container{
 		{
 			Name:  "init-app-meta-cache",
-			Image: "waggle/app-meta-cache:0.0.0",
+			Image: "waggle/app-meta-cache:0.1.1",
 			Command: []string{
 				"/update-app-cache",
 				"set",
