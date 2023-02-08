@@ -412,6 +412,11 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 				},
 			},
 		},
+		// Perform all NVidia runtime mounts from /etc/nvi/dia-container-runtime/host-files-for-container.d
+		{
+			Name:  "NVIDIA_REQUIRE_JETPACK",
+			Value: "csv-mounts=all",
+		},
 	}
 
 	for k, v := range plugin.PluginSpec.Env {
