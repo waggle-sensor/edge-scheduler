@@ -1,5 +1,5 @@
 VERSION?=0.0.0
-cli-all-arch: cli-linux-amd64 cli-linux-arm64 cli-darwin-amd64 cli-windows-amd64
+cli-all-arch: cli-linux-amd64 cli-linux-arm64 cli-darwin-amd64 cli-darwin-arm64 cli-windows-amd64
 
 cli-linux-arm64:
 	GOOS=linux GOARCH=arm64 go build -o ./out/runplugin-linux-arm64 ./cmd/runplugin
@@ -15,6 +15,11 @@ cli-darwin-amd64:
 	GOOS=darwin GOARCH=amd64 go build -o ./out/runplugin-darwin-amd64 ./cmd/runplugin
 	GOOS=darwin GOARCH=amd64 go build -o ./out/pluginctl-darwin-amd64 -ldflags "-X main.Version=${VERSION}" ./cmd/pluginctl
 	GOOS=darwin GOARCH=amd64 go build -o ./out/sesctl-darwin-amd64 -ldflags "-X main.Version=${VERSION}" ./cmd/sesctl
+
+cli-darwin-arm64:
+	GOOS=darwin GOARCH=arm64 go build -o ./out/runplugin-darwin-arm64 ./cmd/runplugin
+	GOOS=darwin GOARCH=arm64 go build -o ./out/pluginctl-darwin-arm64 -ldflags "-X main.Version=${VERSION}" ./cmd/pluginctl
+	GOOS=darwin GOARCH=arm64 go build -o ./out/sesctl-darwin-arm64 -ldflags "-X main.Version=${VERSION}" ./cmd/sesctl
 
 cli-windows-amd64:
 	GOOS=windows GOARCH=amd64 go build -o ./out/runplugin-windows-amd64 ./cmd/runplugin
