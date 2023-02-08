@@ -3,6 +3,7 @@ package pluginctl
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -16,6 +17,7 @@ import (
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
 	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
 	"github.com/waggle-sensor/edge-scheduler/pkg/nodescheduler"
+	"gopkg.in/yaml.v2"
 	apiv1 "k8s.io/api/core/v1"
 )
 
@@ -34,6 +36,7 @@ type PluginCtl struct {
 	kubeConfig      string
 	MetricsServer   *MetricsServer
 	ResourceManager *nodescheduler.ResourceManager
+	DryRun          bool
 }
 
 // Deployment holds the config pluginctl uses to deploy plugins
@@ -185,25 +188,67 @@ func (p *PluginCtl) Deploy(dep *Deployment) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		err = p.ResourceManager.RunPlugin(job)
-		return job.Name, err
+
+		if p.DryRun {
+			return job.Name, writeResourceYAML(os.Stdout, "batch/v1", "Job", job)
+		} else {
+			return job.Name, p.ResourceManager.RunPlugin(job)
+		}
 	case "deployment":
 		deployment, err := p.ResourceManager.CreateDeployment(&plugin)
 		if err != nil {
 			return "", err
 		}
-		err = p.ResourceManager.UpdateDeployment(deployment)
-		return deployment.Name, err
+
+		if p.DryRun {
+			return deployment.Name, writeResourceYAML(os.Stdout, "apps/v1", "Deployment", deployment)
+		} else {
+			return deployment.Name, p.ResourceManager.UpdateDeployment(deployment)
+		}
 	case "daemonset":
 		daemonSet, err := p.ResourceManager.CreateDaemonSet(&plugin)
 		if err != nil {
 			return "", err
 		}
-		err = p.ResourceManager.UpdateDaemonSet(daemonSet)
-		return daemonSet.Name, err
+
+		if p.DryRun {
+			return daemonSet.Name, writeResourceYAML(os.Stdout, "apps/v1", "DaemonSet", daemonSet)
+		} else {
+			return daemonSet.Name, p.ResourceManager.UpdateDaemonSet(daemonSet)
+		}
 	default:
 		return "", fmt.Errorf("Unknown type %q for plugin", dep.Type)
 	}
+}
+
+func writeResourceYAML(w io.Writer, apiVersion string, kind string, resource interface{}) error {
+	cleaned, err := cleanResource(resource)
+	if err != nil {
+		return err
+	}
+
+	cleaned["apiVersion"] = apiVersion
+	cleaned["kind"] = kind
+	delete(cleaned, "status")
+
+	return yaml.NewEncoder(w).Encode(cleaned)
+}
+
+// cleanResource is a helper function which leverages the fact that k8s types use json
+// tags to omit empty fields. unfortunately, using yaml directly leaves all these in.
+func cleanResource(resource interface{}) (map[string]interface{}, error) {
+	b, err := json.Marshal(resource)
+	if err != nil {
+		return nil, err
+	}
+
+	var cleaned map[string]interface{}
+
+	if err := json.Unmarshal(b, &cleaned); err != nil {
+		return nil, err
+	}
+
+	return cleaned, nil
 }
 
 // RunAsync runs given plugin and reports plugin status changes back to caller
