@@ -23,23 +23,22 @@ import (
 )
 
 const (
-	API_V1_VERSION                     = "/api/v1"
-	API_PATH_JOB_CREATE                = "/create"
-	API_PATH_JOB_EDIT                  = "/edit"
-	API_PATH_JOB_SUBMIT                = "/submit"
-	API_PATH_JOB_LIST                  = "/jobs/list"
-	API_PATH_JOB_STATUS_REGEX          = "/jobs/%s/status"
-	API_PATH_JOB_REMOVE_REGEX          = "/jobs/%s/rm"
-	API_PATH_JOB_TEMPLATE_REGEX        = "/jobs/%s/template"
-	API_PATH_GOALS_NODE_REGEX          = "/goals/%s"
-	API_PATH_GOALS_NODE_STREAM_REGEX   = "/goals/%s/stream"
-	MANAGEMENT_API_PATH_SYSTEM_METRICS = "/system/metrics"
-	MANAGEMENT_API_PATH_DB_DUMP        = "/db/dump"
-	MANAGEMENT_API_PATH_DB_LOAD        = "/db/load"
-	MANAGEMENT_API_PATH_RECORD_GET     = "/records/get"
-	MANAGEMENT_API_PATH_RECORD_SET     = "/records/set"
-	MANAGEMENT_API_PATH_RELOAD_PLUGINS = "/actions/reload/plugins"
-	MANAGEMENT_API_PATH_RELOAD_NODES   = "/actions/reload/nodes"
+	API_V1_VERSION                             = "/api/v1"
+	API_PATH_JOB_CREATE                        = "/create"
+	API_PATH_JOB_EDIT                          = "/edit"
+	API_PATH_JOB_SUBMIT                        = "/submit"
+	API_PATH_JOB_LIST                          = "/jobs/list"
+	API_PATH_JOB_STATUS_REGEX                  = "/jobs/%s/status"
+	API_PATH_JOB_REMOVE_REGEX                  = "/jobs/%s/rm"
+	API_PATH_JOB_TEMPLATE_REGEX                = "/jobs/%s/template"
+	API_PATH_GOALS_NODE_REGEX                  = "/goals/%s"
+	API_PATH_GOALS_NODE_STREAM_REGEX           = "/goals/%s/stream"
+	MANAGEMENT_API_PATH_SYSTEM_METRICS         = "/system/metrics"
+	MANAGEMENT_API_PATH_DB                     = "/db"
+	MANAGEMENT_API_PATH_DATA_JOBS              = "/data/jobs"
+	MANAGEMENT_API_PATH_DATA_PLUGINS           = "/data/plugins"
+	MANAGEMENT_API_PATH_DATA_PLUGINS_WHITELIST = "/data/plugins/whitelist"
+	MANAGEMENT_API_PATH_DATA_NODES             = "/data/nodes"
 )
 
 type APIServer struct {
@@ -117,12 +116,21 @@ func (api *APIServer) ConfigureAPIs(prometheusGatherer *prometheus.Registry) {
 	mr := api.managementRouter
 	management_route := mr.PathPrefix(API_V1_VERSION).Subrouter()
 	if prometheusGatherer != nil {
-		management_route.Handle(MANAGEMENT_API_PATH_SYSTEM_METRICS, promhttp.HandlerFor(prometheusGatherer, promhttp.HandlerOpts{EnableOpenMetrics: true})).Methods(http.MethodGet)
+		management_route.Handle(MANAGEMENT_API_PATH_SYSTEM_METRICS,
+			promhttp.HandlerFor(prometheusGatherer, promhttp.HandlerOpts{EnableOpenMetrics: true})).
+			Methods(http.MethodGet)
 	}
-	management_route.Handle(MANAGEMENT_API_PATH_DB_DUMP, http.HandlerFunc(api.handleDBDump)).Methods(http.MethodGet)
-	management_route.Handle(MANAGEMENT_API_PATH_DB_LOAD, http.HandlerFunc(api.handleDBLoad)).Methods(http.MethodPost, http.MethodPut)
-	management_route.Handle(MANAGEMENT_API_PATH_RECORD_GET, http.HandlerFunc(api.handleRecordGet)).Methods(http.MethodGet)
-	management_route.Handle(MANAGEMENT_API_PATH_RECORD_SET, http.HandlerFunc(api.handleRecordSet)).Methods(http.MethodPost, http.MethodPut)
+	management_route.Handle(MANAGEMENT_API_PATH_DB, http.HandlerFunc(api.handleDB)).
+		Methods(http.MethodGet, http.MethodPost, http.MethodPut)
+	management_route.Handle(MANAGEMENT_API_PATH_DATA_JOBS, http.HandlerFunc(api.handleDataJobs)).
+		Methods(http.MethodGet, http.MethodPost, http.MethodPut)
+	management_route.Handle(MANAGEMENT_API_PATH_DATA_PLUGINS, http.HandlerFunc(api.handleDataPlugins)).
+		Methods(http.MethodGet, http.MethodPost, http.MethodPut)
+	management_route.Handle(MANAGEMENT_API_PATH_DATA_PLUGINS_WHITELIST, http.HandlerFunc(api.handleDataPluginsWhitelist)).
+		Methods(http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete)
+	management_route.Handle(MANAGEMENT_API_PATH_DATA_NODES, http.HandlerFunc(api.handleDataNodes)).
+		Methods(http.MethodGet, http.MethodPost, http.MethodPut)
+
 }
 
 func (api *APIServer) Run() {
@@ -584,44 +592,46 @@ func (api *APIServer) handlerGoalStreamForNode(w http.ResponseWriter, r *http.Re
 	}
 }
 
-func (api *APIServer) handleDBDump(w http.ResponseWriter, r *http.Request) {
-	err := api.cloudScheduler.GoalManager.DumpDB(w)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
-
-func (api *APIServer) handleDBLoad(w http.ResponseWriter, r *http.Request) {
-	// TODO: To be implemented. This will
-	//       1. overwrite the db file specified in the config with given byte blob
-	//       2. terminate the schedueler to safely load the overwritten db file
-	http.Error(w, "Not implemented", http.StatusInternalServerError)
-}
-
-func (api *APIServer) handleRecordGet(w http.ResponseWriter, r *http.Request) {
-	queries := r.URL.Query()
-	jobID := queries.Get("id")
-	if jobID == "" {
-		http.Error(w, "No id is specified", http.StatusBadRequest)
-		return
-	}
-	blob, err := api.cloudScheduler.GoalManager.GetRecord(jobID)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	respondJSON(w, http.StatusOK, blob)
-}
-
-func (api *APIServer) handleRecordSet(w http.ResponseWriter, r *http.Request) {
-	queries := r.URL.Query()
-	jobID := queries.Get("id")
-	if jobID == "" {
-		http.Error(w, "No id is specified", http.StatusBadRequest)
-		return
-	}
+func (api *APIServer) handleDB(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
+	case http.MethodGet:
+		// dump the current DB
+		err := api.cloudScheduler.GoalManager.DumpDB(w)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	case http.MethodPost, http.MethodPut:
+		// TODO: To be implemented. This will
+		//       1. overwrite the db file specified in the config with given byte blob
+		//       2. terminate the schedueler to safely load the overwritten db file
+		http.Error(w, "Not implemented", http.StatusInternalServerError)
+	default:
+		http.Error(w, fmt.Sprintf("the HTTP method %q is not supported", r.Method), http.StatusBadRequest)
+	}
+}
+
+func (api *APIServer) handleDataJobs(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		queries := r.URL.Query()
+		jobID := queries.Get("id")
+		if jobID == "" {
+			http.Error(w, "No id is specified", http.StatusBadRequest)
+			return
+		}
+		blob, err := api.cloudScheduler.GoalManager.GetRecord(jobID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		respondJSON(w, http.StatusOK, blob)
 	case http.MethodPost:
+		queries := r.URL.Query()
+		jobID := queries.Get("id")
+		if jobID == "" {
+			http.Error(w, "No id is specified", http.StatusBadRequest)
+			return
+		}
 		defer r.Body.Close()
 		blob, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -633,8 +643,102 @@ func (api *APIServer) handleRecordSet(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		w.WriteHeader(http.StatusOK)
+	case http.MethodPut:
+		http.Error(w, "Not implemented", http.StatusInternalServerError)
+	default:
+		http.Error(w, fmt.Sprintf("the HTTP method %q is not supported", r.Method), http.StatusBadRequest)
+
 	}
-	w.WriteHeader(http.StatusOK)
+}
+
+func (api *APIServer) handleDataPlugins(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		queries := r.URL.Query()
+		flagReload := queries.Get("reload")
+		if flagReload == "true" {
+			if err := api.cloudScheduler.Validator.LoadDatabase(); err != nil {
+				http.Error(w, fmt.Sprintf("error on loading database: %s", err.Error()), http.StatusInternalServerError)
+			} else {
+				w.WriteHeader(http.StatusOK)
+			}
+		} else {
+			http.Error(w, "the reload query must be reload=true", http.StatusBadRequest)
+		}
+	case http.MethodPost:
+		fallthrough
+	case http.MethodPut:
+		http.Error(w, "Not implemented", http.StatusInternalServerError)
+	default:
+		http.Error(w, fmt.Sprintf("the HTTP method %q is not supported", r.Method), http.StatusBadRequest)
+	}
+}
+
+func (api *APIServer) handleDataPluginsWhitelist(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		whilteList := struct {
+			List []string `json:"whitelist"`
+		}{
+			List: api.cloudScheduler.Validator.ListPluginWhitelist(),
+		}
+		blob, _ := json.Marshal(whilteList)
+		respondJSON(w, http.StatusOK, blob)
+	case http.MethodPost:
+		defer r.Body.Close()
+		if blob, err := io.ReadAll(r.Body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		} else {
+			response := datatype.NewAPIMessageBuilder()
+			logger.Info.Printf("adding plugin whitelist %q", blob)
+			api.cloudScheduler.Validator.AddPluginWhitelist(string(blob))
+			api.cloudScheduler.Validator.WritePluginWhitelist()
+			response.AddEntity("whitelist", string(blob))
+			response.AddEntity("status", "success")
+			respondJSON(w, http.StatusOK, response.Build().ToJson())
+		}
+	case http.MethodPut:
+		http.Error(w, "Not implemented", http.StatusInternalServerError)
+	case http.MethodDelete:
+		defer r.Body.Close()
+		if blob, err := io.ReadAll(r.Body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		} else {
+			response := datatype.NewAPIMessageBuilder()
+			logger.Info.Printf("removing plugin whitelist %q", blob)
+			api.cloudScheduler.Validator.RemovePluginWhitelist(string(blob))
+			api.cloudScheduler.Validator.WritePluginWhitelist()
+			response.AddEntity("whitelist", string(blob))
+			response.AddEntity("status", "success")
+			respondJSON(w, http.StatusOK, response.Build().ToJson())
+		}
+	default:
+		http.Error(w, fmt.Sprintf("the HTTP method %q is not supported", r.Method), http.StatusBadRequest)
+	}
+}
+
+func (api *APIServer) handleDataNodes(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		queries := r.URL.Query()
+		flagReload := queries.Get("reload")
+		if flagReload == "true" {
+			if err := api.cloudScheduler.Validator.LoadDatabase(); err != nil {
+				http.Error(w, fmt.Sprintf("error on loading database: %s", err.Error()), http.StatusInternalServerError)
+			} else {
+				w.WriteHeader(http.StatusOK)
+			}
+		} else {
+			http.Error(w, "the reload query must be reload=true", http.StatusBadRequest)
+		}
+	case http.MethodPost:
+		fallthrough
+	case http.MethodPut:
+		http.Error(w, "Not implemented", http.StatusInternalServerError)
+	default:
+		http.Error(w, fmt.Sprintf("the HTTP method %q is not supported", r.Method), http.StatusBadRequest)
+	}
 }
 
 func (api *APIServer) authenticate(r *http.Request) (*User, error) {

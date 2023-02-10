@@ -41,6 +41,8 @@ func (cs *CloudScheduler) Configure() error {
 	if err := cs.Validator.LoadDatabase(); err != nil {
 		return err
 	}
+	// loading plugin whitelist
+	cs.Validator.LoadPluginWhitelist()
 	// Setting up Prometheus metrics
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(collectors.NewGoCollector())

@@ -1,6 +1,7 @@
 package cloudscheduler
 
 import (
+	"bufio"
 	"encoding/json"
 	"io/ioutil"
 	"os"
@@ -11,16 +12,18 @@ import (
 )
 
 type JobValidator struct {
-	dataPath string
-	Plugins  map[string]*datatype.PluginManifest
-	Nodes    map[string]*datatype.NodeManifest
+	dataPath         string
+	Plugins          map[string]*datatype.PluginManifest
+	PluginsWhitelist map[string]bool
+	Nodes            map[string]*datatype.NodeManifest
 }
 
 func NewJobValidator(dataPath string) *JobValidator {
 	return &JobValidator{
-		dataPath: dataPath,
-		Plugins:  make(map[string]*datatype.PluginManifest),
-		Nodes:    make(map[string]*datatype.NodeManifest),
+		dataPath:         dataPath,
+		Plugins:          make(map[string]*datatype.PluginManifest),
+		PluginsWhitelist: make(map[string]bool),
+		Nodes:            make(map[string]*datatype.NodeManifest),
 	}
 }
 
@@ -80,6 +83,46 @@ func (jv *JobValidator) LoadDatabase() error {
 		jv.Plugins[p.Image] = &p
 	}
 	return nil
+}
+
+func (jv *JobValidator) LoadPluginWhitelist() {
+	whitelistFilePath := path.Join(jv.dataPath, "plugins.whitelist")
+	if file, err := os.OpenFile(whitelistFilePath, os.O_CREATE|os.O_RDONLY, 0644); err == nil {
+		fileScanner := bufio.NewScanner(file)
+		for fileScanner.Scan() {
+			jv.PluginsWhitelist[fileScanner.Text()] = true
+		}
+	} else {
+		logger.Error.Printf("failed to create or open %q: %s", whitelistFilePath, err.Error())
+	}
+}
+
+func (jv *JobValidator) AddPluginWhitelist(whitelist string) {
+	jv.PluginsWhitelist[whitelist] = true
+}
+
+func (jv *JobValidator) RemovePluginWhitelist(whitelist string) {
+	if _, found := jv.PluginsWhitelist[whitelist]; found {
+		delete(jv.PluginsWhitelist, whitelist)
+	}
+}
+
+func (jv *JobValidator) ListPluginWhitelist() (l []string) {
+	for whitelist := range jv.PluginsWhitelist {
+		l = append(l, whitelist)
+	}
+	return
+}
+
+func (jv *JobValidator) WritePluginWhitelist() {
+	whitelistFilePath := path.Join(jv.dataPath, "plugins.whitelist")
+	if file, err := os.OpenFile(whitelistFilePath, os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		for whitelist, _ := range jv.PluginsWhitelist {
+			file.WriteString(whitelist + "\n")
+		}
+	} else {
+		logger.Error.Printf("failed to create or open %q: %s", whitelistFilePath, err.Error())
+	}
 }
 
 // GetNodeNamesByTags returns a list of node names matched with given tags
