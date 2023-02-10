@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"regexp"
 
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
 	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
@@ -112,6 +113,15 @@ func (jv *JobValidator) ListPluginWhitelist() (l []string) {
 		l = append(l, whitelist)
 	}
 	return
+}
+
+func (jv *JobValidator) IsPluginWhitelisted(pluginImage string) bool {
+	for l := range jv.PluginsWhitelist {
+		if matched, _ := regexp.MatchString(l, pluginImage); matched {
+			return true
+		}
+	}
+	return false
 }
 
 func (jv *JobValidator) WritePluginWhitelist() {
