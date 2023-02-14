@@ -41,6 +41,8 @@ func (cs *CloudScheduler) Configure() error {
 	if err := cs.Validator.LoadDatabase(); err != nil {
 		return err
 	}
+	// loading plugin whitelist
+	cs.Validator.LoadPluginWhitelist()
 	// Setting up Prometheus metrics
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(collectors.NewGoCollector())
@@ -125,7 +127,12 @@ func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(jobID string, user *Us
 			}
 			pluginManifest := cs.Validator.GetPluginManifest(pluginImage)
 			if pluginManifest == nil {
-				errorList = append(errorList, fmt.Errorf("%s does not exist in ECR", plugin.PluginSpec.Image))
+				// we also check if the image is in the whitelist. If so, we approve for the plugin
+				if cs.Validator.IsPluginWhitelisted(pluginImage) {
+					approvedPlugins = append(approvedPlugins, plugin)
+				} else {
+					errorList = append(errorList, fmt.Errorf("%s does not exist in ECR", plugin.PluginSpec.Image))
+				}
 				continue
 			}
 			// Check 1: plugin exists in ECR

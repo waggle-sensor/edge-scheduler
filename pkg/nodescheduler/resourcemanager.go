@@ -513,7 +513,7 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 	initContainers := []apiv1.Container{
 		{
 			Name:  "init-app-meta-cache",
-			Image: "waggle/app-meta-cache:0.0.0",
+			Image: "waggle/app-meta-cache:0.1.1",
 			Command: []string{
 				"/update-app-cache",
 				"set",
@@ -775,9 +775,16 @@ func (rm *ResourceManager) TerminateDeployment(pluginName string) error {
 	return err
 }
 
+// TerminateJob terminates the Kubernetes Job object. We set the graceperiod to 1 second to terminate
+// any Job or Pod in case they do not respond to the termination signal
 func (rm *ResourceManager) TerminateJob(jobName string) error {
-	deleteDependencies := metav1.DeletePropagationForeground
-	return rm.Clientset.BatchV1().Jobs(rm.Namespace).Delete(context.TODO(), jobName, metav1.DeleteOptions{PropagationPolicy: &deleteDependencies})
+	// This option allows us to quickly spin up the same plugin
+	// The Foreground option waits until the pod deletes, which takes time
+	deleteDependencies := metav1.DeletePropagationBackground
+	return rm.Clientset.BatchV1().Jobs(rm.Namespace).Delete(context.TODO(), jobName, metav1.DeleteOptions{
+		GracePeriodSeconds: int64Ptr(0),
+		PropagationPolicy:  &deleteDependencies,
+	})
 }
 
 func (rm *ResourceManager) GetPluginStatus(jobName string) (apiv1.PodPhase, error) {
@@ -1002,8 +1009,23 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 				logger.Error.Printf("Watcher of plugin %q received unknown event %q", job.Name, event.Type)
 			}
 		}
-		logger.Error.Printf("Watcher of the plugin %s is unexpectedly closed. Attemping to re-connect...", job.Name)
 		watcher.Stop()
+		logger.Error.Printf("Watcher of the plugin %s is unexpectedly closed. ", job.Name)
+		// when a pod becomes unhealthy (e.g., a host device of the pod disconnected) the watcher
+		// gets closed, but the job remains valid in the cluster and never runs the pod again.
+		// To get out from this loop, we check if the pod is running, if not, we should terminate the plugin
+		if pod, err := rm.GetPod(job.Name); err != nil {
+			logger.Error.Printf("failed to get status of pod for job %q: %s", job.Name, err.Error())
+			rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason("pod no longer exist").AddK3SJobMeta(job).AddPluginMeta(plugin).Build())
+			return
+		} else {
+			if pod.Status.Phase != apiv1.PodRunning {
+				logger.Error.Printf("pod %q is not running for job %q. Closing plugin", pod.Name, job.Name)
+				rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason("pod no longer running").AddK3SJobMeta(job).AddPluginMeta(plugin).AddPodMeta(pod).Build())
+				return
+			}
+		}
+		logger.Info.Printf("attemping to re-connect for job %q", job.Name)
 	}
 
 }
@@ -1443,6 +1465,8 @@ func (rmq *RMQManagement) RegisterPluginCredential(credential datatype.PluginCre
 }
 
 func int32Ptr(i int32) *int32 { return &i }
+
+func int64Ptr(i int64) *int64 { return &i }
 
 // GetK3SClient returns an instance of clientset talking to a K3S cluster
 func GetK3SClient(incluster bool, pathToConfig string) (*kubernetes.Clientset, error) {

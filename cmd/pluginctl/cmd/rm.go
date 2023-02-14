@@ -9,7 +9,7 @@ import (
 )
 
 func init() {
-	cmdRm.Flags().BoolVarP(&followLog, "follow", "f", false, "Specified if logs should be streamed")
+	// cmdRm.Flags().BoolVarP(&followLog, "follow", "f", false, "Specified if logs should be streamed")
 	rootCmd.AddCommand(cmdRm)
 }
 
