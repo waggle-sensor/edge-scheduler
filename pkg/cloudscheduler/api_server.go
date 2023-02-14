@@ -678,13 +678,14 @@ func (api *APIServer) handleDataPlugins(w http.ResponseWriter, r *http.Request) 
 func (api *APIServer) handleDataPluginsWhitelist(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		whilteList := struct {
-			List []string `json:"whitelist"`
-		}{
-			List: api.cloudScheduler.Validator.ListPluginWhitelist(),
+		queries := r.URL.Query()
+		flagReload := queries.Get("reload")
+		if flagReload == "true" {
+			api.cloudScheduler.Validator.LoadPluginWhitelist()
 		}
-		blob, _ := json.Marshal(whilteList)
-		respondJSON(w, http.StatusOK, blob)
+		response := datatype.NewAPIMessageBuilder()
+		response.AddEntity("whitelist", api.cloudScheduler.Validator.ListPluginWhitelist())
+		respondJSON(w, http.StatusOK, response.Build().ToJson())
 	case http.MethodPost:
 		defer r.Body.Close()
 		if blob, err := io.ReadAll(r.Body); err != nil {

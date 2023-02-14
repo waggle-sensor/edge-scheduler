@@ -778,9 +778,11 @@ func (rm *ResourceManager) TerminateDeployment(pluginName string) error {
 // TerminateJob terminates the Kubernetes Job object. We set the graceperiod to 1 second to terminate
 // any Job or Pod in case they do not respond to the termination signal
 func (rm *ResourceManager) TerminateJob(jobName string) error {
-	deleteDependencies := metav1.DeletePropagationForeground
+	// This option allows us to quickly spin up the same plugin
+	// The Foreground option waits until the pod deletes, which takes time
+	deleteDependencies := metav1.DeletePropagationBackground
 	return rm.Clientset.BatchV1().Jobs(rm.Namespace).Delete(context.TODO(), jobName, metav1.DeleteOptions{
-		GracePeriodSeconds: int64Ptr(1),
+		GracePeriodSeconds: int64Ptr(0),
 		PropagationPolicy:  &deleteDependencies,
 	})
 }

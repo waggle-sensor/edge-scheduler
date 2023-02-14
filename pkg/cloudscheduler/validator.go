@@ -45,6 +45,8 @@ func (jv *JobValidator) GetPluginManifest(pluginImage string) *datatype.PluginMa
 }
 
 func (jv *JobValidator) LoadDatabase() error {
+	jv.Plugins = make(map[string]*datatype.PluginManifest)
+	jv.Nodes = make(map[string]*datatype.NodeManifest)
 	nodeFiles, err := ioutil.ReadDir(path.Join(jv.dataPath, "nodes"))
 	if err != nil {
 		return err
@@ -87,6 +89,7 @@ func (jv *JobValidator) LoadDatabase() error {
 }
 
 func (jv *JobValidator) LoadPluginWhitelist() {
+	jv.PluginsWhitelist = make(map[string]bool)
 	whitelistFilePath := path.Join(jv.dataPath, "plugins.whitelist")
 	if file, err := os.OpenFile(whitelistFilePath, os.O_CREATE|os.O_RDONLY, 0644); err == nil {
 		fileScanner := bufio.NewScanner(file)
@@ -127,7 +130,7 @@ func (jv *JobValidator) IsPluginWhitelisted(pluginImage string) bool {
 func (jv *JobValidator) WritePluginWhitelist() {
 	whitelistFilePath := path.Join(jv.dataPath, "plugins.whitelist")
 	if file, err := os.OpenFile(whitelistFilePath, os.O_CREATE|os.O_WRONLY, 0644); err == nil {
-		for whitelist, _ := range jv.PluginsWhitelist {
+		for whitelist := range jv.PluginsWhitelist {
 			file.WriteString(whitelist + "\n")
 		}
 	} else {
