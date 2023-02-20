@@ -55,9 +55,8 @@ def fill_completion_failure(df):
             if len(found) > 0:
                 launched.loc[index, "failed_at"] = found.iloc[0].timestamp
                 launched.loc[index, "reason"] = found.iloc[0].reason
-                print(launched.loc[p, "reason"])
                 if "error_log" in found.iloc[0]:
-                    launched.loc[index, "end_state"] = found.iloc[0]["error_log"]
+                    launched.loc[index, "error_log"] = found.iloc[0]["error_log"]
                 launched.loc[index, "end_state"] = "failed"
             else:
                 launched.loc[index, "end_state"] = "unknown"
