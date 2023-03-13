@@ -76,6 +76,8 @@ func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(jobID string, user *Us
 	logger.Info.Printf("Validating %s...", job.Name)
 	// Step 1: Resolve node tags
 	job.AddNodes(cs.Validator.GetNodeNamesByTags(job.NodeTags))
+	// TODO: Jobs may be submitted without nodes in the future
+	//       For example, Chicago nodes without having any node in Chicago yet
 	if len(job.Nodes) < 1 {
 		return []error{fmt.Errorf("Node is not selected")}
 	}
@@ -125,7 +127,7 @@ func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(jobID string, user *Us
 				errorList = append(errorList, fmt.Errorf("%s does not specify plugin image", plugin.Name))
 				continue
 			}
-			pluginManifest := cs.Validator.GetPluginManifest(pluginImage)
+			pluginManifest := cs.Validator.GetPluginManifest(pluginImage, true)
 			if pluginManifest == nil {
 				// we also check if the image is in the whitelist. If so, we approve for the plugin
 				if cs.Validator.IsPluginWhitelisted(pluginImage) {
@@ -154,7 +156,7 @@ func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(jobID string, user *Us
 			// Check 3: architecture of the plugin is supported by node
 			supported, supportedDevices := nodeManifest.GetPluginArchitectureSupportedDevices(pluginManifest)
 			if !supported {
-				errorList = append(errorList, fmt.Errorf("%s does not support architecture %v required by %s (%s)", nodeName, pluginManifest.Architecture, plugin.Name, plugin.PluginSpec.Image))
+				errorList = append(errorList, fmt.Errorf("%s does not support architecture %v required by %s (%s)", nodeName, pluginManifest.GetArchitectures(), plugin.Name, plugin.PluginSpec.Image))
 				continue
 			}
 			logger.Info.Printf("%s passed Check 3", plugin.Name)

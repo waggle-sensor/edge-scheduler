@@ -36,9 +36,9 @@ func (n *NodeManifest) MatchTags(tags []string, matchAll bool) bool {
 
 // GetPluginArchitectureSupportedDevices returns a device list that supports
 // plugin architecture
-func (n *NodeManifest) GetPluginArchitectureSupportedDevices(plugin *PluginManifest) (result bool, supportedDevices []Device) {
+func (n *NodeManifest) GetPluginArchitectureSupportedDevices(pManifest *PluginManifest) (result bool, supportedDevices []Device) {
 	for _, nodeDevice := range n.Devices {
-		for _, pluginArch := range plugin.Architecture {
+		for _, pluginArch := range pManifest.GetArchitectures() {
 			if pluginArch == nodeDevice.Architecture {
 				supportedDevices = append(supportedDevices, nodeDevice)
 			}
@@ -95,10 +95,19 @@ func (d *Device) GetUnsupportedPluginProfiles(plugin *PluginManifest) (result bo
 }
 
 type PluginManifest struct {
-	Name         string          `json:"name" yaml:"name"`
-	Image        string          `json:"image" yaml:"image"`
-	Tags         map[string]bool `json:"tags,omitempty" yaml:"tags,omitempty"`
-	Hardware     map[string]bool `json:"required_hardware,omitempty" yaml:"requiredHardware,omitempty"`
-	Architecture []string        `json:"architecture" yaml:"architecture"`
-	Profile      []Profile       `json:"profiles,omitempty" yaml:"profiles,omitempty"`
+	Name     string               `json:"name" yaml:"name"`
+	ID       string               `json:"id" yaml:"id"`
+	Tags     map[string]bool      `json:"tags,omitempty" yaml:"tags,omitempty"`
+	Source   PluginManifestSource `json:"source" yaml:"source"`
+	Hardware map[string]bool      `json:"required_hardware,omitempty" yaml:"requiredHardware,omitempty"`
+	Profile  []Profile            `json:"profiles,omitempty" yaml:"profiles,omitempty"`
+}
+
+func (p *PluginManifest) GetArchitectures() []string {
+	return p.Source.Architecture
+}
+
+type PluginManifestSource struct {
+	Architecture []string `json:"architecture" yaml:"architecture"`
+	Branch       string   `json:"branch" yaml:"branch"`
 }

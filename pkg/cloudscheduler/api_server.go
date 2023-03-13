@@ -310,6 +310,7 @@ func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) 
 		}
 	case http.MethodPost:
 		defer r.Body.Close()
+		// TODO: We will need to add an error hanlding when people request this without a body
 		newJob := datatype.NewJob("", "", "")
 		// The query includes a full job description
 		blob, err := io.ReadAll(r.Body)
@@ -664,7 +665,13 @@ func (api *APIServer) handleDataPlugins(w http.ResponseWriter, r *http.Request) 
 				w.WriteHeader(http.StatusOK)
 			}
 		} else {
-			http.Error(w, "the reload query must be reload=true", http.StatusBadRequest)
+			response := datatype.NewAPIMessageBuilder()
+			pluginImages := []string{}
+			for image, _ := range api.cloudScheduler.Validator.Plugins {
+				pluginImages = append(pluginImages, image)
+			}
+			response.AddEntity("plugins", pluginImages)
+			respondJSON(w, http.StatusOK, response.Build().ToJson())
 		}
 	case http.MethodPost:
 		fallthrough
