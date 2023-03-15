@@ -131,6 +131,7 @@ func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(jobID string, user *Us
 			if pluginManifest == nil {
 				// we also check if the image is in the whitelist. If so, we approve for the plugin
 				if cs.Validator.IsPluginWhitelisted(pluginImage) {
+					logger.Info.Printf("%s is whitelisted", pluginImage)
 					approvedPlugins = append(approvedPlugins, plugin)
 				} else {
 					errorList = append(errorList, fmt.Errorf("%s does not exist in ECR", plugin.PluginSpec.Image))
