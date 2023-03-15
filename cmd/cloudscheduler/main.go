@@ -28,7 +28,7 @@ func main() {
 	flag.StringVar(&configPath, "config", "", "path to config file")
 	flag.StringVar(&config.Name, "name", "cloudscheduler-sage", "name of cloud scheduler")
 	flag.StringVar(&config.ECRURL, "ecr-url", "https://ecr.sagecontinuum.org", "path to ECR URL")
-	flag.StringVar(&config.NodeManifestURL, "node-manifest-url", "https://auth.sagecontinuum.org/manifests/", "path to node manifest URL")
+	flag.StringVar(&config.NodeManifestURL, "node-manifest-url", "https://auth.sagecontinuum.org", "path to node manifest URL")
 	flag.IntVar(&config.Port, "port", 9770, "API Port to listen")
 	flag.IntVar(&config.ManagementPort, "management-port", 19770, "Management Port to listen")
 	flag.StringVar(&config.DataDir, "data-dir", "data", "Path to meta directory")

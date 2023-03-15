@@ -69,11 +69,11 @@ func TestPullPluginManigest(t *testing.T) {
 		DataDir: "/tmp",
 		ECRURL:  "https://ecr.sagecontinuum.org",
 	})
-	_, err := v.AttemptToFindPluginManifest("myregistry.mycompany.com/my/plugin:0.1.2")
+	_, err := v.GetPluginManifestFromECR("myregistry.mycompany.com/my/plugin:0.1.2")
 	if err == nil {
 		t.Fatalf("Test did not fail which should")
 	}
-	_, err = v.AttemptToFindPluginManifest("yonghokim/object-counter:0.5.1")
+	_, err = v.GetPluginManifestFromECR("yonghokim/object-counter:0.5.1")
 	if err != nil {
 		t.Fatalf("%s", err.Error())
 	}

@@ -2,9 +2,7 @@ package cloudscheduler
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"regexp"
@@ -19,9 +17,9 @@ type JobValidator struct {
 	dataPath         string
 	pluginDBURL      string
 	nodeDBURL        string
-	Plugins          map[string]*datatype.PluginManifest
+	Plugins          map[string]datatype.PluginManifest
 	PluginsWhitelist map[string]bool
-	Nodes            map[string]*datatype.NodeManifest
+	Nodes            map[string]datatype.NodeManifest
 }
 
 func NewJobValidator(config *CloudSchedulerConfig) *JobValidator {
@@ -29,15 +27,15 @@ func NewJobValidator(config *CloudSchedulerConfig) *JobValidator {
 		dataPath:         config.DataDir,
 		pluginDBURL:      config.ECRURL,
 		nodeDBURL:        config.NodeManifestURL,
-		Plugins:          make(map[string]*datatype.PluginManifest),
+		Plugins:          make(map[string]datatype.PluginManifest),
 		PluginsWhitelist: make(map[string]bool),
-		Nodes:            make(map[string]*datatype.NodeManifest),
+		Nodes:            make(map[string]datatype.NodeManifest),
 	}
 }
 
 func (jv *JobValidator) GetNodeManifest(nodeName string) *datatype.NodeManifest {
 	if n, exist := jv.Nodes[nodeName]; exist {
-		return n
+		return &n
 	} else {
 		return nil
 	}
@@ -45,15 +43,15 @@ func (jv *JobValidator) GetNodeManifest(nodeName string) *datatype.NodeManifest 
 
 func (jv *JobValidator) GetPluginManifest(pluginImage string, updateDBIfNotExist bool) *datatype.PluginManifest {
 	if p, exist := jv.Plugins[pluginImage]; exist {
-		return p
+		return &p
 	} else {
 		if updateDBIfNotExist {
-			newP, err := jv.AttemptToFindPluginManifest(pluginImage)
+			newP, err := jv.GetPluginManifestFromECR(pluginImage)
 			if err != nil {
 				logger.Error.Printf("failed to fetch plugin manifest: %s", err.Error())
 				return nil
 			} else {
-				jv.Plugins[newP.ID] = newP
+				jv.Plugins[newP.ID] = *newP
 				return newP
 			}
 		}
@@ -64,7 +62,7 @@ func (jv *JobValidator) GetPluginManifest(pluginImage string, updateDBIfNotExist
 // LoadDatabase loads node and plugin manifests
 // this function should be called only at initialization
 func (jv *JobValidator) LoadDatabase() error {
-	jv.Plugins = make(map[string]*datatype.PluginManifest)
+	jv.Plugins = make(map[string]datatype.PluginManifest)
 	// IMPROVEMENT: we may want to load plugin manifest from files first
 	// in case the plugin manifest pull fails due to an error comuunicating with ECR
 
@@ -112,28 +110,50 @@ func (jv *JobValidator) LoadDatabase() error {
 		return err
 	}
 	for _, p := range plugins.Data {
-		jv.Plugins[p.ID] = &p
+		jv.Plugins[p.ID] = p
 	}
 
-	jv.Nodes = make(map[string]*datatype.NodeManifest)
-	nodeFiles, err := ioutil.ReadDir(path.Join(jv.dataPath, "nodes"))
+	jv.Nodes = make(map[string]datatype.NodeManifest)
+	// IMPROVEMENT: we may want to load node manifest from files first
+	// in case the node manifest pull fails due to an error comuunicating with manifest server
+	// nodeFiles, err := ioutil.ReadDir(path.Join(jv.dataPath, "nodes"))
+	// if err != nil {
+	// 	return err
+	// }
+	// for _, nodeFile := range nodeFiles {
+	// 	nodeFilePath := path.Join(jv.dataPath, "nodes", nodeFile.Name())
+	// 	raw, err := os.ReadFile(nodeFilePath)
+	// 	if err != nil {
+	// 		logger.Debug.Printf("Failed to read %s:%s", nodeFilePath, err.Error())
+	// 		continue
+	// 	}
+	// 	var n datatype.NodeManifest
+	// 	err = json.Unmarshal(raw, &n)
+	// 	if err != nil {
+	// 		logger.Debug.Printf("Failed to parse %s:%s", nodeFilePath, err.Error())
+	// 		continue
+	// 	}
+	// 	jv.Nodes[n.Name] = &n
+	// }
+	if jv.nodeDBURL == "" {
+		return fmt.Errorf("no nodeDB URL is given")
+	}
+	req = interfacing.NewHTTPRequest(jv.nodeDBURL)
+	resp, err = req.RequestGet("manifests/", nil, additionalHeader)
 	if err != nil {
 		return err
 	}
-	for _, nodeFile := range nodeFiles {
-		nodeFilePath := path.Join(jv.dataPath, "nodes", nodeFile.Name())
-		raw, err := os.ReadFile(nodeFilePath)
-		if err != nil {
-			logger.Debug.Printf("Failed to read %s:%s", nodeFilePath, err.Error())
-			continue
-		}
-		var n datatype.NodeManifest
-		err = json.Unmarshal(raw, &n)
-		if err != nil {
-			logger.Debug.Printf("Failed to parse %s:%s", nodeFilePath, err.Error())
-			continue
-		}
-		jv.Nodes[n.Name] = &n
+	decoder, err = req.ParseJSONHTTPResponse(resp)
+	if err != nil {
+		return err
+	}
+	nodes := []datatype.NodeManifest{}
+	err = decoder.Decode(&nodes)
+	if err != nil {
+		return err
+	}
+	for _, n := range nodes {
+		jv.Nodes[n.VSN] = n
 	}
 
 	return nil
@@ -202,9 +222,9 @@ func (jv *JobValidator) GetNodeNamesByTags(tags []string) (nodesFound []string) 
 	return
 }
 
-// AttemptToFindPluginManifest attempts to find the plugin from edge code repository.
+// GetPluginManifestFromECR attempts to find the plugin from edge code repository.
 // If found, it adds the plugin in the in-memory DB
-func (jv *JobValidator) AttemptToFindPluginManifest(pluginImage string) (*datatype.PluginManifest, error) {
+func (jv *JobValidator) GetPluginManifestFromECR(pluginImage string) (*datatype.PluginManifest, error) {
 	req := interfacing.NewHTTPRequest(jv.pluginDBURL)
 	additionalHeader := map[string]string{
 		"Accept": "application/json",

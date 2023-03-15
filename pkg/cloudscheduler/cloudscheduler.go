@@ -146,15 +146,16 @@ func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(jobID string, user *Us
 			// logger.Info.Printf("%s:%s exists in ECR", plugin.Name, plugin.Version)
 
 			// Check 2: node supports hardware requirements of the plugin
-			supported, unsupportedHardwareList := nodeManifest.GetPluginHardwareUnsupportedList(pluginManifest)
-			if !supported {
-				errorList = append(errorList, fmt.Errorf("%s does not support hardware %v required by %s (%s)", nodeName, unsupportedHardwareList, plugin.Name, plugin.PluginSpec.Image))
-				continue
-			}
-			logger.Info.Printf("%s passed Check 2", plugin.Name)
+			// TODO: plugin manifest does not yet have sensor requirement
+			// supported, unsupportedHardwareList := nodeManifest.GetUnsupportedListOfPluginSensors(pluginManifest)
+			// if !supported {
+			// 	errorList = append(errorList, fmt.Errorf("%s does not support hardware %v required by %s (%s)", nodeName, unsupportedHardwareList, plugin.Name, plugin.PluginSpec.Image))
+			// 	continue
+			// }
+			// logger.Info.Printf("%s passed Check 2", plugin.Name)
 
 			// Check 3: architecture of the plugin is supported by node
-			supported, supportedDevices := nodeManifest.GetPluginArchitectureSupportedDevices(pluginManifest)
+			supported, _ := nodeManifest.GetPluginArchitectureSupportedComputes(pluginManifest)
 			if !supported {
 				errorList = append(errorList, fmt.Errorf("%s does not support architecture %v required by %s (%s)", nodeName, pluginManifest.GetArchitectures(), plugin.Name, plugin.PluginSpec.Image))
 				continue
@@ -162,20 +163,20 @@ func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(jobID string, user *Us
 			logger.Info.Printf("%s passed Check 3", plugin.Name)
 
 			// Check 4: the required resource is available in node devices
-			for _, device := range supportedDevices {
-				supported, _ := device.GetUnsupportedPluginProfiles(pluginManifest)
-				if !supported {
-					errorList = append(errorList, fmt.Errorf("%s (%s) does not support resource required by %s (%s)", nodeName, device.Name, plugin.Name, plugin.PluginSpec.Image))
-					continue
-				}
-				// // Filter out unsupported knob settings
-				// for _, profile := range profiles {
-				// 	err := plugin.RemoveProfile(profile)
-				// 	if err != nil {
-				// 		logger.Error.Printf("%s", err)
-				// 	}
-				// }
-			}
+			// for _, c := range supportedComputes {
+			// 	supported, _ := c.GetUnsupportedPluginProfiles(pluginManifest)
+			// 	if !supported {
+			// 		errorList = append(errorList, fmt.Errorf("%s (%s) does not support resource required by %s (%s)", nodeName, c.Name, plugin.Name, plugin.PluginSpec.Image))
+			// 		continue
+			// 	}
+			// // Filter out unsupported knob settings
+			// for _, profile := range profiles {
+			// 	err := plugin.RemoveProfile(profile)
+			// 	if err != nil {
+			// 		logger.Error.Printf("%s", err)
+			// 	}
+			// }
+			// }
 			approvedPlugins = append(approvedPlugins, plugin)
 		}
 		// Check 4: conditions of job are valid

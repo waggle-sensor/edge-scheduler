@@ -1,12 +1,14 @@
 package datatype
 
+import "strings"
+
 // Node structs information about nodes
 type NodeManifest struct {
-	Name     string                 `json:"name" yaml:"name"`
-	Tags     []string               `json:"tags,omitempty" yaml:"tags,omitempty"`
-	Devices  []Device               `json:"devices,omitempty" yaml:"devices,omitempty"`
-	Hardware map[string]interface{} `json:"hardware,omitempty" yaml:"hardware,omitempty"`
-	Ontology map[string]interface{} `json:"ontology,omitempty" yaml:"ontology,omitempty"`
+	VSN      string            `json:"vsn" yaml:"vsn"`
+	Name     string            `json:"name" yaml:"name"`
+	Tags     []string          `json:"tags,omitempty" yaml:"tags,omitempty"`
+	Computes []ComputeManifest `json:"computes,omitempty" yaml:"computes,omitempty"`
+	Sensors  []SensorManifest  `json:"sensors,omitempty" yaml:"sensors,omitempty"`
 }
 
 func (n *NodeManifest) MatchTags(tags []string, matchAll bool) bool {
@@ -34,17 +36,20 @@ func (n *NodeManifest) MatchTags(tags []string, matchAll bool) bool {
 	}
 }
 
-// GetPluginArchitectureSupportedDevices returns a device list that supports
-// plugin architecture
-func (n *NodeManifest) GetPluginArchitectureSupportedDevices(pManifest *PluginManifest) (result bool, supportedDevices []Device) {
-	for _, nodeDevice := range n.Devices {
+// GetPluginArchitectureSupportedComputes returns a compute device list that supports
+// given plugin architecture
+func (n *NodeManifest) GetPluginArchitectureSupportedComputes(pManifest *PluginManifest) (result bool, supportedComputes []ComputeManifest) {
+	for _, c := range n.Computes {
 		for _, pluginArch := range pManifest.GetArchitectures() {
-			if pluginArch == nodeDevice.Architecture {
-				supportedDevices = append(supportedDevices, nodeDevice)
+			// NOTE: plugin manifest has linux/ prefix for architecture
+			//       that node manifest does not have
+			pluginArch = strings.Replace(pluginArch, "linux/", "", -1)
+			if c.SupportsArchitecture(pluginArch) {
+				supportedComputes = append(supportedComputes, c)
 			}
 		}
 	}
-	if len(supportedDevices) > 0 {
+	if len(supportedComputes) > 0 {
 		result = true
 	} else {
 		result = false
@@ -52,46 +57,93 @@ func (n *NodeManifest) GetPluginArchitectureSupportedDevices(pManifest *PluginMa
 	return
 }
 
-// GetPluginHardwareUnsupportedList returns a list of hardware that are not
-// supported by the node
-func (n *NodeManifest) GetPluginHardwareUnsupportedList(plugin *PluginManifest) (result bool, notSupported []string) {
-	for requiredHardware := range plugin.Hardware {
-		if _, exist := n.Hardware[requiredHardware]; !exist {
-			notSupported = append(notSupported, requiredHardware)
-		}
-	}
-	if len(notSupported) == 0 {
-		result = true
-	} else {
-		result = false
-	}
+// GetUnsupportedListOfPluginSensors returns a list of unsupported sensors by the node
+func (n *NodeManifest) GetUnsupportedListOfPluginSensors(plugin *PluginManifest) (result bool, notSupported []string) {
+	// TODO: plugin manifest does not yet have sensor list. Once it has a sensor list we will implement this function
+	// for requiredHardware := range plugin.Hardware {
+	// 	if _, exist := n.Hardware[requiredHardware]; !exist {
+	// 		notSupported = append(notSupported, requiredHardware)
+	// 	}
+	// }
+	// if len(notSupported) == 0 {
+	// 	result = true
+	// } else {
+	// 	result = false
+	// }
 	return
 }
 
 // Device structs device specific meta information
-type Device struct {
-	Name         string   `yaml:"name,omitempty"`
-	Architecture string   `yaml:"architecture,omitempty"`
-	Resource     Resource `yaml:"resource,omitempty"`
+type ComputeManifest struct {
+	Name         string                  `json:"name" yaml:"name"`
+	SerialNumber string                  `json:"serial_no" yaml:"serialNo"`
+	Zone         string                  `json:"zone" yaml:"zone"`
+	Hardware     ComputeHardwareManifest `json:"hardware" yaml:"hardware"`
+}
+
+func (c *ComputeManifest) GetArchitecture() string {
+	return c.Hardware.GetArchitecture()
+}
+
+func (c *ComputeManifest) SupportsArchitecture(architecture string) bool {
+	return c.Hardware.GetArchitecture() == architecture
 }
 
 // GetUnsupportedPluginProfiles returns available profiles that are
 // supported by the node device
-func (d *Device) GetUnsupportedPluginProfiles(plugin *PluginManifest) (result bool, unsupportedProfiles []Profile) {
+func (c *ComputeManifest) GetUnsupportedPluginProfiles(plugin *PluginManifest) (result bool, unsupportedProfiles []Profile) {
 	// NOTE: if no profile is given, we assume the plugin can be run on the device
-	if len(plugin.Profile) < 1 {
-		result = true
-		return
+	// if len(plugin.Profile) < 1 {
+	// 	result = true
+	// 	return
+	// }
+	// result = false
+	// for _, profile := range plugin.Profile {
+	// 	if d.Resource.CanAccommodate(&profile.Require) {
+	// 		result = true
+	// 	} else {
+	// 		unsupportedProfiles = append(unsupportedProfiles, profile)
+	// 	}
+	// }
+	return
+}
+
+type ComputeHardwareManifest struct {
+	Hardware     string   `json:"hardware" yaml:"hardware"`
+	Model        string   `json:"hw_model" yaml:"hwModel"`
+	Capabilities []string `json:"capabilities" yaml:"capabilities"`
+	CPU          string   `json:"cpu" yaml:"cpu"`
+	CPURAM       string   `json:"cpu_ram" yaml:"cpuRam"`
+	GPURAM       string   `json:"gpu_ram" yaml:"gpuRam"`
+	SharedRam    bool     `json:"shared_ram" yaml:"sharedRam"`
+}
+
+// GetArchitecture returns architecture of the hardware.
+// Capabilities should have one of arm64,amd64,armv7
+func (c *ComputeHardwareManifest) GetArchitecture() string {
+	archs := map[string]bool{
+		"arm64": true,
+		"amd64": true,
+		"armv7": true,
 	}
-	result = false
-	for _, profile := range plugin.Profile {
-		if d.Resource.CanAccommodate(&profile.Require) {
-			result = true
-		} else {
-			unsupportedProfiles = append(unsupportedProfiles, profile)
+	for _, cap := range c.Capabilities {
+		if _, found := archs[cap]; found {
+			return cap
 		}
 	}
-	return
+	return ""
+}
+
+type SensorManifest struct {
+	Name   string   `json:"name" yaml:"name"`
+	Scope  string   `json:"scope" yaml:"scope"`
+	Labels []string `json:"labels" yaml:"labels"`
+}
+
+type SensorHardwareManifest struct {
+	Hardware     string   `json:"hardware" yaml:"hardware"`
+	Model        string   `json:"hw_model" yaml:"hwModel"`
+	Capabilities []string `json:"capabilities" yaml:"capabilities"`
 }
 
 type PluginManifest struct {
@@ -108,6 +160,6 @@ func (p *PluginManifest) GetArchitectures() []string {
 }
 
 type PluginManifestSource struct {
-	Architecture []string `json:"architecture" yaml:"architecture"`
+	Architecture []string `json:"architectures" yaml:"architectures"`
 	Branch       string   `json:"branch" yaml:"branch"`
 }
