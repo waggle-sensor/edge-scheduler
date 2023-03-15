@@ -41,6 +41,8 @@ jobs:
             ./out/sesctl-darwin-amd64
             ./out/sesctl-darwin-arm64
             ./out/sesctl-windows-amd64
+            ./out/sha1sum.txt
+            ./out/sha256sum.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   push_to_registry:
