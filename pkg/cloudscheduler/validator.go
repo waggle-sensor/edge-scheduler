@@ -165,7 +165,7 @@ func (jv *JobValidator) LoadPluginWhitelist() {
 	if file, err := os.OpenFile(whitelistFilePath, os.O_CREATE|os.O_RDONLY, 0644); err == nil {
 		fileScanner := bufio.NewScanner(file)
 		for fileScanner.Scan() {
-			jv.PluginsWhitelist[fileScanner.Text()] = true
+			jv.AddPluginWhitelist(fileScanner.Text())
 		}
 	} else {
 		logger.Error.Printf("failed to create or open %q: %s", whitelistFilePath, err.Error())
@@ -173,7 +173,9 @@ func (jv *JobValidator) LoadPluginWhitelist() {
 }
 
 func (jv *JobValidator) AddPluginWhitelist(whitelist string) {
-	jv.PluginsWhitelist[whitelist] = true
+	if whitelist != "" {
+		jv.PluginsWhitelist[whitelist] = true
+	}
 }
 
 func (jv *JobValidator) RemovePluginWhitelist(whitelist string) {

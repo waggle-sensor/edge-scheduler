@@ -64,7 +64,7 @@ func TestWhiteList(t *testing.T) {
 	}
 }
 
-func TestPullPluginManigest(t *testing.T) {
+func TestPullPluginManigestFromECR(t *testing.T) {
 	v := NewJobValidator(&CloudSchedulerConfig{
 		DataDir: "/tmp",
 		ECRURL:  "https://ecr.sagecontinuum.org",
