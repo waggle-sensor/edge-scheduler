@@ -1,5 +1,8 @@
 VERSION?=0.0.0
+
 cli-all-arch: cli-linux-amd64 cli-linux-arm64 cli-darwin-amd64 cli-darwin-arm64 cli-windows-amd64
+	cd out && shasum -a 1 runplugin* pluginctl* sesctl* > sha1sum.txt
+	cd out && shasum -a 256 runplugin* pluginctl* sesctl* > sha256sum.txt
 
 cli-linux-arm64:
 	GOOS=linux GOARCH=arm64 go build -o ./out/runplugin-linux-arm64 ./cmd/runplugin
