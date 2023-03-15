@@ -6,7 +6,7 @@ import (
 )
 
 func TestWhiteList(t *testing.T) {
-	v := NewJobValidator("/tmp")
+	v := NewJobValidator(&CloudSchedulerConfig{DataDir: "/tmp"})
 	l := `^waggle/(.*)
 ^registry.github.com/waggle/yourimage:1.(.*)
 ^registry.gitlab.com/waggle/(.*)
@@ -61,5 +61,20 @@ func TestWhiteList(t *testing.T) {
 				t.Fatalf("expected %t, but received %t for plugin %q", tc.Wants, r, tc.Input)
 			}
 		})
+	}
+}
+
+func TestPullPluginManigestFromECR(t *testing.T) {
+	v := NewJobValidator(&CloudSchedulerConfig{
+		DataDir: "/tmp",
+		ECRURL:  "https://ecr.sagecontinuum.org",
+	})
+	_, err := v.GetPluginManifestFromECR("myregistry.mycompany.com/my/plugin:0.1.2")
+	if err == nil {
+		t.Fatalf("Test did not fail which should")
+	}
+	_, err = v.GetPluginManifestFromECR("yonghokim/object-counter:0.5.1")
+	if err != nil {
+		t.Fatalf("%s", err.Error())
 	}
 }

@@ -13,7 +13,8 @@ type CloudSchedulerConfig struct {
 	RabbitmqUsername              string `json:"rabbitmq_username" yaml:"rabbitMQUsername"`
 	RabbitmqPassword              string `json:"rabbitmq_password" yaml:"rabbitMQPassword"`
 	RabbitmqCaCertPath            string `json:"rabbitmq_cacert_path" yaml:"rabbitMQCacertPath"`
-	ECRURI                        string `json:"ecr_uri" yaml:"ecrURI"`
+	ECRURL                        string `json:"ecr_url" yaml:"ecrURL"`
+	NodeManifestURL               string `json:"node_manifest_url" yaml:"nodeManifestURL"`
 	Port                          int    `json:"port" yaml:"port"`
 	ManagementPort                int    `json:"management_port" yaml:"managementPort"`
 	DataDir                       string `json:"data_dir,omitempty" yaml:"dataDir,omitempty"`
@@ -34,7 +35,7 @@ func NewCloudSchedulerBuilder(config *CloudSchedulerConfig) *CloudSchedulerBuild
 			Name:                config.Name,
 			Version:             config.Version,
 			Config:              config,
-			Validator:           NewJobValidator(config.DataDir),
+			Validator:           NewJobValidator(config),
 			chanFromGoalManager: make(chan datatype.Event, maxChannelBuffer),
 		},
 	}
