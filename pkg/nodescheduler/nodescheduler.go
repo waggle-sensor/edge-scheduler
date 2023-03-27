@@ -1,7 +1,6 @@
 package nodescheduler
 
 import (
-	"encoding/json"
 	"net/url"
 	"sync"
 	"time"
@@ -72,7 +71,7 @@ func (ns *NodeScheduler) Configure() (err error) {
 
 // Run handles communications between components for scheduling
 func (ns *NodeScheduler) Run() {
-	go ns.ResourceManager.Run()
+	// go ns.ResourceManager.Run()
 	go ns.APIServer.Run()
 	ruleCheckingTicker := time.NewTicker(10 * time.Second)
 	for {
@@ -220,14 +219,14 @@ func (ns *NodeScheduler) Run() {
 			case datatype.EventGoalStatusReceivedBulk:
 				// A goal set is received. We add or update the goals.
 				logger.Debug.Printf("A bulk goal is received")
-				data := event.GetEntry("goals")
-				var goals []datatype.ScienceGoal
-				err := json.Unmarshal([]byte(data), &goals)
-				if err != nil {
-					logger.Error.Printf("Failed to load bulk goals %q", err.Error())
-				} else {
-					ns.handleBulkGoals(goals)
-				}
+				// data := event.GetEntry("goals")
+				// var goals []datatype.ScienceGoal
+				// err := json.Unmarshal([]byte(data), &goals)
+				// if err != nil {
+				// 	logger.Error.Printf("Failed to load bulk goals %q", err.Error())
+				// } else {
+				// 	ns.handleBulkGoals(goals)
+				// }
 			}
 		}
 	}

@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/http/pprof"
 	"strconv"
 
 	"github.com/gorilla/mux"
@@ -39,6 +40,9 @@ func (api *APIServer) Run() {
 		fmt.Fprintln(w, `{"id": "Node Scheduler (`+api.nodeScheduler.NodeID+`)", "version":"`+api.version+`"}`)
 	})
 	api_route := r.PathPrefix("/api/v1").Subrouter()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/debug/pprof", pprof.Index)
+	go http.ListenAndServe(":18080", nil)
 	api_route.Handle("/kb/rules", http.HandlerFunc(api.handlerRules)).Methods(http.MethodGet, http.MethodPost)
 	api_route.Handle("/kb/senses", http.HandlerFunc(api.handlerSenses)).Methods(http.MethodGet, http.MethodPost, http.MethodDelete)
 	api_route.Handle("/goals", http.HandlerFunc(api.handlerGoals)).Methods(http.MethodGet, http.MethodPost, http.MethodPut)
@@ -115,6 +119,7 @@ func (api *APIServer) handlerGoals(w http.ResponseWriter, r *http.Request) {
 		// respondJSON(w, http.StatusOK, clauses)
 	case http.MethodPost:
 		var newGoals []datatype.ScienceGoal
+		defer r.Body.Close()
 		blob, err := io.ReadAll(r.Body)
 		if err != nil {
 			response := datatype.NewAPIMessageBuilder().AddError(err.Error()).Build()
