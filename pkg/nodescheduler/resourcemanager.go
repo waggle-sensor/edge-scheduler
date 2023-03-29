@@ -1322,9 +1322,10 @@ func (w *AdvancedWatcher) runWatcher() error {
 	if err != nil {
 		return fmt.Errorf("Failed to get watcher from Kubernetes")
 	}
+	chanEvent := watcher.ResultChan()
 	for {
 		select {
-		case e, ok := <-watcher.ResultChan():
+		case e, ok := <-chanEvent:
 			if !ok {
 				return fmt.Errorf("Watcher is closed")
 			} else {

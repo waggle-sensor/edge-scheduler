@@ -183,6 +183,10 @@ func (r *HTTPRequest) Subscribe(streamPath string, ch chan *datatype.Event, keep
 		for {
 			err := backoff.Retry(operation, backoff.NewExponentialBackOff())
 			logger.Error.Printf("Failed to subscribe %q: %s", streamPath, err.Error())
+			if !keepRetry {
+				logger.Info.Printf("keepRetry is false. Closing...")
+				break
+			}
 			time.Sleep(5 * time.Second)
 			logger.Info.Printf("Retrying to connect to %q in 5 seconds...", streamPath)
 		}
