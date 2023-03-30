@@ -6,17 +6,14 @@ import (
 	"io"
 	"log"
 	"net/http"
+
+	// "net/http/pprof"
 	"strconv"
 
 	"github.com/gorilla/mux"
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
 	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
 	// "github.com/urfave/negroni"
-)
-
-var (
-	// Channels for IPC
-	chanFromMeasure = make(chan RMQMessage)
 )
 
 type APIServer struct {
@@ -26,12 +23,8 @@ type APIServer struct {
 	nodeScheduler *NodeScheduler
 }
 
-func NewAPIServer() *APIServer {
-	return &APIServer{}
-}
-
 func (api *APIServer) Run() {
-	api_address_port := "0.0.0.0:8080"
+	api_address_port := fmt.Sprintf("0.0.0.0:%d", api.port)
 	logger.Info.Printf("API server starts at %q...", api_address_port)
 	api.mainRouter = mux.NewRouter()
 	r := api.mainRouter
@@ -39,6 +32,9 @@ func (api *APIServer) Run() {
 		fmt.Fprintln(w, `{"id": "Node Scheduler (`+api.nodeScheduler.NodeID+`)", "version":"`+api.version+`"}`)
 	})
 	api_route := r.PathPrefix("/api/v1").Subrouter()
+	// mux := http.NewServeMux()
+	// mux.HandleFunc("/debug/pprof", pprof.Index)
+	// go http.ListenAndServe(":18080", nil)
 	api_route.Handle("/kb/rules", http.HandlerFunc(api.handlerRules)).Methods(http.MethodGet, http.MethodPost)
 	api_route.Handle("/kb/senses", http.HandlerFunc(api.handlerSenses)).Methods(http.MethodGet, http.MethodPost, http.MethodDelete)
 	api_route.Handle("/goals", http.HandlerFunc(api.handlerGoals)).Methods(http.MethodGet, http.MethodPost, http.MethodPut)
@@ -65,7 +61,6 @@ func (api *APIServer) handlerRules(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		r.ParseForm()
 		clause := r.Form.Get("clause")
-		log.Printf(clause)
 		respondJSON(w, http.StatusOK, clause)
 	}
 }
@@ -115,6 +110,7 @@ func (api *APIServer) handlerGoals(w http.ResponseWriter, r *http.Request) {
 		// respondJSON(w, http.StatusOK, clauses)
 	case http.MethodPost:
 		var newGoals []datatype.ScienceGoal
+		defer r.Body.Close()
 		blob, err := io.ReadAll(r.Body)
 		if err != nil {
 			response := datatype.NewAPIMessageBuilder().AddError(err.Error()).Build()

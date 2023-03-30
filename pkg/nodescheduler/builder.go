@@ -78,6 +78,7 @@ func (nsb *NodeSchedulerBuilder) AddAPIServer() *NodeSchedulerBuilder {
 	nsb.nodeScheduler.APIServer = &APIServer{
 		version:       nsb.nodeScheduler.Config.Version,
 		nodeScheduler: nsb.nodeScheduler,
+		port:          8080,
 	}
 	return nsb
 }

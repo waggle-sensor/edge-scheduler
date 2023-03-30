@@ -957,6 +957,7 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 			return
 		}
 		chanEvent := watcher.ResultChan()
+		defer watcher.Stop()
 		for event := range chanEvent {
 			logger.Debug.Printf("Plugin %s received an event %s", job.Name, event.Type)
 			switch event.Type {
@@ -1331,9 +1332,10 @@ func (w *AdvancedWatcher) runWatcher() error {
 	if err != nil {
 		return fmt.Errorf("Failed to get watcher from Kubernetes")
 	}
+	chanEvent := watcher.ResultChan()
 	for {
 		select {
-		case e, ok := <-watcher.ResultChan():
+		case e, ok := <-chanEvent:
 			if !ok {
 				return fmt.Errorf("Watcher is closed")
 			} else {
