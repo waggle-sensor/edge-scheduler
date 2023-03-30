@@ -948,6 +948,7 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 			return
 		}
 		chanEvent := watcher.ResultChan()
+		defer watcher.Stop()
 		for event := range chanEvent {
 			logger.Debug.Printf("Plugin %s received an event %s", job.Name, event.Type)
 			switch event.Type {
