@@ -235,7 +235,13 @@ func (cs *CloudScheduler) Run() {
 	go cs.APIServer.Run()
 	chanEventFromNode := make(chan *datatype.Event)
 	if cs.eventListener != nil {
-		cs.eventListener.SubscribeEvents("waggle.msg", "to-scheduler", datatype.EventRabbitMQSubscriptionPatternGoals, chanEventFromNode)
+		logger.Info.Printf("Connecting to RabbitMQ to receive node events")
+		queueName := fmt.Sprintf("to-scheduler-%s", cs.Config.Name)
+		logger.Debug.Printf("RabbitMQ Queue name for messages is %s", queueName)
+		err := cs.eventListener.SubscribeEvents("waggle.msg", queueName, datatype.EventRabbitMQSubscriptionPatternGoals, chanEventFromNode)
+		if err != nil {
+			logger.Error.Printf("Failed to set up a connection to RabbitMQ: %s", err.Error())
+		}
 	}
 	// Timer for job re-evaluation
 	ticker := time.NewTicker(1 * time.Second)
