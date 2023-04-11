@@ -10,7 +10,6 @@ import (
 type Plugin struct {
 	Name       string      `json:"name" yaml:"name"`
 	PluginSpec *PluginSpec `json:"plugin_spec" yaml:"pluginSpec,omitempty"`
-	DataShims  []*DataShim `json:"datathims,omitempty" yaml:"datashims,omitempty"`
 	GoalID     string      `json:"goal_id,omitempty" yaml:"goalID,omitempty"`
 }
 
@@ -94,6 +93,17 @@ type EventPluginContext struct {
 type PluginCredential struct {
 	Username string `yaml:"username,omitempty"`
 	Password string `yaml:"password,omitempty"`
+}
+
+type PluginRuntime struct {
+	Plugin      *Plugin
+	Duration    int
+	NeedProfile bool
+	Resource    Resource
+}
+
+func NewPluginRuntimeWithScienceRule(p *Plugin, runtimeArgs *ScienceRule) *PluginRuntime {
+	return &PluginRuntime{}
 }
 
 // type Plugin struct {

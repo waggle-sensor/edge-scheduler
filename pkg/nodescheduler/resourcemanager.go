@@ -921,30 +921,30 @@ func (rm *ResourceManager) ClenUp() error {
 	return nil
 }
 
-func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
-	logger.Debug.Printf("Running plugin %q...", plugin.Name)
-	job, err := rm.CreateJob(plugin)
+func (rm *ResourceManager) LaunchAndWatchPlugin(pr *datatype.PluginRuntime) {
+	logger.Debug.Printf("Running plugin %q...", pr.Plugin.Name)
+	job, err := rm.CreateJob(pr.Plugin)
 	if err != nil {
-		logger.Error.Printf("Failed to create Kubernetes Job for %q: %q", plugin.Name, err.Error())
-		rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason(err.Error()).AddPluginMeta(plugin).Build())
+		logger.Error.Printf("Failed to create Kubernetes Job for %q: %q", pr.Plugin.Name, err.Error())
+		rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason(err.Error()).AddPluginMeta(pr.Plugin).Build())
 		return
 	}
 	err = rm.RunPlugin(job)
 	defer rm.TerminateJob(job.Name)
 	if err != nil {
 		logger.Error.Printf("Failed to run %q: %q", job.Name, err.Error())
-		rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason(err.Error()).AddPluginMeta(plugin).Build())
+		rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason(err.Error()).AddPluginMeta(pr.Plugin).Build())
 		return
 	}
 	logger.Info.Printf("Plugin %q is scheduled", job.Name)
-	plugin.PluginSpec.Job = job.Name
+	pr.Plugin.PluginSpec.Job = job.Name
 	// NOTE: The for loop helps to re-connect to Kubernetes watcher when the connection
 	//       gets closed while the plugin is running
 	for {
 		watcher, err := rm.WatchJob(job.Name, rm.Namespace, 1)
 		if err != nil {
 			logger.Error.Printf("Failed to watch %q. Abort the execution", job.Name)
-			rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason(err.Error()).AddK3SJobMeta(job).AddPluginMeta(plugin).Build())
+			rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason(err.Error()).AddK3SJobMeta(job).AddPluginMeta(pr.Plugin).Build())
 			return
 		}
 		chanEvent := watcher.ResultChan()
@@ -955,14 +955,23 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 			case watch.Added:
 				job := event.Object.(*batchv1.Job)
 				pod, _ := rm.GetPod(job.Name)
-				rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusLaunched).AddK3SJobMeta(job).AddPodMeta(pod).AddPluginMeta(plugin).Build())
+				var gpuMetricHostIP string
+				if pr.NeedProfile {
+					// we need to stop the timer eventually
+					defer resourceCollectorTicker.Stop()
+				} else {
+					// if we don't need to profile plugin we just stop it
+					resourceCollectorTicker.Stop()
+				}
+				gpuMetricHostIP = pod.Status.HostIP
+				rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusLaunched).AddK3SJobMeta(job).AddPodMeta(pod).AddPluginMeta(pr.Plugin).Build())
 			case watch.Modified:
 				job := event.Object.(*batchv1.Job)
 				if len(job.Status.Conditions) > 0 {
 					logger.Debug.Printf("Plugin %s status %s: %s", job.Name, event.Type, job.Status.Conditions[0].Type)
 					switch job.Status.Conditions[0].Type {
 					case batchv1.JobComplete:
-						eventBuilder := datatype.NewEventBuilder(datatype.EventPluginStatusComplete).AddK3SJobMeta(job).AddPluginMeta(plugin)
+						eventBuilder := datatype.NewEventBuilder(datatype.EventPluginStatusComplete).AddK3SJobMeta(job).AddPluginMeta(pr.Plugin)
 						if pod, err := rm.GetPod(job.Name); err != nil {
 							logger.Debug.Printf("Failed to get pod for job %q: %s", job.Name, err.Error())
 						} else {
@@ -974,7 +983,7 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 						logger.Error.Printf("Plugin %q has failed.", job.Name)
 						eventBuilder := datatype.NewEventBuilder(datatype.EventPluginStatusFailed).
 							AddK3SJobMeta(job).
-							AddPluginMeta(plugin)
+							AddPluginMeta(pr.Plugin)
 						if pod, err := rm.GetPod(job.Name); err != nil {
 							logger.Error.Printf("Failed to get pod for job %q: %s", job.Name, err.Error())
 						} else {
@@ -1000,11 +1009,11 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 				}
 			case watch.Deleted:
 				logger.Debug.Printf("Plugin got deleted. Returning resource and notify")
-				rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason("Plugin deleted").AddK3SJobMeta(job).AddPluginMeta(plugin).Build())
+				rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason("Plugin deleted").AddK3SJobMeta(job).AddPluginMeta(pr.Plugin).Build())
 				return
 			case watch.Error:
 				logger.Debug.Printf("Error on watcher. Returning resource and notify")
-				rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason("Error on watcher").AddK3SJobMeta(job).AddPluginMeta(plugin).Build())
+				rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason("Error on watcher").AddK3SJobMeta(job).AddPluginMeta(pr.Plugin).Build())
 				return
 			default:
 				logger.Error.Printf("Watcher of plugin %q received unknown event %q", job.Name, event.Type)
@@ -1031,8 +1040,12 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(plugin *datatype.Plugin) {
 
 }
 
-func (rm *ResourceManager) GatherResourceUse() {
-	// rm.Clientset.metricsv1
+func (rm *ResourceManager) PublishPluginProfileToRMQ(gpuMetricHostIP string) {
+	// Resource collection every 5 seconds
+	resourceCollectorTicker := time.NewTicker(5 * time.Second)
+	gpuMetric := interfacing.NewHTTPRequest(fmt.Sprintf("http://%s:9101", gpuMetricHostIP))
+	gpuMetric.RequestGet("metrics")
+	podMetrics, err := rm.MetricsClient.MetricsV1beta1().PodMetricses(rm.Namespace).List(context.TODO(), metav1.ListOptions{})
 }
 
 // RunGabageCollector cleans up completed/failed jobs that exceed
@@ -1144,7 +1157,7 @@ func (rm *ResourceManager) Run() {
 			// 		msg := fmt.Sprintf("Node Name: %s \n CPU usage: %s \n Memory usage: %s", nodeMetric.Name, cpuQuantity, memQuantity)
 			// 		logger.Debug.Println(msg)
 			// 	}
-			// 	podMetrics, err := rm.MetricsClient.MetricsV1beta1().PodMetricses(rm.Namespace).List(context.TODO(), metav1.ListOptions{})
+			// podMetrics, err := rm.MetricsClient.MetricsV1beta1().PodMetricses(rm.Namespace).List(context.TODO(), metav1.ListOptions{})
 			// 	for _, podMetric := range podMetrics.Items {
 			// 		podContainers := podMetric.Containers
 			// 		for _, container := range podContainers {
