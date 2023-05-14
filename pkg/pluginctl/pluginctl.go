@@ -180,6 +180,13 @@ func (p *PluginCtl) Deploy(dep *Deployment) (string, error) {
 		},
 	}
 	switch dep.Type {
+	case "pod":
+		pod, err := p.ResourceManager.CreatePod(&plugin)
+		if err != nil {
+			return "", err
+		}
+		err = p.ResourceManager.UpdatePod(pod)
+		return pod.Name, err
 	case "job":
 		job, err := p.ResourceManager.CreateJob(&plugin)
 		if err != nil {

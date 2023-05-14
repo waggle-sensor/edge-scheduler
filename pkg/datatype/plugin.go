@@ -96,14 +96,21 @@ type PluginCredential struct {
 }
 
 type PluginRuntime struct {
-	Plugin      *Plugin
+	Plugin      Plugin
 	Duration    int
 	NeedProfile bool
 	Resource    Resource
 }
 
-func NewPluginRuntimeWithScienceRule(p *Plugin, runtimeArgs *ScienceRule) *PluginRuntime {
-	return &PluginRuntime{}
+func NewPluginRuntimeWithScienceRule(p Plugin, runtimeArgs ScienceRule) *PluginRuntime {
+	pr := &PluginRuntime{
+		Plugin: p,
+	}
+	// TODO: any runtime parameters of the plugin should be parsed and added to the runtime
+	// if v, found := runtimeArgs.ActionParameters["duration"]; found {
+	// 	pr.Duration
+	// }
+	return pr
 }
 
 // type Plugin struct {
