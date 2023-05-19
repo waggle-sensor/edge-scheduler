@@ -211,9 +211,11 @@ func (cgm *CloudGoalManager) RemoveJob(jobID string, force bool) (err error) {
 		return
 	}
 	event := datatype.NewEventBuilder(datatype.EventJobStatusRemoved).
-		AddJob(&job).
-		Build()
-	cgm.Notifier.Notify(event)
+		AddJob(&job)
+	if job.ScienceGoal != nil {
+		event = event.AddGoal(job.ScienceGoal)
+	}
+	cgm.Notifier.Notify(event.Build())
 	return
 }
 
