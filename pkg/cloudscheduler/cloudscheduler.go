@@ -286,16 +286,16 @@ func (cs *CloudScheduler) Run() {
 			logger.Debug.Printf("%s: %q", event.ToString(), event.GetGoalName())
 			switch event.Type {
 			case datatype.EventJobStatusRemoved:
-				job, err := cs.GoalManager.GetJob(event.GetJobID())
-				if err != nil {
-					logger.Error.Printf("Failed to get job %q", event.GetJobID())
-					break
-				}
+				// job, err := cs.GoalManager.GetJob(event.GetJobID())
+				// if err != nil {
+				// 	logger.Error.Printf("Failed to get job %q", event.GetJobID())
+				// 	break
+				// }
 				// The job is removed. Corresponding science goal should also be removed
-				if job.ScienceGoal != nil {
-					scienceGoal, err := cs.GoalManager.GetScienceGoal(job.ScienceGoal.ID)
+				if goalID := event.GetGoalID(); goalID != "" {
+					scienceGoal, err := cs.GoalManager.GetScienceGoal(goalID)
 					if err != nil {
-						logger.Error.Printf("Failed to get science goal %q", job.ScienceGoal.ID)
+						logger.Error.Printf("Failed to get science goal %q", goalID)
 						break
 					}
 					NodesToUpdate := scienceGoal.GetSubjectNodes()
@@ -305,6 +305,8 @@ func (cs *CloudScheduler) Run() {
 					}
 					logger.Info.Printf("Goal %q is removed for job %q.", scienceGoal.Name, scienceGoal.JobID)
 					cs.updateNodes(NodesToUpdate)
+				} else {
+					logger.Info.Printf("failed to retreive goal ID from the event")
 				}
 			case datatype.EventJobStatusSuspended:
 				job, err := cs.GoalManager.GetJob(event.GetJobID())

@@ -667,7 +667,7 @@ func (api *APIServer) handleDataPlugins(w http.ResponseWriter, r *http.Request) 
 		} else {
 			response := datatype.NewAPIMessageBuilder()
 			pluginImages := []string{}
-			for image, _ := range api.cloudScheduler.Validator.Plugins {
+			for image := range api.cloudScheduler.Validator.Plugins {
 				pluginImages = append(pluginImages, image)
 			}
 			response.AddEntity("plugins", pluginImages)
