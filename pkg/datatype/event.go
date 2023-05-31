@@ -148,7 +148,7 @@ func NewEventBuilderFromWaggleMessage(m *WaggleMessage) (*EventBuilder, error) {
 func (e *Event) ToWaggleMessage() *WaggleMessage {
 	// TODO: beehive-influxdb does not handle bytes so body is always string.
 	//       This should be lifted once it accepts bytes.
-	encodedBody, err := e.encodeMetaToJson()
+	encodedBody, err := e.EncodeMetaToJson()
 	if err != nil {
 		logger.Debug.Printf("Failed to convert to Waggle message: %q", err.Error())
 		return nil
@@ -161,7 +161,7 @@ func (e *Event) ToWaggleMessage() *WaggleMessage {
 	)
 }
 
-func (e *Event) encodeMetaToJson() ([]byte, error) {
+func (e *Event) EncodeMetaToJson() ([]byte, error) {
 	return json.Marshal(e.Meta)
 }
 
@@ -186,6 +186,10 @@ const (
 	EventPluginLastExecution    EventType = "sys.scheduler.plugin.lastexecution"
 	EventPluginStatusFailed     EventType = "sys.scheduler.status.plugin.failed"
 	EventFailure                EventType = "sys.scheduler.failure"
+
+	EventPluginPerfCPU EventType = "sys.plugin.perf.cpu"
+	EventPluginPerfMem EventType = "sys.plugin.perf.mem"
+	EventPluginPerfGPU EventType = "sys.plugin.perf.gpu"
 )
 
 // type EventErrorCode string
