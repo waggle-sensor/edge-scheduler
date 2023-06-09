@@ -456,12 +456,12 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 				},
 			},
 		},
-		// {
-		// 	Name: "local-dev",
-		// 	VolumeSource: apiv1.VolumeSource{
-		// 		EmptyDir: &apiv1.EmptyDirVolumeSource{},
-		// 	},
-		// },
+		{
+			Name: "local-share",
+			VolumeSource: apiv1.VolumeSource{
+				EmptyDir: &apiv1.EmptyDirVolumeSource{},
+			},
+		},
 	}
 
 	volumeMounts := []apiv1.VolumeMount{
@@ -479,10 +479,10 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 			MountPath: "/etc/asound.conf",
 			SubPath:   "asound.conf",
 		},
-		// {
-		// 	Name:      "local-dev",
-		// 	MountPath: "/dev",
-		// },
+		{
+			Name:      "local-share",
+			MountPath: "/waggle",
+		},
 	}
 
 	// provide privileged plugins access to host devices
@@ -529,6 +529,8 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 				"set",
 				"--nodename",
 				"$(HOST)",
+				"--host",
+				"wes-app-meta-cache.default.svc.cluster.local",
 				"app-meta.$(WAGGLE_APP_ID)",
 				string(appMetaData),
 			},
@@ -555,7 +557,33 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 
 	sidecar := apiv1.Container{
 		Name:  "plugin-controller",
-		Image: "10.31.81.1:5000/",
+		Image: "waggle/plugin-controller:0.0.2",
+		Args: []string{
+			"--enable-cpu-performance",
+			"--app-cgroup-dir",
+			"/app/sys/fs/cgroup",
+			"--enable-gpu-performance",
+		},
+		Env: []apiv1.EnvVar{
+			{
+				Name:  "GPU_METRIC_HOST",
+				Value: "wes-jetson-exporter.default.svc.cluster.local",
+			},
+		},
+		VolumeMounts: []apiv1.VolumeMount{
+			{
+				Name:      "local-share",
+				MountPath: "/app/",
+				ReadOnly:  true,
+			},
+		},
+		Resources: apiv1.ResourceRequirements{
+			Limits: apiv1.ResourceList{},
+			Requests: apiv1.ResourceList{
+				apiv1.ResourceCPU:    resource.MustParse("50m"),
+				apiv1.ResourceMemory: resource.MustParse("20Mi"),
+			},
+		},
 	}
 
 	resources, err := resourceListForConfig(plugin.PluginSpec)
@@ -572,6 +600,19 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 			Env:             envs,
 			Resources:       resources,
 			VolumeMounts:    volumeMounts,
+			// make a symbolic link of the app container's cgroup to
+			// access to it from the sidecar container
+			Lifecycle: &apiv1.Lifecycle{
+				PostStart: &apiv1.LifecycleHandler{
+					Exec: &v1.ExecAction{
+						Command: []string{
+							"sh",
+							"-c",
+							"mkdir -p /waggle/sys/fs; ln -sf /sys/fs/cgroup /waggle/sys/fs",
+						},
+					},
+				},
+			},
 		},
 		sidecar,
 	}
@@ -589,6 +630,9 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 			PriorityClassName:  "wes-app-priority",
 			NodeSelector:       nodeSelectorForConfig(plugin.PluginSpec),
 			// TODO: The priority class will be revisited when using resource metrics to schedule plugins
+			// NOTE(Yongho): ShareProcessNamespace allows the sidecar to access app container's filesystem.
+			// This can be used later as needed
+			// ShareProcessNamespace: booltoPtr(true),
 			InitContainers: initContainers,
 			Containers:     containers,
 			Volumes:        volumes,
@@ -1524,6 +1568,8 @@ func (rmq *RMQManagement) RegisterPluginCredential(credential datatype.PluginCre
 func int32Ptr(i int32) *int32 { return &i }
 
 func int64Ptr(i int64) *int64 { return &i }
+
+func booltoPtr(b bool) *bool { return &b }
 
 // GetK3SClient returns an instance of clientset talking to a K3S cluster
 func GetK3SClient(incluster bool, pathToConfig string) (*kubernetes.Clientset, error) {
