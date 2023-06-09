@@ -4,8 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"path"
-	"strings"
+	"text/tabwriter"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -58,51 +59,24 @@ func init() {
 					if err != nil {
 						return err
 					}
-					var body map[string]interface{}
-					decoder.Decode(&body)
-					var (
-						maxLengthID     int = 5
-						maxLengthName   int = 26
-						maxLengthUser   int = 8
-						maxLengthStatus int = len("complete")
-						maxAge          int = 5
-						// maxLengthStartTime int = len("mm/dd/yyyy hh:MM:ss")
-						// maxLengthDuration  int = len("mm/dd/yyyy hh:MM:ss")
-					)
-					formattedList := fmt.Sprintf("%-*s%-*s%-*s%-*s%-*s\n", maxLengthID+3, "JOB_ID", maxLengthName+3, "NAME", maxLengthUser+3, "USER", maxLengthStatus+3, "STATUS", maxAge+3, "AGE")
-					formattedList += strings.Repeat("=", len(formattedList)) + "\n"
-					for _, blob := range body {
-						jobBlob, err := json.Marshal(blob)
-						if err != nil {
-							return err
-						}
-						var job *datatype.Job
-						err = json.Unmarshal(jobBlob, &job)
-						if err != nil {
-							return err
-						}
-						if !showAll {
-							if job.State.GetState() == datatype.JobRemoved || job.State.GetState() == datatype.JobComplete {
-								continue
-							}
-						}
-						var name string
-						if len(job.Name) > maxLengthName {
-							name = job.Name[:maxLengthName-1] + "..."
-						} else {
-							name = job.Name
-						}
-						switch job.State.GetState() {
-						case datatype.JobRunning, datatype.JobComplete:
-							t := time.Now().UTC()
-							age := t.Sub(job.State.LastUpdated.Time).Round(1 * time.Second)
-							formattedList += fmt.Sprintf("%-*s%-*s%-*s%-*s%-*s\n", maxLengthID+3, job.JobID, maxLengthName+3, name, maxLengthUser+3, job.User, maxLengthStatus+3, job.State.GetState(), maxAge, age)
-							break
-						default:
-							formattedList += fmt.Sprintf("%-*s%-*s%-*s%-*s%-*s\n", maxLengthID+3, job.JobID, maxLengthName+3, name, maxLengthUser+3, job.User, maxLengthStatus+3, job.State.GetState(), maxAge, "-")
-						}
+
+					var jobs map[string]*datatype.Job
+					if err := decoder.Decode(&jobs); err != nil {
+						return err
 					}
-					fmt.Printf("%s", formattedList)
+
+					writer := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', 0)
+
+					fmt.Fprintf(writer, "%s\t%s\t%s\t%s\t%s\n", "JOB_ID", "NAME", "USER", "STATUS", "AGE")
+
+					for _, job := range jobs {
+						if !showAll && (job.State.GetState() == datatype.JobRemoved || job.State.GetState() == datatype.JobComplete) {
+							continue
+						}
+						fmt.Fprintf(writer, "%s\t%s\t%s\t%s\t%s\n", job.JobID, job.Name, job.User, job.State.GetState(), getJobAgeString(job))
+					}
+
+					writer.Flush()
 				}
 				return nil
 			}
@@ -114,4 +88,15 @@ func init() {
 	flags.StringVarP(&jobRequest.OutPath, "out", "o", "", "Path to save output")
 	flags.BoolVarP(&showAll, "show-all", "A", false, "Show all jobs including removed and completed jobs")
 	rootCmd.AddCommand(cmdStat)
+}
+
+func getJobAgeString(job *datatype.Job) string {
+	switch {
+	case job == nil:
+		return "-"
+	case job.State.LastState == datatype.JobRunning || job.State.LastState == datatype.JobComplete:
+		return time.Since(job.State.LastUpdated.Time).Round(1 * time.Second).String()
+	default:
+		return "-"
+	}
 }
