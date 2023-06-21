@@ -350,7 +350,7 @@ func (rm *ResourceManager) WatchJobs(namespace string) (watch.Interface, error) 
 	return watcher, err
 }
 
-func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugin) (v1.PodTemplateSpec, error) {
+func (rm *ResourceManager) createPodTemplateSpecForPlugin(pr *datatype.PluginRuntime) (v1.PodTemplateSpec, error) {
 	envs := []apiv1.EnvVar{
 		{
 			Name:  "PULSE_SERVER",
@@ -414,14 +414,14 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 		},
 	}
 
-	for k, v := range plugin.PluginSpec.Env {
+	for k, v := range pr.Plugin.PluginSpec.Env {
 		envs = append(envs, apiv1.EnvVar{
 			Name:  k,
 			Value: v,
 		})
 	}
 
-	tag, err := plugin.PluginSpec.GetImageTag()
+	tag, err := pr.Plugin.PluginSpec.GetImageTag()
 	if err != nil {
 		return v1.PodTemplateSpec{}, err
 	}
@@ -431,7 +431,7 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 			Name: "uploads",
 			VolumeSource: apiv1.VolumeSource{
 				HostPath: &apiv1.HostPathVolumeSource{
-					Path: path.Join("/media/plugin-data/uploads", plugin.PluginSpec.Job, plugin.Name, tag),
+					Path: path.Join("/media/plugin-data/uploads", pr.Plugin.PluginSpec.Job, pr.Plugin.Name, tag),
 					Type: &hostPathDirectoryOrCreate,
 				},
 			},
@@ -479,14 +479,23 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 			MountPath: "/etc/asound.conf",
 			SubPath:   "asound.conf",
 		},
-		{
+	}
+
+	if pr.EnablePluginController {
+		volumes = append(volumes, apiv1.Volume{
+			Name: "local-share",
+			VolumeSource: apiv1.VolumeSource{
+				EmptyDir: &apiv1.EmptyDirVolumeSource{},
+			},
+		})
+		volumeMounts = append(volumeMounts, apiv1.VolumeMount{
 			Name:      "local-share",
 			MountPath: "/waggle",
-		},
+		})
 	}
 
 	// provide privileged plugins access to host devices
-	if plugin.PluginSpec.Privileged {
+	if pr.Plugin.PluginSpec.Privileged {
 		volumes = append(volumes, apiv1.Volume{
 			Name: "dev",
 			VolumeSource: apiv1.VolumeSource{
@@ -509,9 +518,9 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 		Plugin string `json:"plugin"`
 	}{
 		Host:   "$(HOST)",
-		Task:   plugin.Name,
-		Job:    plugin.PluginSpec.Job,
-		Plugin: plugin.PluginSpec.Image,
+		Task:   pr.Plugin.Name,
+		Job:    pr.Plugin.PluginSpec.Job,
+		Plugin: pr.Plugin.PluginSpec.Image,
 	}
 
 	appMetaData, err := json.Marshal(appMeta)
@@ -555,98 +564,94 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(plugin *datatype.Plugi
 		},
 	}
 
-	sidecar := apiv1.Container{
-		Name:  "plugin-controller",
-		Image: "waggle/plugin-controller:0.0.2",
-		Args: []string{
-			"--enable-cpu-performance",
-			"--app-cgroup-dir",
-			"/app/sys/fs/cgroup",
-			"--enable-gpu-performance",
-		},
-		Env: []apiv1.EnvVar{
-			{
-				Name:  "GPU_METRIC_HOST",
-				Value: "wes-jetson-exporter.default.svc.cluster.local",
-			},
-		},
-		VolumeMounts: []apiv1.VolumeMount{
-			{
-				Name:      "local-share",
-				MountPath: "/app/",
-				ReadOnly:  true,
-			},
-		},
-		Resources: apiv1.ResourceRequirements{
-			Limits: apiv1.ResourceList{},
-			Requests: apiv1.ResourceList{
-				apiv1.ResourceCPU:    resource.MustParse("50m"),
-				apiv1.ResourceMemory: resource.MustParse("20Mi"),
-			},
-		},
-	}
-
-	resources, err := resourceListForConfig(plugin.PluginSpec)
+	resources, err := resourceListForConfig(pr.Plugin.PluginSpec)
 	if err != nil {
 		return v1.PodTemplateSpec{}, err
 	}
 
 	containers := []apiv1.Container{
 		{
-			SecurityContext: securityContextForConfig(plugin.PluginSpec),
-			Name:            plugin.Name,
-			Image:           plugin.PluginSpec.Image,
-			Args:            plugin.PluginSpec.Args,
+			SecurityContext: securityContextForConfig(pr.Plugin.PluginSpec),
+			Name:            pr.Plugin.Name,
+			Image:           pr.Plugin.PluginSpec.Image,
+			Args:            pr.Plugin.PluginSpec.Args,
 			Env:             envs,
 			Resources:       resources,
 			VolumeMounts:    volumeMounts,
-			// make a symbolic link of the app container's cgroup to
-			// access to it from the sidecar container
-			Lifecycle: &apiv1.Lifecycle{
-				PostStart: &apiv1.LifecycleHandler{
-					Exec: &v1.ExecAction{
-						Command: []string{
-							"sh",
-							"-c",
-							"mkdir -p /waggle/sys/fs; ln -sf /sys/fs/cgroup /waggle/sys/fs",
-						},
-					},
-				},
-			},
 		},
-		sidecar,
 	}
 
-	if plugin.PluginSpec.Entrypoint != "" {
-		containers[0].Command = []string{plugin.PluginSpec.Entrypoint}
+	if pr.Plugin.PluginSpec.Entrypoint != "" {
+		containers[0].Command = []string{pr.Plugin.PluginSpec.Entrypoint}
+	}
+
+	// add plugin-controller sidecar container
+	if pr.EnablePluginController {
+		logger.Info.Printf("plugin-controller sidecar is added to %s", pr.Plugin.Name)
+		pluginControllerArgs := []string{
+			"--enable-cpu-performance",
+			"--plugin-process-name",
+			containers[0].Command[0],
+		}
+		if _, found := pr.Plugin.PluginSpec.Selector["resource.gpu"]; found {
+			logger.Debug.Printf("%s's plugin-controller will collect GPU performance", pr.Plugin.Name)
+			pluginControllerArgs = append(pluginControllerArgs, "--enable-gpu-performance")
+		}
+		// adding plugin-controller to the pod
+		containers = append(containers, apiv1.Container{
+			Name:  "plugin-controller",
+			Image: "waggle/plugin-controller:0.1.0",
+			// Image: "10.31.81.1:5000/local/plugin-controller",
+			Args: pluginControllerArgs,
+			Env: []apiv1.EnvVar{
+				{
+					Name:  "GPU_METRIC_HOST",
+					Value: "wes-jetson-exporter.default.svc.cluster.local",
+				},
+			},
+			VolumeMounts: []apiv1.VolumeMount{
+				{
+					Name:      "local-share",
+					MountPath: "/app/",
+					ReadOnly:  true,
+				},
+			},
+			Resources: apiv1.ResourceRequirements{
+				Limits: apiv1.ResourceList{},
+				Requests: apiv1.ResourceList{
+					apiv1.ResourceCPU:    resource.MustParse("50m"),
+					apiv1.ResourceMemory: resource.MustParse("20Mi"),
+				},
+			},
+		})
 	}
 
 	return v1.PodTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{
-			Labels: rm.labelsForPlugin(plugin),
+			Labels: rm.labelsForPlugin(&pr.Plugin),
 		},
 		Spec: apiv1.PodSpec{
 			ServiceAccountName: "wes-plugin-account",
 			PriorityClassName:  "wes-app-priority",
-			NodeSelector:       nodeSelectorForConfig(plugin.PluginSpec),
+			NodeSelector:       nodeSelectorForConfig(pr.Plugin.PluginSpec),
 			// TODO: The priority class will be revisited when using resource metrics to schedule plugins
-			// NOTE(Yongho): ShareProcessNamespace allows the sidecar to access app container's filesystem.
-			// This can be used later as needed
-			// ShareProcessNamespace: booltoPtr(true),
-			InitContainers: initContainers,
-			Containers:     containers,
-			Volumes:        volumes,
+			// NOTE: ShareProcessNamespace allows containers in a pod to share the process namespace.
+			//       containers in that pod can see other's processes
+			ShareProcessNamespace: booltoPtr(true),
+			InitContainers:        initContainers,
+			Containers:            containers,
+			Volumes:               volumes,
 		},
 	}, nil
 }
 
 // CreateKubernetesPod creates a Pod for the plugin
-func (rm *ResourceManager) CreatePod(plugin *datatype.Plugin) (*apiv1.Pod, error) {
-	name, err := pluginNameForSpecDeployment(plugin)
+func (rm *ResourceManager) CreatePod(pr *datatype.PluginRuntime) (*apiv1.Pod, error) {
+	name, err := pluginNameForSpecDeployment(&pr.Plugin)
 	if err != nil {
 		return nil, err
 	}
-	template, err := rm.createPodTemplateSpecForPlugin(plugin)
+	template, err := rm.createPodTemplateSpecForPlugin(pr)
 	if err != nil {
 		return nil, err
 	}
@@ -662,12 +667,12 @@ func (rm *ResourceManager) CreatePod(plugin *datatype.Plugin) (*apiv1.Pod, error
 }
 
 // CreateK3SJob creates and returns a Kubernetes job object of the pllugin
-func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, error) {
-	name, err := pluginNameForSpecDeployment(plugin)
+func (rm *ResourceManager) CreateJob(pr *datatype.PluginRuntime) (*batchv1.Job, error) {
+	name, err := pluginNameForSpecDeployment(&pr.Plugin)
 	if err != nil {
 		return nil, err
 	}
-	template, err := rm.createPodTemplateSpecForPlugin(plugin)
+	template, err := rm.createPodTemplateSpecForPlugin(pr)
 	if err != nil {
 		return nil, err
 	}
@@ -688,12 +693,12 @@ func (rm *ResourceManager) CreateJob(plugin *datatype.Plugin) (*batchv1.Job, err
 
 // CreateDeployment creates and returns a Kubernetes deployment object of the plugin
 // It also embeds a K3S configmap for plugin if needed
-func (rm *ResourceManager) CreateDeployment(plugin *datatype.Plugin) (*appsv1.Deployment, error) {
-	name, err := pluginNameForSpecDeployment(plugin)
+func (rm *ResourceManager) CreateDeployment(pr *datatype.PluginRuntime) (*appsv1.Deployment, error) {
+	name, err := pluginNameForSpecDeployment(&pr.Plugin)
 	if err != nil {
 		return nil, err
 	}
-	template, err := rm.createPodTemplateSpecForPlugin(plugin)
+	template, err := rm.createPodTemplateSpecForPlugin(pr)
 	if err != nil {
 		return nil, err
 	}
@@ -712,12 +717,12 @@ func (rm *ResourceManager) CreateDeployment(plugin *datatype.Plugin) (*appsv1.De
 	}, nil
 }
 
-func (rm *ResourceManager) CreateDaemonSet(plugin *datatype.Plugin) (*appsv1.DaemonSet, error) {
-	name, err := pluginNameForSpecDeployment(plugin)
+func (rm *ResourceManager) CreateDaemonSet(pr *datatype.PluginRuntime) (*appsv1.DaemonSet, error) {
+	name, err := pluginNameForSpecDeployment(&pr.Plugin)
 	if err != nil {
 		return nil, err
 	}
-	template, err := rm.createPodTemplateSpecForPlugin(plugin)
+	template, err := rm.createPodTemplateSpecForPlugin(pr)
 	if err != nil {
 		return nil, err
 	}
@@ -1017,7 +1022,7 @@ func (rm *ResourceManager) ClenUp() error {
 
 func (rm *ResourceManager) LaunchAndWatchPlugin(pr *datatype.PluginRuntime) {
 	logger.Debug.Printf("Running plugin %q...", pr.Plugin.Name)
-	job, err := rm.CreateJob(&pr.Plugin)
+	job, err := rm.CreateJob(pr)
 	if err != nil {
 		logger.Error.Printf("Failed to create Kubernetes Job for %q: %q", pr.Plugin.Name, err.Error())
 		rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason(err.Error()).AddPluginMeta(&pr.Plugin).Build())

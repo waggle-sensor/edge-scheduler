@@ -115,6 +115,8 @@ func (ns *NodeScheduler) Run() {
 								// make a hard copy of the plugin
 								_p := *plugin
 								pr := datatype.NewPluginRuntimeWithScienceRule(_p, *r)
+								// TODO: we enable plugin-controller always. we will want to control this.
+								pr.SetPluginController(true)
 								if _pr := ns.waitingQueue.Pop(pr); _pr != nil {
 									ns.readyQueue.Push(pr)
 									triggerScheduling = true

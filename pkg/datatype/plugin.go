@@ -96,10 +96,10 @@ type PluginCredential struct {
 }
 
 type PluginRuntime struct {
-	Plugin      Plugin
-	Duration    int
-	NeedProfile bool
-	Resource    Resource
+	Plugin                 Plugin
+	Duration               int
+	EnablePluginController bool
+	Resource               Resource
 }
 
 func NewPluginRuntimeWithScienceRule(p Plugin, runtimeArgs ScienceRule) *PluginRuntime {
@@ -111,6 +111,10 @@ func NewPluginRuntimeWithScienceRule(p Plugin, runtimeArgs ScienceRule) *PluginR
 	// 	pr.Duration
 	// }
 	return pr
+}
+
+func (pr *PluginRuntime) SetPluginController(flag bool) {
+	pr.EnablePluginController = flag
 }
 
 // type Plugin struct {
