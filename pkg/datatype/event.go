@@ -17,7 +17,7 @@ type EventBuilder struct {
 type Event struct {
 	Type      EventType
 	Timestamp int64
-	Meta      map[string]string
+	Meta      map[string]interface{}
 }
 
 func NewEventBuilder(eventType EventType) *EventBuilder {
@@ -25,9 +25,14 @@ func NewEventBuilder(eventType EventType) *EventBuilder {
 		e: Event{
 			Type:      eventType,
 			Timestamp: time.Now().UnixNano(),
-			Meta:      map[string]string{},
+			Meta:      map[string]interface{}{},
 		},
 	}
+}
+
+func (eb *EventBuilder) AddValue(v interface{}) *EventBuilder {
+	eb.e.Meta["value"] = v
+	return eb
 }
 
 func (eb *EventBuilder) AddReason(reason string) *EventBuilder {
@@ -41,7 +46,7 @@ func (eb *EventBuilder) AddJob(j *Job) *EventBuilder {
 }
 
 func (e *Event) GetJobID() string {
-	return e.get("job_id")
+	return e.get("job_id").(string)
 }
 
 func (eb *EventBuilder) AddGoal(goal *ScienceGoal) *EventBuilder {
@@ -94,7 +99,7 @@ func (eb *EventBuilder) Build() Event {
 	return eb.e
 }
 
-func (e *Event) get(name string) string {
+func (e *Event) get(name string) interface{} {
 	if value, ok := e.Meta[name]; ok {
 		return value
 	} else {
@@ -103,22 +108,22 @@ func (e *Event) get(name string) string {
 }
 
 func (e *Event) GetGoalName() string {
-	return e.get("goal_name")
+	return e.get("goal_name").(string)
 }
 
 func (e *Event) GetGoalID() string {
-	return e.get("goal_id")
+	return e.get("goal_id").(string)
 }
 
 func (e *Event) GetPluginName() string {
-	return e.get("plugin_name")
+	return e.get("plugin_name").(string)
 }
 
 func (e *Event) GetReason() string {
-	return e.get("reason")
+	return e.get("reason").(string)
 }
 
-func (e *Event) GetEntry(k string) string {
+func (e *Event) GetEntry(k string) interface{} {
 	return e.get(k)
 }
 
@@ -129,7 +134,7 @@ func (e *Event) ToString() string {
 func NewEventBuilderFromWaggleMessage(m *WaggleMessage) (*EventBuilder, error) {
 	builder := NewEventBuilder(EventType(m.Name))
 	builder.e.Timestamp = m.Timestamp
-	var body map[string]string
+	var body map[string]interface{}
 	err := json.Unmarshal([]byte(m.Value.(string)), &body)
 	if err != nil {
 		return nil, err
@@ -148,14 +153,18 @@ func NewEventBuilderFromWaggleMessage(m *WaggleMessage) (*EventBuilder, error) {
 func (e *Event) ToWaggleMessage() *WaggleMessage {
 	// TODO: beehive-influxdb does not handle bytes so body is always string.
 	//       This should be lifted once it accepts bytes.
-	encodedBody, err := e.EncodeMetaToJson()
-	if err != nil {
-		logger.Debug.Printf("Failed to convert to Waggle message: %q", err.Error())
-		return nil
+	body := e.get("value")
+	if body == "" {
+		encodedBody, err := e.EncodeMetaToJson()
+		if err != nil {
+			logger.Debug.Printf("Failed to convert to Waggle message: %q", err.Error())
+			return nil
+		}
+		body = string(encodedBody)
 	}
 	return NewMessage(
 		string(e.Type),
-		string(encodedBody),
+		body,
 		e.Timestamp,
 		map[string]string{},
 	)

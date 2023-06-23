@@ -181,6 +181,7 @@ func (p *PluginCtl) Deploy(dep *Deployment) (string, error) {
 				Resource:    resource,
 			},
 		},
+		EnablePluginController: dep.EnablePluginController,
 	}
 	switch dep.Type {
 	case "pod":

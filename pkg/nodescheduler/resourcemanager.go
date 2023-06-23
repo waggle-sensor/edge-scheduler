@@ -456,12 +456,6 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(pr *datatype.PluginRun
 				},
 			},
 		},
-		{
-			Name: "local-share",
-			VolumeSource: apiv1.VolumeSource{
-				EmptyDir: &apiv1.EmptyDirVolumeSource{},
-			},
-		},
 	}
 
 	volumeMounts := []apiv1.VolumeMount{
@@ -590,23 +584,51 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(pr *datatype.PluginRun
 		logger.Info.Printf("plugin-controller sidecar is added to %s", pr.Plugin.Name)
 		pluginControllerArgs := []string{
 			"--enable-cpu-performance",
-			"--plugin-process-name",
-			containers[0].Command[0],
+			"--enable-metrics-publishing",
+		}
+		if len(containers[0].Command) >= 1 {
+			pluginProcessName := containers[0].Command[0]
+			logger.Info.Printf("user specified plugin process (%s). it will be passed to the plugin-controller", pluginProcessName)
+			pluginControllerArgs = append(pluginControllerArgs, "--plugin-process-name", pluginProcessName)
 		}
 		if _, found := pr.Plugin.PluginSpec.Selector["resource.gpu"]; found {
-			logger.Debug.Printf("%s's plugin-controller will collect GPU performance", pr.Plugin.Name)
+			logger.Info.Printf("%s's plugin-controller will collect GPU performance", pr.Plugin.Name)
 			pluginControllerArgs = append(pluginControllerArgs, "--enable-gpu-performance")
 		}
 		// adding plugin-controller to the pod
 		containers = append(containers, apiv1.Container{
-			Name:  "plugin-controller",
-			Image: "waggle/plugin-controller:0.1.0",
-			// Image: "10.31.81.1:5000/local/plugin-controller",
-			Args: pluginControllerArgs,
+			Name: "plugin-controller",
+			// Image: "waggle/plugin-controller:0.1.1",
+			Image: "10.31.81.1:5000/local/plugin-controller",
+			Args:  pluginControllerArgs,
 			Env: []apiv1.EnvVar{
 				{
 					Name:  "GPU_METRIC_HOST",
 					Value: "wes-jetson-exporter.default.svc.cluster.local",
+				},
+				{
+					Name:  "WAGGLE_PLUGIN_HOST",
+					Value: "wes-rabbitmq.default.svc.cluster.local",
+				},
+				{
+					Name:  "WAGGLE_PLUGIN_PORT",
+					Value: "5672",
+				},
+				{
+					Name:  "WAGGLE_PLUGIN_USERNAME",
+					Value: "plugin",
+				},
+				{
+					Name:  "WAGGLE_PLUGIN_PASSWORD",
+					Value: "plugin",
+				},
+				{
+					Name: "WAGGLE_APP_ID",
+					ValueFrom: &apiv1.EnvVarSource{
+						FieldRef: &apiv1.ObjectFieldSelector{
+							FieldPath: "metadata.uid",
+						},
+					},
 				},
 			},
 			VolumeMounts: []apiv1.VolumeMount{
