@@ -55,7 +55,7 @@ func (eb *EventBuilder) AddGoal(goal *ScienceGoal) *EventBuilder {
 	return eb
 }
 
-func (eb *EventBuilder) AddEntry(k string, v string) *EventBuilder {
+func (eb *EventBuilder) AddEntry(k string, v interface{}) *EventBuilder {
 	eb.e.Meta[k] = v
 	return eb
 }
