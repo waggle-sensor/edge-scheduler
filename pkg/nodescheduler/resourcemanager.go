@@ -572,6 +572,14 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(pr *datatype.PluginRun
 			Env:             envs,
 			Resources:       resources,
 			VolumeMounts:    volumeMounts,
+			// let plugin-controller know that it has started
+			Lifecycle: &apiv1.Lifecycle{
+				PostStart: &apiv1.LifecycleHandler{
+					Exec: &apiv1.ExecAction{
+						Command: []string{"touch", "/waggle/started"},
+					},
+				},
+			},
 		},
 	}
 
@@ -598,7 +606,7 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(pr *datatype.PluginRun
 		// adding plugin-controller to the pod
 		containers = append(containers, apiv1.Container{
 			Name: "plugin-controller",
-			// Image: "waggle/plugin-controller:0.1.1",
+			// Image: "waggle/plugin-controller:0.2.0",
 			Image: "10.31.81.1:5000/local/plugin-controller",
 			Args:  pluginControllerArgs,
 			Env: []apiv1.EnvVar{
