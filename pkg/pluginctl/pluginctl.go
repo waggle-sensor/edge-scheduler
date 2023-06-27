@@ -185,7 +185,7 @@ func (p *PluginCtl) Deploy(dep *Deployment) (string, error) {
 	}
 	switch dep.Type {
 	case "pod":
-		pod, err := p.ResourceManager.CreatePod(&pluginRuntime)
+		pod, err := p.ResourceManager.CreatePodTemplate(&pluginRuntime)
 		if err != nil {
 			return "", err
 		}
@@ -301,7 +301,7 @@ func (p *PluginCtl) RunAsync(dep *Deployment, chEvent chan<- datatype.Event, out
 }
 
 func (p *PluginCtl) PrintLog(pluginName string, follow bool) (func(), chan os.Signal, error) {
-	podLog, err := p.ResourceManager.GetPluginLogHandler(pluginName, follow)
+	podLog, err := p.ResourceManager.GetPodLogHandler(pluginName, follow)
 	if err != nil {
 		return nil, nil, err
 	}

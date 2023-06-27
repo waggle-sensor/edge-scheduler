@@ -92,6 +92,9 @@ func (eb *EventBuilder) AddPodMeta(pod *apiv1.Pod) *EventBuilder {
 	eb.e.Meta["k3s_pod_name"] = pod.Name
 	eb.e.Meta["k3s_pod_status"] = string(pod.Status.Phase)
 	eb.e.Meta["k3s_pod_node_name"] = pod.Spec.NodeName
+	if v, found := pod.Labels["sagecontinuum.org/plugin-instance"]; found {
+		eb.e.Meta["k3s_pod_instance"] = v
+	}
 	return eb
 }
 
