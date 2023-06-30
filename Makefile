@@ -5,19 +5,19 @@ cli-all-arch: cli-linux-amd64 cli-linux-arm64 cli-darwin-amd64 cli-darwin-arm64 
 	cd out && shasum -a 256 runplugin* pluginctl* sesctl* > sha256sum.txt
 
 cli-linux-arm64:
-	GOOS=linux GOARCH=arm64 go build -o ./out/runplugin-linux-arm64 ./cmd/runplugin
-	GOOS=linux GOARCH=arm64 go build -o ./out/pluginctl-linux-arm64 -ldflags "-X main.Version=${VERSION}" ./cmd/pluginctl
-	GOOS=linux GOARCH=arm64 go build -o ./out/sesctl-linux-arm64 -ldflags "-X main.Version=${VERSION}" ./cmd/sesctl
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o ./out/runplugin-linux-arm64 ./cmd/runplugin
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o ./out/pluginctl-linux-arm64 -ldflags "-X main.Version=${VERSION}" ./cmd/pluginctl
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o ./out/sesctl-linux-arm64 -ldflags "-X main.Version=${VERSION}" ./cmd/sesctl
 
 cli-linux-amd64:
-	GOOS=linux GOARCH=amd64 go build -o ./out/runplugin-linux-amd64 ./cmd/runplugin
-	GOOS=linux GOARCH=amd64 go build -o ./out/pluginctl-linux-amd64 -ldflags "-X main.Version=${VERSION}" ./cmd/pluginctl
-	GOOS=linux GOARCH=amd64 go build -o ./out/sesctl-linux-amd64 -ldflags "-X main.Version=${VERSION}" ./cmd/sesctl
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ./out/runplugin-linux-amd64 ./cmd/runplugin
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ./out/pluginctl-linux-amd64 -ldflags "-X main.Version=${VERSION}" ./cmd/pluginctl
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ./out/sesctl-linux-amd64 -ldflags "-X main.Version=${VERSION}" ./cmd/sesctl
 
 cli-darwin-amd64:
-	GOOS=darwin GOARCH=amd64 go build -o ./out/runplugin-darwin-amd64 ./cmd/runplugin
-	GOOS=darwin GOARCH=amd64 go build -o ./out/pluginctl-darwin-amd64 -ldflags "-X main.Version=${VERSION}" ./cmd/pluginctl
-	GOOS=darwin GOARCH=amd64 go build -o ./out/sesctl-darwin-amd64 -ldflags "-X main.Version=${VERSION}" ./cmd/sesctl
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o ./out/runplugin-darwin-amd64 ./cmd/runplugin
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o ./out/pluginctl-darwin-amd64 -ldflags "-X main.Version=${VERSION}" ./cmd/pluginctl
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o ./out/sesctl-darwin-amd64 -ldflags "-X main.Version=${VERSION}" ./cmd/sesctl
 
 cli-darwin-arm64:
 	GOOS=darwin GOARCH=arm64 go build -o ./out/runplugin-darwin-arm64 ./cmd/runplugin
@@ -25,13 +25,13 @@ cli-darwin-arm64:
 	GOOS=darwin GOARCH=arm64 go build -o ./out/sesctl-darwin-arm64 -ldflags "-X main.Version=${VERSION}" ./cmd/sesctl
 
 cli-windows-amd64:
-	GOOS=windows GOARCH=amd64 go build -o ./out/runplugin-windows-amd64 ./cmd/runplugin
-	GOOS=windows GOARCH=amd64 go build -o ./out/pluginctl-windows-amd64 -ldflags "-X main.Version=${VERSION}" ./cmd/pluginctl
-	GOOS=windows GOARCH=amd64 go build -o ./out/sesctl-windows-amd64 -ldflags "-X main.Version=${VERSION}" ./cmd/sesctl
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o ./out/runplugin-windows-amd64 ./cmd/runplugin
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o ./out/pluginctl-windows-amd64 -ldflags "-X main.Version=${VERSION}" ./cmd/pluginctl
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o ./out/sesctl-windows-amd64 -ldflags "-X main.Version=${VERSION}" ./cmd/sesctl
 
 cli:
-	go build -o ./out/pluginctl -ldflags "-X main.Version=${VERSION}" ./cmd/pluginctl
-	go build -o ./out/sesctl -ldflags "-X main.Version=${VERSION}" ./cmd/sesctl
+	CGO_ENABLED=0 go build -o ./out/pluginctl -ldflags "-X main.Version=${VERSION}" ./cmd/pluginctl
+	CGO_ENABLED=0 go build -o ./out/sesctl -ldflags "-X main.Version=${VERSION}" ./cmd/sesctl
 
 scheduler-all-arch: scheduler-amd64 scheduler-arm64
 

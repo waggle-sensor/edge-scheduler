@@ -41,18 +41,19 @@ type PluginCtl struct {
 
 // Deployment holds the config pluginctl uses to deploy plugins
 type Deployment struct {
-	Name           string
-	SelectorString string
-	Node           string
-	Entrypoint     string
-	Privileged     bool
-	PluginImage    string
-	PluginArgs     []string
-	EnvVarString   []string
-	EnvFromFile    string
-	DevelopMode    bool
-	Type           string
-	ResourceString string
+	Name                   string
+	SelectorString         string
+	Node                   string
+	Entrypoint             string
+	Privileged             bool
+	PluginImage            string
+	PluginArgs             []string
+	EnvVarString           []string
+	EnvFromFile            string
+	DevelopMode            bool
+	Type                   string
+	ResourceString         string
+	EnablePluginController bool
 }
 
 func NewPluginCtl(kubeconfig string) (*PluginCtl, error) {
@@ -167,24 +168,34 @@ func (p *PluginCtl) Deploy(dep *Deployment) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("Failed to parse env %q", err.Error())
 	}
-	plugin := datatype.Plugin{
-		Name: dep.Name,
-		PluginSpec: &datatype.PluginSpec{
-			Privileged:  dep.Privileged,
-			Node:        dep.Node,
-			Image:       dep.PluginImage,
-			Args:        dep.PluginArgs,
-			Job:         pluginctlJob,
-			Selector:    selector,
-			Entrypoint:  dep.Entrypoint,
-			Env:         envs,
-			DevelopMode: dep.DevelopMode,
-			Resource:    resource,
+	pluginRuntime := datatype.PluginRuntime{
+		Plugin: datatype.Plugin{
+			Name: dep.Name,
+			PluginSpec: &datatype.PluginSpec{
+				Privileged:  dep.Privileged,
+				Node:        dep.Node,
+				Image:       dep.PluginImage,
+				Args:        dep.PluginArgs,
+				Job:         pluginctlJob,
+				Selector:    selector,
+				Entrypoint:  dep.Entrypoint,
+				Env:         envs,
+				DevelopMode: dep.DevelopMode,
+				Resource:    resource,
+			},
 		},
+		EnablePluginController: dep.EnablePluginController,
 	}
 	switch dep.Type {
+	case "pod":
+		pod, err := p.ResourceManager.CreatePodTemplate(&pluginRuntime)
+		if err != nil {
+			return "", err
+		}
+		err = p.ResourceManager.UpdatePod(pod)
+		return pod.Name, err
 	case "job":
-		job, err := p.ResourceManager.CreateJob(&plugin)
+		job, err := p.ResourceManager.CreateJob(&pluginRuntime)
 		if err != nil {
 			return "", err
 		}
@@ -195,7 +206,7 @@ func (p *PluginCtl) Deploy(dep *Deployment) (string, error) {
 			return job.Name, p.ResourceManager.RunPlugin(job)
 		}
 	case "deployment":
-		deployment, err := p.ResourceManager.CreateDeployment(&plugin)
+		deployment, err := p.ResourceManager.CreateDeployment(&pluginRuntime)
 		if err != nil {
 			return "", err
 		}
@@ -206,7 +217,7 @@ func (p *PluginCtl) Deploy(dep *Deployment) (string, error) {
 			return deployment.Name, p.ResourceManager.UpdateDeployment(deployment)
 		}
 	case "daemonset":
-		daemonSet, err := p.ResourceManager.CreateDaemonSet(&plugin)
+		daemonSet, err := p.ResourceManager.CreateDaemonSet(&pluginRuntime)
 		if err != nil {
 			return "", err
 		}
@@ -335,7 +346,7 @@ func (p *PluginCtl) RunAsync(dep *Deployment, chEvent chan<- datatype.Event, out
 }
 
 func (p *PluginCtl) PrintLog(pluginName string, follow bool) (func(), chan os.Signal, error) {
-	podLog, err := p.ResourceManager.GetPluginLogHandler(pluginName, follow)
+	podLog, err := p.ResourceManager.GetPodLogHandler(pluginName, follow)
 	if err != nil {
 		return nil, nil, err
 	}

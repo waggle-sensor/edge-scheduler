@@ -13,6 +13,22 @@ import (
 	"gopkg.in/cenkalti/backoff.v1"
 )
 
+type RabbitMQMessageWrapper struct {
+	DestName    string
+	RoutingKey  string
+	Body        []byte
+	ContentType string
+}
+
+func NewRabbitMQMessageWrapper(to string, scope string, body []byte, contentType string) *RabbitMQMessageWrapper {
+	return &RabbitMQMessageWrapper{
+		DestName:    to,
+		RoutingKey:  scope,
+		Body:        body,
+		ContentType: contentType,
+	}
+}
+
 type RabbitMQHandler struct {
 	RabbitmqURI      string
 	rabbitmqUsername string
@@ -21,6 +37,7 @@ type RabbitMQHandler struct {
 	rabbitmqConn     *amqp.Connection
 	rabbitmqChan     *amqp.Channel
 	appID            string
+	chanToPublish    chan RabbitMQMessageWrapper
 }
 
 func NewRabbitMQHandler(rabbitmqURI string, rabbitmqUsername string, rabbitmqPassword string, cacertPath string, appID string) *RabbitMQHandler {
@@ -30,6 +47,7 @@ func NewRabbitMQHandler(rabbitmqURI string, rabbitmqUsername string, rabbitmqPas
 		rabbitmqPassword: rabbitmqPassword,
 		cacertPath:       cacertPath,
 		appID:            appID,
+		chanToPublish:    make(chan RabbitMQMessageWrapper, 100),
 	}
 }
 
@@ -124,8 +142,7 @@ func (rh *RabbitMQHandler) DeclareQueueAndConnectToExchange(exchangeName string,
 	return &q, err
 }
 
-func (rh *RabbitMQHandler) SendYAML(routingKey string, message []byte) error {
-	exchange := "scheduler"
+func (rh *RabbitMQHandler) publish(m RabbitMQMessageWrapper) error {
 	if rh.rabbitmqConn == nil || rh.rabbitmqConn.IsClosed() {
 		err := rh.Connect()
 		if err != nil {
@@ -133,43 +150,46 @@ func (rh *RabbitMQHandler) SendYAML(routingKey string, message []byte) error {
 		}
 	}
 	err := rh.rabbitmqChan.Publish(
-		exchange,
-		routingKey,
+		m.DestName,
+		m.RoutingKey,
 		false,
 		false,
 		amqp.Publishing{
-			ContentType: "application/yaml",
-			Body:        message,
+			Body:         m.Body,
+			DeliveryMode: 2,
+			UserId:       rh.rabbitmqUsername,
+			AppId:        rh.appID,
+			ContentType:  m.ContentType,
 		},
 	)
 	return err
 }
 
-// SendWaggleMessage delivers a Waggle message to Waggle data pipeline
+// SendWaggleMessageOnNode delivers a Waggle message to Waggle data pipeline inside a node
 //
 // The message is sent to the "to-validator" exchange
-func (rh *RabbitMQHandler) SendWaggleMessage(message *datatype.WaggleMessage, scope string) error {
+func (rh *RabbitMQHandler) SendWaggleMessageOnNode(message *datatype.WaggleMessage, scope string) error {
 	logger.Debug.Println(string(datatype.Dump(message)))
-	exchange := "to-validator"
-	if rh.rabbitmqConn == nil || rh.rabbitmqConn.IsClosed() {
-		err := rh.Connect()
-		if err != nil {
-			return err
-		}
-	}
-	err := rh.rabbitmqChan.Publish(
-		exchange,
+	return rh.publish(*NewRabbitMQMessageWrapper(
+		"to-validator",
 		scope,
-		false,
-		false,
-		amqp.Publishing{
-			Body:         datatype.Dump(message),
-			DeliveryMode: 2,
-			UserId:       rh.rabbitmqUsername,
-			AppId:        rh.appID,
-		},
+		datatype.Dump(message),
+		"",
+	))
+}
+
+// SendWaggleMessageOnNodeAsync caches message internally. The background routine will push messages asynchronously.
+func (rh *RabbitMQHandler) SendWaggleMessageOnNodeAsync(message *datatype.WaggleMessage, scope string) error {
+	if len(rh.chanToPublish) == cap(rh.chanToPublish) {
+		return fmt.Errorf("maximum capacity (%d) reached. this message will not be cached", cap(rh.chanToPublish))
+	}
+	rh.chanToPublish <- *NewRabbitMQMessageWrapper(
+		"to-validator",
+		scope,
+		datatype.Dump(message),
+		"",
 	)
-	return err
+	return nil
 }
 
 func (rh *RabbitMQHandler) GetReceiver(queueName string) (<-chan amqp.Delivery, error) {
@@ -233,4 +253,15 @@ func (rh *RabbitMQHandler) SubscribeEvents(exchange string, queueName string, to
 
 	}()
 	return nil
+}
+
+func (rh *RabbitMQHandler) StartLoop() {
+	go func() {
+		for m := range rh.chanToPublish {
+			logger.Debug.Printf("to %s with routing key %s: %s", m.DestName, m.RoutingKey, m.Body)
+			if err := rh.publish(m); err != nil {
+				logger.Error.Printf("failed to send message to %s: %s", m.DestName, err.Error())
+			}
+		}
+	}()
 }
