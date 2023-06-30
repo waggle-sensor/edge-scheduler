@@ -59,13 +59,17 @@ func (ns *NodeScheduler) Configure() (err error) {
 		return
 	}
 	if ns.Config.GoalStreamURL != "" {
-		logger.Info.Printf("Subscribing goal downstream from %s", ns.Config.GoalStreamURL)
+		logger.Info.Printf("subscribing goal downstream from %s", ns.Config.GoalStreamURL)
 		u, err := url.Parse(ns.Config.GoalStreamURL)
 		if err != nil {
 			return err
 		}
 		s := interfacing.NewHTTPRequest(u.Scheme + "://" + u.Host)
 		s.Subscribe(u.Path, ns.chanFromCloudScheduler, true)
+	}
+	if ns.LogToBeehive != nil {
+		logger.Info.Println("starting THE RMQ handler loop for message publishing")
+		ns.LogToBeehive.StartLoop()
 	}
 	return
 }
@@ -138,7 +142,7 @@ func (ns *NodeScheduler) Run() {
 							} else {
 								to = "all"
 							}
-							go ns.LogToBeehive.SendWaggleMessage(message, to)
+							ns.LogToBeehive.SendWaggleMessageOnNodeAsync(message, to)
 						case datatype.ScienceRuleActionSet:
 							stateName := r.ActionObject
 							var value interface{}
@@ -159,7 +163,7 @@ func (ns *NodeScheduler) Run() {
 			}
 			if triggerScheduling {
 				response := datatype.NewEventBuilder(datatype.EventPluginStatusPromoted).AddReason("kb triggered").Build()
-				go ns.LogToBeehive.SendWaggleMessage(response.ToWaggleMessage(), "node")
+				ns.LogToBeehive.SendWaggleMessageOnNodeAsync(response.ToWaggleMessage(), "node")
 				ns.chanNeedScheduling <- response
 			}
 		case event := <-ns.chanNeedScheduling:
@@ -181,7 +185,7 @@ func (ns *NodeScheduler) Run() {
 				for _, _pr := range pluginsToRun {
 					e := datatype.NewEventBuilder(datatype.EventPluginStatusScheduled).AddReason("Fit to resource").AddPluginMeta(&_pr.Plugin).Build()
 					logger.Debug.Printf("%s: %q (%q)", e.ToString(), e.GetPluginName(), e.GetReason())
-					go ns.LogToBeehive.SendWaggleMessage(e.ToWaggleMessage(), "all")
+					ns.LogToBeehive.SendWaggleMessageOnNodeAsync(e.ToWaggleMessage(), "all")
 					pr := ns.readyQueue.Pop(_pr)
 					ns.scheduledPlugins.Push(pr)
 					go ns.ResourceManager.LaunchAndWatchPlugin(pr)
@@ -191,7 +195,7 @@ func (ns *NodeScheduler) Run() {
 			logger.Debug.Printf("%s", event.ToString())
 			switch event.Type {
 			case datatype.EventPluginStatusLaunched:
-				go ns.LogToBeehive.SendWaggleMessage(event.ToWaggleMessage(), "all")
+				ns.LogToBeehive.SendWaggleMessageOnNodeAsync(event.ToWaggleMessage(), "all")
 			case datatype.EventPluginStatusComplete:
 				// publish plugin completion message locally so that
 				// rule checker knows when the last execution was
@@ -205,7 +209,7 @@ func (ns *NodeScheduler) Run() {
 					event.Timestamp,
 					map[string]string{},
 				)
-				go ns.LogToBeehive.SendWaggleMessage(message, "node")
+				ns.LogToBeehive.SendWaggleMessageOnNodeAsync(message, "node")
 				fallthrough
 			case datatype.EventPluginStatusFailed:
 				scienceGoal, err := ns.GoalManager.GetScienceGoalByID(event.GetGoalID())
@@ -220,7 +224,7 @@ func (ns *NodeScheduler) Run() {
 						}
 						pr := ns.scheduledPlugins.Pop(_pr)
 						ns.waitingQueue.Push(pr)
-						go ns.LogToBeehive.SendWaggleMessage(event.ToWaggleMessage(), "all")
+						ns.LogToBeehive.SendWaggleMessageOnNodeAsync(event.ToWaggleMessage(), "all")
 					}
 				}
 				// We trigger the scheduling logic for plugins that need to run
@@ -279,7 +283,7 @@ func (ns *NodeScheduler) cleanUpGoal(goal *datatype.ScienceGoal) {
 				logger.Error.Printf("Failed to get pod of the plugin %q", a.Plugin.Name)
 			} else {
 				e := datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddPluginMeta(&a.Plugin).AddPodMeta(pod).AddReason("Cleaning up the plugin due to deletion of the goal").Build()
-				go ns.LogToBeehive.SendWaggleMessage(e.ToWaggleMessage(), "all")
+				ns.LogToBeehive.SendWaggleMessageOnNodeAsync(e.ToWaggleMessage(), "all")
 			}
 			ns.ResourceManager.RemovePlugin(&a.Plugin)
 			logger.Debug.Printf("plugin %s is removed from running", p.Name)
@@ -312,13 +316,13 @@ func (ns *NodeScheduler) handleBulkGoals(goals []datatype.ScienceGoal) {
 				ns.cleanUpGoal(existingGoal)
 				ns.registerGoal(&goal)
 				e := datatype.NewEventBuilder(datatype.EventGoalStatusUpdated).AddGoal(&goal).Build()
-				go ns.LogToBeehive.SendWaggleMessage(e.ToWaggleMessage(), "all")
+				ns.LogToBeehive.SendWaggleMessageOnNodeAsync(e.ToWaggleMessage(), "all")
 			}
 		} else {
 			logger.Info.Printf("Adding the new goal %s %q", goal.Name, goal.ID)
 			ns.registerGoal(&goal)
 			e := datatype.NewEventBuilder(datatype.EventGoalStatusReceived).AddGoal(&goal).Build()
-			go ns.LogToBeehive.SendWaggleMessage(e.ToWaggleMessage(), "all")
+			ns.LogToBeehive.SendWaggleMessageOnNodeAsync(e.ToWaggleMessage(), "all")
 		}
 	}
 	// Remove any existing goal that is not included in the new goal set
@@ -326,7 +330,7 @@ func (ns *NodeScheduler) handleBulkGoals(goals []datatype.ScienceGoal) {
 		if _, exist := goalsToKeep[goal.ID]; !exist {
 			ns.cleanUpGoal(&goal)
 			event := datatype.NewEventBuilder(datatype.EventGoalStatusRemoved).AddGoal(&goal).Build()
-			go ns.LogToBeehive.SendWaggleMessage(event.ToWaggleMessage(), "all")
+			ns.LogToBeehive.SendWaggleMessageOnNodeAsync(event.ToWaggleMessage(), "all")
 		}
 	}
 }
