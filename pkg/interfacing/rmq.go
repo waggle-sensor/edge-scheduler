@@ -258,7 +258,7 @@ func (rh *RabbitMQHandler) SubscribeEvents(exchange string, queueName string, to
 func (rh *RabbitMQHandler) StartLoop() {
 	go func() {
 		for m := range rh.chanToPublish {
-			logger.Debug.Printf("%v", m)
+			logger.Debug.Printf("to %s with routing key %s: %s", m.DestName, m.RoutingKey, m.Body)
 			if err := rh.publish(m); err != nil {
 				logger.Error.Printf("failed to send message to %s: %s", m.DestName, err.Error())
 			}
