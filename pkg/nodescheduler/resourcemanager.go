@@ -631,9 +631,8 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(pr *datatype.PluginRun
 		}
 		// adding plugin-controller to the pod
 		containers = append(containers, apiv1.Container{
-			Name: "plugin-controller",
-			// Image: "waggle/plugin-controller:0.2.0",
-			Image: "10.31.81.1:5000/local/plugin-controller",
+			Name:  "plugin-controller",
+			Image: "waggle/plugin-controller:0.2.0",
 			Args:  pluginControllerArgs,
 			Env: []apiv1.EnvVar{
 				{
