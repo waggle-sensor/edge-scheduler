@@ -6,7 +6,7 @@ import (
 )
 
 type SchedulingPolicy interface {
-	SelectBestPlugins(*datatype.Queue, *datatype.Queue, datatype.Resource) ([]*datatype.Plugin, error)
+	SelectBestPlugins(*datatype.Queue, *datatype.Queue, datatype.Resource) ([]*datatype.PluginRuntime, error)
 }
 
 func GetSchedulingPolicyByName(policyName string) SchedulingPolicy {
@@ -35,7 +35,7 @@ func NewSimpleSchedulingPolicy() *SimpleSchedulingPolicy {
 
 // SelectBestPlugins returns the best plugin to run at the time
 // For SimpleSchedulingPolicy, it returns all "ready" plugins
-func (ss *SimpleSchedulingPolicy) SelectBestPlugins(readyQueue *datatype.Queue, scheduledPlugins *datatype.Queue, availableResource datatype.Resource) (pluginsToRun []*datatype.Plugin, err error) {
+func (ss *SimpleSchedulingPolicy) SelectBestPlugins(readyQueue *datatype.Queue, scheduledPlugins *datatype.Queue, availableResource datatype.Resource) (pluginsToRun []*datatype.PluginRuntime, err error) {
 	readyQueue.ResetIter()
 	for readyQueue.More() {
 		pluginsToRun = append(pluginsToRun, readyQueue.Next())

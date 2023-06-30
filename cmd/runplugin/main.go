@@ -147,7 +147,9 @@ func runPlugin(resourceManager *nodescheduler.ResourceManager, plugin *datatype.
 
 	log.Printf("plugin name is %s", plugin.Name)
 
-	deployment, err := resourceManager.CreateDeployment(plugin)
+	deployment, err := resourceManager.CreateDeployment(&datatype.PluginRuntime{
+		Plugin: *plugin,
+	})
 	if err != nil {
 		return fmt.Errorf("resourceManager.CreateDeployment: %s", err.Error())
 	}

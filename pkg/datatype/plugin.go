@@ -10,7 +10,6 @@ import (
 type Plugin struct {
 	Name       string      `json:"name" yaml:"name"`
 	PluginSpec *PluginSpec `json:"plugin_spec" yaml:"pluginSpec,omitempty"`
-	DataShims  []*DataShim `json:"datathims,omitempty" yaml:"datashims,omitempty"`
 	GoalID     string      `json:"goal_id,omitempty" yaml:"goalID,omitempty"`
 }
 
@@ -94,6 +93,28 @@ type EventPluginContext struct {
 type PluginCredential struct {
 	Username string `yaml:"username,omitempty"`
 	Password string `yaml:"password,omitempty"`
+}
+
+type PluginRuntime struct {
+	Plugin                 Plugin
+	Duration               int
+	EnablePluginController bool
+	Resource               Resource
+}
+
+func NewPluginRuntimeWithScienceRule(p Plugin, runtimeArgs ScienceRule) *PluginRuntime {
+	pr := &PluginRuntime{
+		Plugin: p,
+	}
+	// TODO: any runtime parameters of the plugin should be parsed and added to the runtime
+	// if v, found := runtimeArgs.ActionParameters["duration"]; found {
+	// 	pr.Duration
+	// }
+	return pr
+}
+
+func (pr *PluginRuntime) SetPluginController(flag bool) {
+	pr.EnablePluginController = flag
 }
 
 // type Plugin struct {
