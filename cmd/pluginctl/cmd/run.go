@@ -10,8 +10,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
 	"github.com/waggle-sensor/edge-scheduler/pkg/pluginctl"
-	batchv1 "k8s.io/api/batch/v1"
 	apiv1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/watch"
 )
 
@@ -37,6 +37,8 @@ var cmdRun = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		deployment.PluginImage = args[0]
 		deployment.PluginArgs = args[1:]
+		// run always uses pod type
+		deployment.Type = "pod"
 
 		logger.Debug.Printf("kubeconfig: %s", kubeconfig)
 		logger.Debug.Printf("deployment: %#v", deployment)
@@ -79,30 +81,24 @@ var cmdRun = &cobra.Command{
 		c := make(chan os.Signal, 1)
 		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 		go func() {
-			watcher, err := pluginCtl.ResourceManager.WatchJob(pluginName, pluginCtl.ResourceManager.Namespace, 0)
+			watcher, err := pluginCtl.ResourceManager.WatchPod(pluginName, pluginCtl.ResourceManager.Namespace, 0)
 			if err != nil {
 				logger.Error.Printf("%q", err.Error())
 				c <- nil
 			}
-			chanGoal := watcher.ResultChan()
-			for {
-				event := <-chanGoal
+			chanEvent := watcher.ResultChan()
+			for event := range chanEvent {
 				switch event.Type {
-				case watch.Added, watch.Deleted, watch.Modified:
-					switch obj := event.Object.(type) {
-					case *batchv1.Job:
-						if len(obj.Status.Conditions) > 0 {
-							logger.Debug.Printf("%s: %s", event.Type, obj.Status.Conditions[0].Type)
-							switch obj.Status.Conditions[0].Type {
-							case batchv1.JobComplete, batchv1.JobFailed:
-								c <- nil
-							}
-						} else {
-							logger.Debug.Printf("job unexpectedly missing status conditions: %v", obj)
-						}
-					default:
-						logger.Debug.Printf("%s: %s", event.Type, "UNKNOWN")
+				case watch.Modified:
+					_pod := event.Object.(*v1.Pod)
+					switch _pod.Status.Phase {
+					case v1.PodSucceeded, v1.PodFailed:
+						logger.Debug.Printf("%s: %s", event.Type, _pod.Status.Phase)
+						c <- nil
 					}
+				case watch.Deleted:
+					logger.Error.Printf("Plugin deleted unexpectedly")
+					c <- nil
 				}
 			}
 		}()

@@ -18,7 +18,7 @@ func init() {
 	flags.StringSliceVarP(&deployment.EnvVarString, "env", "e", []string{}, "Set environment variables")
 	flags.StringVarP(&deployment.EnvFromFile, "env-from", "", "", "Set environment variables from file")
 	flags.BoolVar(&deployment.DevelopMode, "develop", false, "Enable the following development time features: access to wan network")
-	flags.StringVar(&deployment.Type, "type", "job", "Type of the plugin. It is one of ['pod', 'job', 'deployment', 'daemonset]. Default is 'pod'.")
+	flags.StringVar(&deployment.Type, "type", "pod", "Type of the plugin. It is one of ['pod', 'job', 'deployment', 'daemonset]. Default is 'pod'.")
 	flags.StringVar(&deployment.ResourceString, "resource", "", "Specify resource requirement for running the plugin")
 	flags.BoolVar(&deployment.EnablePluginController, "enable-plugin-controller", false, "Enable plugin controller supporting the plugin")
 	rootCmd.AddCommand(cmdDeploy)

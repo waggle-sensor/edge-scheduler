@@ -335,7 +335,7 @@ func (p *PluginCtl) PrintLog(pluginName string, follow bool) (func(), chan os.Si
 }
 
 func (p *PluginCtl) TerminatePlugin(pluginName string) error {
-	return p.ResourceManager.TerminateJob(pluginName)
+	return p.ResourceManager.TerminatePod(pluginName)
 }
 
 func (p *PluginCtl) GetPluginStatus(name string) (apiv1.PodPhase, error) {
@@ -407,7 +407,8 @@ func (p *PluginCtl) GetPerformanceData(s time.Time, e time.Time, pluginName stri
 	q := fmt.Sprintf(`
 from(bucket:"waggle")
   |> range(start: %s, stop: %s)
-  |> filter(fn: (r) => r["pod"] =~ /^%s*/)`,
+  |> filter(fn: (r) => r["task"] =~ /^%s*/)
+  |> filter(fn: (r) => r._measurement =~ /sys.plugin.perf.*/)`,
 		s.Format(time.RFC3339),
 		e.Format(time.RFC3339),
 		pluginName)
@@ -415,25 +416,6 @@ from(bucket:"waggle")
 	f, err := os.OpenFile(fmt.Sprintf("%s.csv", pluginName), os.O_CREATE|os.O_WRONLY, 0644)
 	defer f.Close()
 	result, err := queryAPI.QueryRaw(context.Background(), q, influxdb2.DefaultDialect())
-	if err == nil {
-		n, err := f.WriteString(result)
-		if err != nil {
-			logger.Error.Printf("Failed to write performance data to a file: %s", err.Error())
-		} else {
-			logger.Debug.Printf("%d bytes written", n)
-		}
-	} else {
-		logger.Error.Printf("Failed to obtain performance data: %s", err.Error())
-	}
-
-	q = fmt.Sprintf(`
-from(bucket:"waggle")
-  |> range(start: %s, stop: %s)
-  |> filter(fn: (r) => r._measurement == "sys.metrics.gpu.average.1s")`,
-		s.Format(time.RFC3339),
-		e.Format(time.RFC3339))
-	logger.Debug.Println(q)
-	result, err = queryAPI.QueryRaw(context.Background(), q, influxdb2.DefaultDialect())
 	if err == nil {
 		n, err := f.WriteString(result)
 		if err != nil {
