@@ -10,8 +10,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
 	"github.com/waggle-sensor/edge-scheduler/pkg/pluginctl"
-	batchv1 "k8s.io/api/batch/v1"
 	apiv1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/watch"
 )
 
@@ -32,6 +32,7 @@ func init() {
 	flags.StringSliceVarP(&deployment.EnvVarString, "env", "e", []string{}, "Set environment variables")
 	flags.StringVarP(&deployment.EnvFromFile, "env-from", "", "", "Set environment variables from file")
 	flags.BoolVar(&deployment.DevelopMode, "develop", false, "Enable the following development time features: access to wan network")
+	flags.StringVar(&deployment.ResourceString, "resource", "", "Specify resource requirement for running the plugin")
 	flags.StringVar(&metricsServerConfig.InfluxDBTokenPath, "influxdb-token-path", getenv("INFLUXDB_TOKEN_PATH", "~/.influxdb2/token"), "Path to valid token to access InfluxDB")
 	cmdProfile.AddCommand(cmdProfileRun)
 	flags = cmdProfileGet.Flags()
@@ -64,6 +65,9 @@ var cmdProfileRun = &cobra.Command{
 			logger.Error.Println("Abort profiling due to the error")
 			return err
 		}
+		// in profiling we always enable plugin controller to collect performance metrics
+		deployment.EnablePluginController = true
+		deployment.Type = "pod"
 		pluginName, err := pluginCtl.Deploy(deployment)
 		if err != nil {
 			return err
@@ -93,30 +97,24 @@ var cmdProfileRun = &cobra.Command{
 		c := make(chan os.Signal, 1)
 		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 		go func() {
-			watcher, err := pluginCtl.ResourceManager.WatchJob(pluginName, pluginCtl.ResourceManager.Namespace, 0)
+			watcher, err := pluginCtl.ResourceManager.WatchPod(pluginName, pluginCtl.ResourceManager.Namespace, 0)
 			if err != nil {
 				logger.Error.Printf("%q", err.Error())
 				c <- nil
 			}
-			chanGoal := watcher.ResultChan()
-			for {
-				event := <-chanGoal
+			chanEvent := watcher.ResultChan()
+			for event := range chanEvent {
 				switch event.Type {
-				case watch.Added, watch.Deleted, watch.Modified:
-					switch obj := event.Object.(type) {
-					case *batchv1.Job:
-						if len(obj.Status.Conditions) > 0 {
-							logger.Debug.Printf("%s: %s", event.Type, obj.Status.Conditions[0].Type)
-							switch obj.Status.Conditions[0].Type {
-							case batchv1.JobComplete, batchv1.JobFailed:
-								c <- nil
-							}
-						} else {
-							logger.Debug.Printf("job unexpectedly missing status conditions: %v", obj)
-						}
-					default:
-						logger.Debug.Printf("%s: %s", event.Type, "UNKNOWN")
+				case watch.Modified:
+					_pod := event.Object.(*v1.Pod)
+					switch _pod.Status.Phase {
+					case v1.PodSucceeded, v1.PodFailed:
+						logger.Debug.Printf("%s: %s", event.Type, _pod.Status.Phase)
+						c <- nil
 					}
+				case watch.Deleted:
+					logger.Error.Printf("Plugin deleted unexpectedly")
+					c <- nil
 				}
 			}
 		}()

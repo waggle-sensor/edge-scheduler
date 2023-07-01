@@ -917,6 +917,13 @@ func (rm *ResourceManager) ListJobs() (*batchv1.JobList, error) {
 	return list, err
 }
 
+func (rm *ResourceManager) ListPods() (*v1.PodList, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Second)
+	defer cancel()
+	list, err := rm.Clientset.CoreV1().Pods(rm.Namespace).List(ctx, metav1.ListOptions{})
+	return list, err
+}
+
 func (rm *ResourceManager) ListDeployments() (*appsv1.DeploymentList, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Second)
 	defer cancel()
@@ -980,25 +987,14 @@ func (rm *ResourceManager) TerminatePod(podName string) error {
 	})
 }
 
-func (rm *ResourceManager) GetPluginStatus(jobName string) (apiv1.PodPhase, error) {
-	// TODO: Later we use pod name as we run plugins in one-shot?
+func (rm *ResourceManager) GetPluginStatus(podName string) (apiv1.PodPhase, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Second)
 	defer cancel()
-	job, err := rm.Clientset.BatchV1().Jobs(rm.Namespace).Get(ctx, jobName, metav1.GetOptions{})
+	pod, err := rm.Clientset.CoreV1().Pods(rm.Namespace).Get(ctx, podName, metav1.GetOptions{})
 	if err != nil {
 		return "", err
 	}
-	selector := job.Spec.Selector
-	labels, err := metav1.LabelSelectorAsSelector(selector)
-	pods, err := rm.Clientset.CoreV1().Pods(rm.Namespace).List(ctx, metav1.ListOptions{LabelSelector: labels.String()})
-	if err != nil {
-		return "", err
-	}
-	if len(pods.Items) > 0 {
-		return pods.Items[0].Status.Phase, nil
-	} else {
-		return "", fmt.Errorf("No pod exists for job %q", jobName)
-	}
+	return pod.Status.Phase, nil
 }
 
 func (rm *ResourceManager) GetPod(jobName string) (*apiv1.Pod, error) {
@@ -1031,7 +1027,11 @@ func (rm *ResourceManager) GetPodName(jobName string) (string, error) {
 }
 
 func (rm *ResourceManager) GetPodLogHandler(podName string, follow bool) (io.ReadCloser, error) {
-	req := rm.Clientset.CoreV1().Pods(rm.Namespace).GetLogs(podName, &apiv1.PodLogOptions{Follow: follow})
+	req := rm.Clientset.CoreV1().Pods(rm.Namespace).
+		GetLogs(podName, &apiv1.PodLogOptions{
+			Follow:    follow,
+			Container: podName,
+		})
 	return req.Stream(context.TODO())
 }
 
@@ -1073,27 +1073,22 @@ func (rm *ResourceManager) GetServiceClusterIP(serviceName string, namespace str
 	return service.Spec.ClusterIP, nil
 }
 
-// CleanUp removes all currently running jobs
-func (rm *ResourceManager) ClenUp() error {
-	jobs, err := rm.ListJobs()
+// CleanUp removes all currently running plugins
+func (rm *ResourceManager) CleanUp() error {
+	pods, err := rm.ListPods()
 	if err != nil {
 		return err
 	}
-	for _, job := range jobs.Items {
+	for _, pod := range pods.Items {
 		// Skip WES service jobs
-		if strings.Contains(job.Name, "wes") {
+		if strings.Contains(pod.Name, "wes") {
 			continue
 		}
-		podStatus, err := rm.GetPluginStatus(job.Name)
-		if err != nil {
-			logger.Debug.Printf("Failed to read %q's pod status. Skipping...", job.Name)
-			continue
-		}
-		logger.Debug.Printf("Job %q's pod status %q", job.Name, podStatus)
-		switch podStatus {
+		logger.Debug.Printf("status of pod %q: %s", pod.Name, pod.Status.Phase)
+		switch pod.Status.Phase {
 		case apiv1.PodPending, apiv1.PodRunning:
-			rm.TerminateJob(job.Name)
-			logger.Debug.Printf("Job %q terminated successfully", job.Name)
+			rm.TerminatePod(pod.Name)
+			logger.Debug.Printf("pod %q terminated successfully", pod.Name)
 		}
 	}
 	return nil
@@ -1297,7 +1292,7 @@ func (rm *ResourceManager) Run() {
 	//       v1.20 could do it by enabling TTL controller, but could not set it
 	//       via k3s server --kube-control-manager-arg feature-gates=TTL...=true
 	// go ns.ResourceManager.RunGabageCollector()
-	gabageCollectorTicker := time.NewTicker(1 * time.Minute)
+	// gabageCollectorTicker := time.NewTicker(1 * time.Minute)
 	logger.Info.Printf("Pull goals from k3s configmap %s", configMapNameForGoals)
 	goalConfigMapFunc, _ := rm.GetConfigMapWatcher(configMapNameForGoals, "default")
 	goalWatcher := NewAdvancedWatcher(configMapNameForGoals, goalConfigMapFunc)
@@ -1305,11 +1300,11 @@ func (rm *ResourceManager) Run() {
 	logger.Info.Println("Starting the main loop of resource manager...")
 	for {
 		select {
-		case <-gabageCollectorTicker.C:
-			err := rm.RunGabageCollector()
-			if err != nil {
-				logger.Error.Printf("Failed to run gabage collector: %s", err.Error())
-			}
+		// case <-gabageCollectorTicker.C:
+		// 	err := rm.RunGabageCollector()
+		// 	if err != nil {
+		// 		logger.Error.Printf("Failed to run gabage collector: %s", err.Error())
+		// 	}
 		case event := <-goalWatcher.C:
 			switch event.Type {
 			case watch.Added, watch.Modified:
