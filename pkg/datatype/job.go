@@ -106,6 +106,10 @@ func (j *Job) Created() {
 	j.UpdateState(JobCreated)
 }
 
+func (j *Job) Drafted() {
+	j.UpdateState(JobDrafted)
+}
+
 func (j *Job) Submitted() {
 	j.UpdateState(JobSubmitted)
 }

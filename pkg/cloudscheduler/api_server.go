@@ -245,6 +245,7 @@ func (api *APIServer) handlerEditJob(w http.ResponseWriter, r *http.Request) {
 			if oldJob.ScienceGoal != nil {
 				api.cloudScheduler.GoalManager.RemoveScienceGoal(oldJob.ScienceGoal.ID)
 			}
+			updatedJob.Drafted()
 			api.cloudScheduler.GoalManager.UpdateJob(updatedJob, false)
 			response := datatype.NewAPIMessageBuilder().AddEntity("job_id", jobID).AddEntity("state", datatype.JobDrafted)
 			respondJSON(w, http.StatusOK, response.Build().ToJson())
