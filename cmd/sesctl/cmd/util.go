@@ -93,6 +93,7 @@ type JobRequest struct {
 	FilePath         string            // for loading job description from a file
 	Suspend          bool              // for suspending a job
 	Force            bool              // for making the request forceful
+	Override         bool              // attempting to override the permission
 	Headers          map[string]string // additional headers for request
 }
 

@@ -200,6 +200,10 @@ func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(jobID string, user *Us
 		return errorList
 	}
 	logger.Info.Printf("Updating science goal for JOB ID %q", jobID)
+	if job.ScienceGoal != nil {
+		logger.Info.Printf("job ID %q has an existing goal %q. dropping it first...", jobID, job.ScienceGoal.ID)
+		cs.GoalManager.RemoveScienceGoal(job.ScienceGoal.ID)
+	}
 	job.ScienceGoal = scienceGoalBuilder.Build()
 	if dryrun {
 		cs.GoalManager.UpdateJob(job, false)

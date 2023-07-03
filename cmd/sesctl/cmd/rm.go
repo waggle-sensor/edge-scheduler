@@ -20,7 +20,10 @@ func init() {
 			jobRequest.JobID = args[0]
 			rmFunc := func(r *JobRequest) error {
 				subPathString := path.Join(cloudscheduler.API_V1_VERSION, cloudscheduler.API_PATH_JOB_REMOVE_REGEX)
-				q, err := url.ParseQuery("suspend=" + strconv.FormatBool(r.Suspend) + "&force=" + strconv.FormatBool(r.Force))
+				q, err := url.ParseQuery(
+					"suspend=" + strconv.FormatBool(r.Suspend) +
+						"&force=" + strconv.FormatBool(r.Force) +
+						"&override=" + fmt.Sprint(r.Override))
 				if err != nil {
 					return err
 				}
@@ -41,5 +44,6 @@ func init() {
 	flags := cmdRm.Flags()
 	flags.BoolVarP(&jobRequest.Suspend, "suspend", "s", false, "Suspend the job")
 	flags.BoolVarP(&jobRequest.Force, "force", "f", false, "Remove or suspend the job forcefully")
+	flags.BoolVar(&jobRequest.Override, "override", false, "Attempt to override the permission")
 	rootCmd.AddCommand(cmdRm)
 }

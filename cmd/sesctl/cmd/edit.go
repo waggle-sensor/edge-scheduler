@@ -21,7 +21,7 @@ func init() {
 			editFunc := func(r *JobRequest) error {
 				subPathString := path.Join(cloudscheduler.API_V1_VERSION, cloudscheduler.API_PATH_JOB_EDIT)
 				if r.FilePath != "" {
-					q, err := url.ParseQuery("&id=" + fmt.Sprint(args[0]))
+					q, err := url.ParseQuery("&id=" + fmt.Sprint(args[0]) + "&override=" + fmt.Sprint(r.Override))
 					if err != nil {
 						return err
 					}
@@ -44,5 +44,6 @@ func init() {
 	}
 	flags := cmdEdit.Flags()
 	flags.StringVarP(&jobRequest.FilePath, "file-path", "f", "", "Path to the job file")
+	flags.BoolVar(&jobRequest.Override, "override", false, "Attempt to override the permission")
 	rootCmd.AddCommand(cmdEdit)
 }

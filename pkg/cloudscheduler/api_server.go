@@ -216,12 +216,6 @@ func (api *APIServer) handlerEditJob(w http.ResponseWriter, r *http.Request) {
 			respondJSON(w, http.StatusBadRequest, response.ToJson())
 			return
 		}
-		// If the job is not created by the user, raise an error
-		if oldJob.User != user.GetUserName() {
-			response := datatype.NewAPIMessageBuilder().AddError(fmt.Sprintf("User %s does not have access to the job", user.GetUserName())).Build()
-			respondJSON(w, http.StatusBadRequest, response.ToJson())
-			return
-		}
 		defer r.Body.Close()
 		// TODO: the API always assumes that the body contains job content
 		updatedJob := datatype.NewJob("", "", "")
@@ -231,25 +225,44 @@ func (api *APIServer) handlerEditJob(w http.ResponseWriter, r *http.Request) {
 			response := datatype.NewAPIMessageBuilder().AddError(err.Error()).Build()
 			respondJSON(w, http.StatusBadRequest, response.ToJson())
 			return
-		} else {
-			err = yaml.Unmarshal(blob, &updatedJob)
-			if err != nil {
-				response := datatype.NewAPIMessageBuilder().AddError(err.Error()).Build()
+		}
+		err = yaml.Unmarshal(blob, &updatedJob)
+		if err != nil {
+			response := datatype.NewAPIMessageBuilder().AddError(err.Error()).Build()
+			respondJSON(w, http.StatusBadRequest, response.ToJson())
+			return
+		}
+		updatedJob.JobID = jobID
+		if oldJob.User != user.GetUserName() {
+			logger.Info.Printf("user %q does not own the job %s", user.GetUserName(), jobID)
+			if queries.Get("override") == "true" {
+				logger.Info.Printf("user %q is attempting to override job %q owned by %s", user.GetUserName(), jobID, oldJob.User)
+				if user.Auth.IsSuperUser {
+					logger.Info.Printf("user %q is a super user. overriding permitted", user.GetUserName())
+					// keep the original user name
+					updatedJob.User = oldJob.User
+				} else {
+					response := datatype.NewAPIMessageBuilder().AddError(fmt.Sprintf("User %s does not have permission to override to the job", user.GetUserName())).Build()
+					respondJSON(w, http.StatusBadRequest, response.ToJson())
+					return
+				}
+			} else {
+				response := datatype.NewAPIMessageBuilder().AddError(fmt.Sprintf("User %s does not have access to the job", user.GetUserName())).Build()
 				respondJSON(w, http.StatusBadRequest, response.ToJson())
 				return
 			}
-			updatedJob.JobID = jobID
-			// Make sure the job ownder is the owner from the authentication
+		} else {
 			updatedJob.User = user.GetUserName()
-			// Remove science goal of old Job if exists
-			if oldJob.ScienceGoal != nil {
-				api.cloudScheduler.GoalManager.RemoveScienceGoal(oldJob.ScienceGoal.ID)
-			}
-			api.cloudScheduler.GoalManager.UpdateJob(updatedJob, false)
-			response := datatype.NewAPIMessageBuilder().AddEntity("job_id", jobID).AddEntity("state", datatype.JobDrafted)
-			respondJSON(w, http.StatusOK, response.Build().ToJson())
-			return
 		}
+		// Remove science goal of old Job if exists
+		if oldJob.ScienceGoal != nil {
+			api.cloudScheduler.GoalManager.RemoveScienceGoal(oldJob.ScienceGoal.ID)
+		}
+		updatedJob.Drafted()
+		api.cloudScheduler.GoalManager.UpdateJob(updatedJob, false)
+		response := datatype.NewAPIMessageBuilder().AddEntity("job_id", jobID).AddEntity("state", datatype.JobDrafted)
+		respondJSON(w, http.StatusOK, response.Build().ToJson())
+		return
 	} else {
 		response := datatype.NewAPIMessageBuilder().AddError("job_id is required").Build()
 		respondJSON(w, http.StatusBadRequest, response.ToJson())
@@ -287,7 +300,30 @@ func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) 
 	switch r.Method {
 	case http.MethodGet:
 		queries := r.URL.Query()
-		if _, exist := queries["id"]; exist {
+		if jobID := queries.Get("id"); jobID != "" {
+			existingJob, err := api.cloudScheduler.GoalManager.GetJob(jobID)
+			if err != nil {
+				response := datatype.NewAPIMessageBuilder().AddError(err.Error()).Build()
+				respondJSON(w, http.StatusBadRequest, response.ToJson())
+				return
+			}
+			if existingJob.User != user.GetUserName() {
+				logger.Info.Printf("user %q does not own the job %s", user.GetUserName(), jobID)
+				if queries.Get("override") == "true" {
+					logger.Info.Printf("user %q is attempting to override job %q owned by %s", user.GetUserName(), jobID, existingJob.User)
+					if user.Auth.IsSuperUser {
+						logger.Info.Printf("user %q is a super user. overriding permitted", user.GetUserName())
+					} else {
+						response := datatype.NewAPIMessageBuilder().AddError(fmt.Sprintf("User %s does not have permission to override to the job", user.GetUserName())).Build()
+						respondJSON(w, http.StatusBadRequest, response.ToJson())
+						return
+					}
+				} else {
+					response := datatype.NewAPIMessageBuilder().AddError(fmt.Sprintf("User %s does not have access to the job", user.GetUserName())).Build()
+					respondJSON(w, http.StatusBadRequest, response.ToJson())
+					return
+				}
+			}
 			errorList := api.cloudScheduler.ValidateJobAndCreateScienceGoal(queries.Get("id"), user, flagDryRun)
 			if len(errorList) > 0 {
 				response := datatype.NewAPIMessageBuilder().AddError(fmt.Sprintf("%v", errorList)).Build()
@@ -425,6 +461,7 @@ func (api *APIServer) handlerJobRemove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	vars := mux.Vars(r)
+	queries := r.URL.Query()
 	jobID := vars["id"]
 	job, err := api.cloudScheduler.GoalManager.GetJob(jobID)
 	if err != nil {
@@ -433,11 +470,22 @@ func (api *APIServer) handlerJobRemove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if job.User != user.GetUserName() {
-		response.AddError(fmt.Sprintf("User %s does not have permission to remove the job %s", user.GetUserName(), jobID))
-		respondJSON(w, http.StatusBadRequest, response.Build().ToJson())
-		return
+		logger.Info.Printf("user %q does not own the job %s", user.GetUserName(), jobID)
+		if queries.Get("override") == "true" {
+			logger.Info.Printf("user %q is attempting to override job %q owned by %s", user.GetUserName(), jobID, job.User)
+			if user.Auth.IsSuperUser {
+				logger.Info.Printf("user %q is a super user. overriding permitted", user.GetUserName())
+			} else {
+				response := datatype.NewAPIMessageBuilder().AddError(fmt.Sprintf("User %s does not have permission to override to the job", user.GetUserName())).Build()
+				respondJSON(w, http.StatusBadRequest, response.ToJson())
+				return
+			}
+		} else {
+			response := datatype.NewAPIMessageBuilder().AddError(fmt.Sprintf("user %q is not the owner of job %q", user.GetUserName(), jobID)).Build()
+			respondJSON(w, http.StatusBadRequest, response.ToJson())
+			return
+		}
 	}
-	queries := r.URL.Query()
 	// Suspend the job instead of removal if suspend flag is given
 	suspend := queries.Get("suspend")
 	if suspend == "true" {
