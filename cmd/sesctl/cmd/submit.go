@@ -18,7 +18,7 @@ func init() {
 			submitFunc := func(r *JobRequest) error {
 				subPathString := path.Join(cloudscheduler.API_V1_VERSION, cloudscheduler.API_PATH_JOB_SUBMIT)
 				if r.JobID != "" {
-					q, err := url.ParseQuery("id=" + r.JobID + "&dryrun=" + fmt.Sprint(r.DryRun))
+					q, err := url.ParseQuery("id=" + r.JobID + "&dryrun=" + fmt.Sprint(r.DryRun) + "&override=" + fmt.Sprint(r.Override))
 					if err != nil {
 						return err
 					}
@@ -57,5 +57,6 @@ func init() {
 	flags.StringVarP(&jobRequest.JobID, "job-id", "j", "", "Job ID")
 	flags.BoolVarP(&jobRequest.DryRun, "dry-run", "", false, "Dry run the job")
 	flags.StringVarP(&jobRequest.FilePath, "file-path", "f", "", "Path to the job file")
+	flags.BoolVar(&jobRequest.Override, "override", false, "Attempt to override the permission")
 	rootCmd.AddCommand(cmdSubmit)
 }

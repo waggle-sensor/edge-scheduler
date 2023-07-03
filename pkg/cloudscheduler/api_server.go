@@ -300,7 +300,30 @@ func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) 
 	switch r.Method {
 	case http.MethodGet:
 		queries := r.URL.Query()
-		if _, exist := queries["id"]; exist {
+		if jobID := queries.Get("id"); jobID != "" {
+			existingJob, err := api.cloudScheduler.GoalManager.GetJob(jobID)
+			if err != nil {
+				response := datatype.NewAPIMessageBuilder().AddError(err.Error()).Build()
+				respondJSON(w, http.StatusBadRequest, response.ToJson())
+				return
+			}
+			if existingJob.User != user.GetUserName() {
+				logger.Info.Printf("user %q does not own the job %s", user.GetUserName(), jobID)
+				if queries.Get("override") == "true" {
+					logger.Info.Printf("user %q is attempting to override job %q owned by %s", user.GetUserName(), jobID, existingJob.User)
+					if user.Auth.IsSuperUser {
+						logger.Info.Printf("user %q is a super user. overriding permitted", user.GetUserName())
+					} else {
+						response := datatype.NewAPIMessageBuilder().AddError(fmt.Sprintf("User %s does not have permission to override to the job", user.GetUserName())).Build()
+						respondJSON(w, http.StatusBadRequest, response.ToJson())
+						return
+					}
+				} else {
+					response := datatype.NewAPIMessageBuilder().AddError(fmt.Sprintf("User %s does not have access to the job", user.GetUserName())).Build()
+					respondJSON(w, http.StatusBadRequest, response.ToJson())
+					return
+				}
+			}
 			errorList := api.cloudScheduler.ValidateJobAndCreateScienceGoal(queries.Get("id"), user, flagDryRun)
 			if len(errorList) > 0 {
 				response := datatype.NewAPIMessageBuilder().AddError(fmt.Sprintf("%v", errorList)).Build()
