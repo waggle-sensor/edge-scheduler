@@ -21,6 +21,7 @@ func init() {
 	flags.StringVar(&deployment.Type, "type", "pod", "Type of the plugin. It is one of ['pod', 'job', 'deployment', 'daemonset]. Default is 'pod'.")
 	flags.StringVar(&deployment.ResourceString, "resource", "", "Specify resource requirement for running the plugin")
 	flags.BoolVar(&deployment.EnablePluginController, "enable-plugin-controller", false, "Enable plugin controller supporting the plugin")
+	flags.BoolVar(&deployment.ForceToUpdate, "force-to-update", false, "Force to create the plugin when failed to update it")
 	rootCmd.AddCommand(cmdDeploy)
 }
 

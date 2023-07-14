@@ -52,6 +52,7 @@ type Deployment struct {
 	Type                   string
 	ResourceString         string
 	EnablePluginController bool
+	ForceToUpdate          bool
 }
 
 func NewPluginCtl(kubeconfig string) (*PluginCtl, error) {
@@ -190,28 +191,28 @@ func (p *PluginCtl) Deploy(dep *Deployment) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		err = p.ResourceManager.UpdatePod(pod)
+		err = p.ResourceManager.UpdatePod(pod, dep.ForceToUpdate)
 		return pod.Name, err
 	case "job":
-		job, err := p.ResourceManager.CreateJob(&pluginRuntime)
+		job, err := p.ResourceManager.CreateJobTemplate(&pluginRuntime)
 		if err != nil {
 			return "", err
 		}
-		err = p.ResourceManager.RunPlugin(job)
+		err = p.ResourceManager.UpdateJob(job, dep.ForceToUpdate)
 		return job.Name, err
 	case "deployment":
-		deployment, err := p.ResourceManager.CreateDeployment(&pluginRuntime)
+		deployment, err := p.ResourceManager.CreateDeploymentTemplate(&pluginRuntime)
 		if err != nil {
 			return "", err
 		}
-		err = p.ResourceManager.UpdateDeployment(deployment)
+		err = p.ResourceManager.UpdateDeployment(deployment, dep.ForceToUpdate)
 		return deployment.Name, err
 	case "daemonset":
-		daemonSet, err := p.ResourceManager.CreateDaemonSet(&pluginRuntime)
+		daemonSet, err := p.ResourceManager.CreateDaemonSetTemplate(&pluginRuntime)
 		if err != nil {
 			return "", err
 		}
-		err = p.ResourceManager.UpdateDaemonSet(daemonSet)
+		err = p.ResourceManager.UpdateDaemonSet(daemonSet, dep.ForceToUpdate)
 		return daemonSet.Name, err
 	default:
 		return "", fmt.Errorf("Unknown type %q for plugin", dep.Type)

@@ -39,6 +39,7 @@ var cmdRun = &cobra.Command{
 		deployment.PluginArgs = args[1:]
 		// run always uses pod type
 		deployment.Type = "pod"
+		deployment.ForceToUpdate = false
 
 		logger.Debug.Printf("kubeconfig: %s", kubeconfig)
 		logger.Debug.Printf("deployment: %#v", deployment)
