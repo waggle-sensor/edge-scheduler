@@ -3,6 +3,7 @@ package pluginctl
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -17,6 +18,7 @@ import (
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
 	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
 	"github.com/waggle-sensor/edge-scheduler/pkg/nodescheduler"
+	"gopkg.in/yaml.v2"
 	apiv1 "k8s.io/api/core/v1"
 )
 
@@ -35,6 +37,7 @@ type PluginCtl struct {
 	kubeConfig      string
 	MetricsServer   *MetricsServer
 	ResourceManager *nodescheduler.ResourceManager
+	DryRun          bool
 }
 
 // Deployment holds the config pluginctl uses to deploy plugins
@@ -191,32 +194,74 @@ func (p *PluginCtl) Deploy(dep *Deployment) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		err = p.ResourceManager.UpdatePod(pod, dep.ForceToUpdate)
-		return pod.Name, err
+		if p.DryRun {
+			return pod.Name, writeResourceYAML(os.Stdout, "core/v1", "Pod", pod)
+		} else {
+			return pod.Name, p.ResourceManager.UpdatePod(pod, dep.ForceToUpdate)
+		}
 	case "job":
 		job, err := p.ResourceManager.CreateJobTemplate(&pluginRuntime)
 		if err != nil {
 			return "", err
 		}
-		err = p.ResourceManager.UpdateJob(job, dep.ForceToUpdate)
-		return job.Name, err
+		if p.DryRun {
+			return job.Name, writeResourceYAML(os.Stdout, "batch/v1", "Job", job)
+		} else {
+			return job.Name, p.ResourceManager.UpdateJob(job, dep.ForceToUpdate)
+		}
 	case "deployment":
 		deployment, err := p.ResourceManager.CreateDeploymentTemplate(&pluginRuntime)
 		if err != nil {
 			return "", err
 		}
-		err = p.ResourceManager.UpdateDeployment(deployment, dep.ForceToUpdate)
-		return deployment.Name, err
+		if p.DryRun {
+			return deployment.Name, writeResourceYAML(os.Stdout, "apps/v1", "Deployment", deployment)
+		} else {
+			return deployment.Name, p.ResourceManager.UpdateDeployment(deployment, dep.ForceToUpdate)
+		}
 	case "daemonset":
 		daemonSet, err := p.ResourceManager.CreateDaemonSetTemplate(&pluginRuntime)
 		if err != nil {
 			return "", err
 		}
-		err = p.ResourceManager.UpdateDaemonSet(daemonSet, dep.ForceToUpdate)
-		return daemonSet.Name, err
+		if p.DryRun {
+			return daemonSet.Name, writeResourceYAML(os.Stdout, "apps/v1", "DaemonSet", daemonSet)
+		} else {
+			return daemonSet.Name, p.ResourceManager.UpdateDaemonSet(daemonSet, dep.ForceToUpdate)
+		}
 	default:
 		return "", fmt.Errorf("Unknown type %q for plugin", dep.Type)
 	}
+}
+
+func writeResourceYAML(w io.Writer, apiVersion string, kind string, resource interface{}) error {
+	cleaned, err := cleanResource(resource)
+	if err != nil {
+		return err
+	}
+
+	cleaned["apiVersion"] = apiVersion
+	cleaned["kind"] = kind
+	delete(cleaned, "status")
+
+	return yaml.NewEncoder(w).Encode(cleaned)
+}
+
+// cleanResource is a helper function which leverages the fact that k8s types use json
+// tags to omit empty fields. unfortunately, using yaml directly leaves all these in.
+func cleanResource(resource interface{}) (map[string]interface{}, error) {
+	b, err := json.Marshal(resource)
+	if err != nil {
+		return nil, err
+	}
+
+	var cleaned map[string]interface{}
+
+	if err := json.Unmarshal(b, &cleaned); err != nil {
+		return nil, err
+	}
+
+	return cleaned, nil
 }
 
 // RunAsync runs given plugin and reports plugin status changes back to caller

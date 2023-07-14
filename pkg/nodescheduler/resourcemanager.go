@@ -589,6 +589,15 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(pr *datatype.PluginRun
 					},
 				},
 			},
+			Resources: apiv1.ResourceRequirements{
+				Requests: apiv1.ResourceList{
+					apiv1.ResourceCPU:    resource.MustParse("100m"),
+					apiv1.ResourceMemory: resource.MustParse("50Mi"),
+				},
+				Limits: apiv1.ResourceList{
+					apiv1.ResourceMemory: resource.MustParse("50Mi"),
+				},
+			},
 		},
 	}
 

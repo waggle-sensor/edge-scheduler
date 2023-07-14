@@ -8,8 +8,11 @@ import (
 	"github.com/waggle-sensor/edge-scheduler/pkg/pluginctl"
 )
 
+var dryRun bool
+
 func init() {
 	flags := cmdDeploy.Flags()
+	flags.BoolVar(&dryRun, "dry-run", false, "Output Kubernetes resource which would have been created.")
 	flags.StringVarP(&deployment.Name, "name", "n", "", "Specify plugin name")
 	flags.StringVar(&deployment.Node, "node", "", "run plugin on node")
 	flags.StringVar(&deployment.SelectorString, "selector", "", "Specify where plugin can run")
@@ -42,14 +45,18 @@ var cmdDeploy = &cobra.Command{
 			return err
 		}
 
+		pluginCtl.DryRun = dryRun
+
 		pluginName, err := pluginCtl.Deploy(deployment)
 		if err != nil {
 			return err
 		}
 
-		fmt.Printf("Launched the plugin %s successfully \n", pluginName)
-		fmt.Printf("You may check the log: pluginctl logs %s\n", pluginName)
-		fmt.Printf("To terminate the job: pluginctl rm %s\n", pluginName)
+		if !pluginCtl.DryRun {
+			fmt.Printf("Launched the plugin %s successfully \n", pluginName)
+			fmt.Printf("You may check the log: pluginctl logs %s\n", pluginName)
+			fmt.Printf("To terminate the job: pluginctl rm %s\n", pluginName)
+		}
 
 		return nil
 	},

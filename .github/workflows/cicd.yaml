@@ -3,7 +3,7 @@ on: push
 jobs:
   test_and_release:
     name: CI/CD
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - name: Setup Go
         uses: actions/setup-go@v2
@@ -29,15 +29,20 @@ jobs:
             ./out/runplugin-linux-amd64
             ./out/runplugin-linux-arm64
             ./out/runplugin-darwin-amd64
+            ./out/runplugin-darwin-arm64
             ./out/runplugin-windows-amd64
             ./out/pluginctl-linux-amd64
             ./out/pluginctl-linux-arm64
             ./out/pluginctl-darwin-amd64
+            ./out/pluginctl-darwin-arm64
             ./out/pluginctl-windows-amd64
             ./out/sesctl-linux-amd64
             ./out/sesctl-linux-arm64
             ./out/sesctl-darwin-amd64
+            ./out/sesctl-darwin-arm64
             ./out/sesctl-windows-amd64
+            ./out/sha1sum.txt
+            ./out/sha256sum.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   push_to_registry:

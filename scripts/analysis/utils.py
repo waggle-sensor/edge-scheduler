@@ -64,4 +64,3 @@ def fill_completion_failure(df):
             else:
                 launched.loc[index, "end_state"] = "unknown"
     return launched
-
