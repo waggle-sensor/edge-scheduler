@@ -76,6 +76,8 @@ func (ns *NodeScheduler) Configure() (err error) {
 
 // Run handles communications between components for scheduling
 func (ns *NodeScheduler) Run() {
+	logger.Info.Println("Attempting to clean up all plugins before starting scheduling...")
+	ns.ResourceManager.CleanUp()
 	go ns.ResourceManager.Run()
 	go ns.APIServer.Run()
 	ruleCheckingTicker := time.NewTicker(10 * time.Second)

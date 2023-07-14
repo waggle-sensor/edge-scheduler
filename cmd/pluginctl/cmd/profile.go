@@ -147,9 +147,13 @@ var cmdProfileGet = &cobra.Command{
 	Use:              "get [FLAGS] PLUGIN_K3S_POD_NAME",
 	Short:            "get existing performance data of a plugin",
 	TraverseChildren: true,
-	Args:             cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		pluginName := args[0]
+		var pluginName string
+		if len(args) == 0 {
+			pluginName = ""
+		} else {
+			pluginName = args[0]
+		}
 		logger.Debug.Printf("kubeconfig: %s", kubeconfig)
 		pluginCtl, err := pluginctl.NewPluginCtl(kubeconfig)
 		if err != nil {
