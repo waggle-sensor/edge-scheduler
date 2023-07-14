@@ -68,6 +68,7 @@ var cmdProfileRun = &cobra.Command{
 		// in profiling we always enable plugin controller to collect performance metrics
 		deployment.EnablePluginController = true
 		deployment.Type = "pod"
+		deployment.ForceToUpdate = false
 		pluginName, err := pluginCtl.Deploy(deployment)
 		if err != nil {
 			return err

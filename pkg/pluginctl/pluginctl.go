@@ -55,6 +55,7 @@ type Deployment struct {
 	Type                   string
 	ResourceString         string
 	EnablePluginController bool
+	ForceToUpdate          bool
 }
 
 func NewPluginCtl(kubeconfig string) (*PluginCtl, error) {
@@ -193,40 +194,40 @@ func (p *PluginCtl) Deploy(dep *Deployment) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		err = p.ResourceManager.UpdatePod(pod)
-		return pod.Name, err
+		if p.DryRun {
+			return pod.Name, writeResourceYAML(os.Stdout, "core/v1", "Pod", pod)
+		} else {
+			return pod.Name, p.ResourceManager.UpdatePod(pod, dep.ForceToUpdate)
+		}
 	case "job":
-		job, err := p.ResourceManager.CreateJob(&pluginRuntime)
+		job, err := p.ResourceManager.CreateJobTemplate(&pluginRuntime)
 		if err != nil {
 			return "", err
 		}
-
 		if p.DryRun {
 			return job.Name, writeResourceYAML(os.Stdout, "batch/v1", "Job", job)
 		} else {
-			return job.Name, p.ResourceManager.RunPlugin(job)
+			return job.Name, p.ResourceManager.UpdateJob(job, dep.ForceToUpdate)
 		}
 	case "deployment":
-		deployment, err := p.ResourceManager.CreateDeployment(&pluginRuntime)
+		deployment, err := p.ResourceManager.CreateDeploymentTemplate(&pluginRuntime)
 		if err != nil {
 			return "", err
 		}
-
 		if p.DryRun {
 			return deployment.Name, writeResourceYAML(os.Stdout, "apps/v1", "Deployment", deployment)
 		} else {
-			return deployment.Name, p.ResourceManager.UpdateDeployment(deployment)
+			return deployment.Name, p.ResourceManager.UpdateDeployment(deployment, dep.ForceToUpdate)
 		}
 	case "daemonset":
-		daemonSet, err := p.ResourceManager.CreateDaemonSet(&pluginRuntime)
+		daemonSet, err := p.ResourceManager.CreateDaemonSetTemplate(&pluginRuntime)
 		if err != nil {
 			return "", err
 		}
-
 		if p.DryRun {
 			return daemonSet.Name, writeResourceYAML(os.Stdout, "apps/v1", "DaemonSet", daemonSet)
 		} else {
-			return daemonSet.Name, p.ResourceManager.UpdateDaemonSet(daemonSet)
+			return daemonSet.Name, p.ResourceManager.UpdateDaemonSet(daemonSet, dep.ForceToUpdate)
 		}
 	default:
 		return "", fmt.Errorf("Unknown type %q for plugin", dep.Type)

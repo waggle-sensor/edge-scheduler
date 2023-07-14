@@ -742,7 +742,7 @@ func (rm *ResourceManager) CreatePodTemplate(pr *datatype.PluginRuntime) (*apiv1
 }
 
 // CreateK3SJob creates and returns a Kubernetes job object of the pllugin
-func (rm *ResourceManager) CreateJob(pr *datatype.PluginRuntime) (*batchv1.Job, error) {
+func (rm *ResourceManager) CreateJobTemplate(pr *datatype.PluginRuntime) (*batchv1.Job, error) {
 	name, err := pluginNameForSpecDeployment(&pr.Plugin)
 	if err != nil {
 		return nil, err
@@ -766,9 +766,9 @@ func (rm *ResourceManager) CreateJob(pr *datatype.PluginRuntime) (*batchv1.Job, 
 	}, nil
 }
 
-// CreateDeployment creates and returns a Kubernetes deployment object of the plugin
+// CreateDeploymentTemplate creates and returns a Kubernetes deployment object of the plugin
 // It also embeds a K3S configmap for plugin if needed
-func (rm *ResourceManager) CreateDeployment(pr *datatype.PluginRuntime) (*appsv1.Deployment, error) {
+func (rm *ResourceManager) CreateDeploymentTemplate(pr *datatype.PluginRuntime) (*appsv1.Deployment, error) {
 	name, err := pluginNameForSpecDeployment(&pr.Plugin)
 	if err != nil {
 		return nil, err
@@ -792,7 +792,7 @@ func (rm *ResourceManager) CreateDeployment(pr *datatype.PluginRuntime) (*appsv1
 	}, nil
 }
 
-func (rm *ResourceManager) CreateDaemonSet(pr *datatype.PluginRuntime) (*appsv1.DaemonSet, error) {
+func (rm *ResourceManager) CreateDaemonSetTemplate(pr *datatype.PluginRuntime) (*appsv1.DaemonSet, error) {
 	name, err := pluginNameForSpecDeployment(&pr.Plugin)
 	if err != nil {
 		return nil, err
@@ -842,17 +842,28 @@ func (rm *ResourceManager) CreateDataConfigMap(configName string, datashims []*d
 	return err
 }
 
-func (rm *ResourceManager) UpdatePod(pod *apiv1.Pod) error {
+func (rm *ResourceManager) UpdatePod(pod *apiv1.Pod, forceToUpdate bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	pods := rm.Clientset.CoreV1().Pods(rm.Namespace)
 	if _, err := pods.Get(ctx, pod.Name, metav1.GetOptions{}); err == nil {
-		_, err := pods.Update(ctx, pod, metav1.UpdateOptions{})
-		return err
-	} else {
-		_, err := pods.Create(ctx, pod, metav1.CreateOptions{})
-		return err
+		if _, err := pods.Update(ctx, pod, metav1.UpdateOptions{}); err != nil {
+			if forceToUpdate {
+				logger.Info.Printf("updating Pod %q failed: %s. forceToUpdate enabled. attempting to delete it before creating.", pod.Name, err.Error())
+				if err := pods.Delete(ctx, pod.Name, metav1.DeleteOptions{}); err != nil {
+					return err
+				}
+				// This is to ensure Kubernetes gets time to delete the object before creating it
+				time.Sleep(500 * time.Millisecond)
+			} else {
+				return err
+			}
+		} else {
+			return nil
+		}
 	}
+	_, err := pods.Create(ctx, pod, metav1.CreateOptions{})
+	return err
 }
 
 func (rm *ResourceManager) CreatePod(pod *apiv1.Pod) error {
@@ -862,31 +873,77 @@ func (rm *ResourceManager) CreatePod(pod *apiv1.Pod) error {
 	return err
 }
 
-func (rm *ResourceManager) UpdateDeployment(deployment *appsv1.Deployment) error {
+func (rm *ResourceManager) UpdateJob(job *batchv1.Job, forceToUpdate bool) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	jobs := rm.Clientset.BatchV1().Jobs(rm.Namespace)
+	if _, err := jobs.Get(ctx, job.Name, metav1.GetOptions{}); err == nil {
+		if _, err := jobs.Update(ctx, job, metav1.UpdateOptions{}); err != nil {
+			if forceToUpdate {
+				logger.Info.Printf("updating Job %q failed: %s. forceToUpdate enabled. attempting to delete it before creating.", job.Name, err.Error())
+				if err := jobs.Delete(ctx, job.Name, metav1.DeleteOptions{}); err != nil {
+					return err
+				}
+				// This is to ensure Kubernetes gets time to delete the object before creating it
+				time.Sleep(500 * time.Millisecond)
+			} else {
+				return err
+			}
+		} else {
+			return nil
+		}
+	}
+	_, err := jobs.Create(ctx, job, metav1.CreateOptions{})
+	return err
+}
+
+func (rm *ResourceManager) UpdateDeployment(deployment *appsv1.Deployment, forceToUpdate bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	deployments := rm.Clientset.AppsV1().Deployments(rm.Namespace)
 	// if deployment exists, then update it, else create it
 	if _, err := deployments.Get(ctx, deployment.Name, metav1.GetOptions{}); err == nil {
-		_, err := deployments.Update(ctx, deployment, metav1.UpdateOptions{})
-		return err
-	} else {
-		_, err := deployments.Create(ctx, deployment, metav1.CreateOptions{})
-		return err
+		if _, err := deployments.Update(ctx, deployment, metav1.UpdateOptions{}); err != nil {
+			if forceToUpdate {
+				logger.Info.Printf("updating Deployment %q failed: %s. forceToUpdate enabled. attempting to delete it before creating.", deployment.Name, err.Error())
+				if err := deployments.Delete(ctx, deployment.Name, metav1.DeleteOptions{}); err != nil {
+					return err
+				}
+				// This is to ensure Kubernetes gets time to delete the object before creating it
+				time.Sleep(500 * time.Millisecond)
+			} else {
+				return err
+			}
+		} else {
+			return nil
+		}
 	}
+	_, err := deployments.Create(ctx, deployment, metav1.CreateOptions{})
+	return err
 }
 
-func (rm *ResourceManager) UpdateDaemonSet(daemonSet *appsv1.DaemonSet) error {
+func (rm *ResourceManager) UpdateDaemonSet(daemonSet *appsv1.DaemonSet, forceToUpdate bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	daemonSets := rm.Clientset.AppsV1().DaemonSets(rm.Namespace)
 	if _, err := daemonSets.Get(ctx, daemonSet.Name, metav1.GetOptions{}); err == nil {
-		_, err := daemonSets.Update(ctx, daemonSet, metav1.UpdateOptions{})
-		return err
-	} else {
-		_, err := daemonSets.Create(ctx, daemonSet, metav1.CreateOptions{})
-		return err
+		if _, err := daemonSets.Update(ctx, daemonSet, metav1.UpdateOptions{}); err != nil {
+			if forceToUpdate {
+				logger.Info.Printf("updating DaemonSet %q failed: %s. forceToUpdate enabled. attempting to delete it before creating.", daemonSet.Name, err.Error())
+				if err := daemonSets.Delete(ctx, daemonSet.Name, metav1.DeleteOptions{}); err != nil {
+					return err
+				}
+				// This is to ensure Kubernetes gets time to delete the object before creating it
+				time.Sleep(500 * time.Millisecond)
+			} else {
+				return err
+			}
+		} else {
+			return nil
+		}
 	}
+	_, err := daemonSets.Create(ctx, daemonSet, metav1.CreateOptions{})
+	return err
 }
 
 func (rm *ResourceManager) RunPlugin(job *batchv1.Job) error {
