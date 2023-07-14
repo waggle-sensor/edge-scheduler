@@ -988,25 +988,11 @@ func (rm *ResourceManager) GetPluginStatus(podName string) (apiv1.PodPhase, erro
 	return pod.Status.Phase, nil
 }
 
-func (rm *ResourceManager) GetPod(jobName string) (*apiv1.Pod, error) {
+func (rm *ResourceManager) GetPod(podName string) (*apiv1.Pod, error) {
 	// TODO: Later we use pod name as we run plugins in one-shot?
 	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Second)
 	defer cancel()
-	job, err := rm.Clientset.BatchV1().Jobs(rm.Namespace).Get(ctx, jobName, metav1.GetOptions{})
-	if err != nil {
-		return nil, err
-	}
-	selector := job.Spec.Selector
-	labels, err := metav1.LabelSelectorAsSelector(selector)
-	pods, err := rm.Clientset.CoreV1().Pods(rm.Namespace).List(ctx, metav1.ListOptions{LabelSelector: labels.String()})
-	if err != nil {
-		return nil, err
-	}
-	if len(pods.Items) > 0 {
-		return &pods.Items[0], nil
-	} else {
-		return nil, fmt.Errorf("No pod exists for job %q", jobName)
-	}
+	return rm.Clientset.CoreV1().Pods(rm.Namespace).Get(ctx, podName, metav1.GetOptions{})
 }
 
 func (rm *ResourceManager) GetPodName(jobName string) (string, error) {
@@ -1075,12 +1061,9 @@ func (rm *ResourceManager) CleanUp() error {
 		if strings.Contains(pod.Name, "wes") {
 			continue
 		}
-		logger.Debug.Printf("status of pod %q: %s", pod.Name, pod.Status.Phase)
-		switch pod.Status.Phase {
-		case apiv1.PodPending, apiv1.PodRunning:
-			rm.TerminatePod(pod.Name)
-			logger.Debug.Printf("pod %q terminated successfully", pod.Name)
-		}
+		logger.Info.Printf("status of pod %q: %s", pod.Name, pod.Status.Phase)
+		rm.TerminatePod(pod.Name)
+		logger.Info.Printf("pod %q terminated successfully", pod.Name)
 	}
 	return nil
 }
@@ -1244,7 +1227,7 @@ func (rm *ResourceManager) RunGabageCollector() error {
 }
 
 func (rm *ResourceManager) RemovePlugin(p *datatype.Plugin) {
-	rm.TerminateJob(p.Name)
+	rm.TerminatePod(p.Name)
 }
 
 func (rm *ResourceManager) Configure() (err error) {

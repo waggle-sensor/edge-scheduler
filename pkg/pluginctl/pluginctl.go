@@ -13,6 +13,7 @@ import (
 	"time"
 
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
+	"github.com/influxdata/influxdb-client-go/v2/domain"
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
 	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
 	"github.com/waggle-sensor/edge-scheduler/pkg/nodescheduler"
@@ -402,20 +403,32 @@ func (p *PluginCtl) GetPlugins() (formattedList string, err error) {
 
 func (p *PluginCtl) GetPerformanceData(s time.Time, e time.Time, pluginName string) error {
 	logger.Info.Println("Start gathering performance data...")
+	var q string
+	if pluginName == "" {
+		logger.Info.Println("no plugin name is given. all plugins are subject for search. the output name will be all.csv")
+		q = fmt.Sprintf(`
+		from(bucket:"waggle")
+		  |> range(start: %s, stop: %s)
+		  |> filter(fn: (r) => r._measurement =~ /sys.plugin.perf.*/)`,
+			s.Format(time.RFC3339),
+			e.Format(time.RFC3339))
+		pluginName = "all"
+	} else {
+		q = fmt.Sprintf(`
+		from(bucket:"waggle")
+		  |> range(start: %s, stop: %s)
+		  |> filter(fn: (r) => r["task"] =~ /^%s*/)
+		  |> filter(fn: (r) => r._measurement =~ /sys.plugin.perf.*/)`,
+			s.Format(time.RFC3339),
+			e.Format(time.RFC3339),
+			pluginName)
+	}
+	logger.Debug.Println(q)
 	// TODO: We will need an error handling on whether the metrics server with config is set
 	queryAPI := p.MetricsServer.Client.QueryAPI("waggle")
-	q := fmt.Sprintf(`
-from(bucket:"waggle")
-  |> range(start: %s, stop: %s)
-  |> filter(fn: (r) => r["task"] =~ /^%s*/)
-  |> filter(fn: (r) => r._measurement =~ /sys.plugin.perf.*/)`,
-		s.Format(time.RFC3339),
-		e.Format(time.RFC3339),
-		pluginName)
-	logger.Debug.Println(q)
 	f, err := os.OpenFile(fmt.Sprintf("%s.csv", pluginName), os.O_CREATE|os.O_WRONLY, 0644)
 	defer f.Close()
-	result, err := queryAPI.QueryRaw(context.Background(), q, influxdb2.DefaultDialect())
+	result, err := queryAPI.QueryRaw(context.Background(), q, &domain.Dialect{})
 	if err == nil {
 		n, err := f.WriteString(result)
 		if err != nil {
