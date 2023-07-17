@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 	"github.com/waggle-sensor/edge-scheduler/pkg/pluginctl"
@@ -21,11 +21,6 @@ var cmdPs = &cobra.Command{
 		if err != nil {
 			return
 		}
-		list, err := pluginCtl.GetPlugins()
-		if err != nil {
-			return
-		}
-		fmt.Println(list)
-		return
+		return pluginCtl.GetPlugins(os.Stdout)
 	},
 }

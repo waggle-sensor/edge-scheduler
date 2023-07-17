@@ -11,6 +11,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
@@ -392,31 +393,22 @@ func (p *PluginCtl) GetPluginStatus(name string) (apiv1.PodPhase, error) {
 // GetPlugins returns list of plugins. It is assumed that each Kubernetes job handling
 // a plugin has only one Kubernetes pod, so only the first pod associated to the job is
 // considered when printing state of the job.
-func (p *PluginCtl) GetPlugins() (formattedList string, err error) {
-	list, err := p.ResourceManager.ListJobs()
+func (p *PluginCtl) GetPlugins(o io.Writer) error {
+	list, err := p.ResourceManager.ListPodsWithLabels(map[string]string{
+		"app.kubernetes.io/created-by": "pluginctl",
+	})
 	if err != nil {
-		return
+		return err
 	}
-	var (
-		maxLengthName      int = 0
-		maxLengthStatus    int = len("succeeded")
-		maxLengthStartTime int = 23
-		maxLengthDuration  int = 4
-	)
-	for _, plugin := range list.Items {
-		if strings.Contains(plugin.Name, "wes") {
-			continue
-		}
-		if len(plugin.Name) > maxLengthName {
-			maxLengthName = len(plugin.Name)
-		}
-	}
-	formattedList += fmt.Sprintf("%-*s%-*s%-*s%-*s\n", maxLengthName+3, "NAME", maxLengthStatus+3, "STATUS", maxLengthStartTime+3, "START_TIME", maxLengthDuration+3, "RUNNING_TIME")
 	var (
 		startTime string
 		duration  string
 		status    string
+		node      string
 	)
+	writer := tabwriter.NewWriter(o, 0, 0, 1, ' ', 0)
+	fmt.Fprintf(writer, "%s\t%s\t%s\t%s\t%s\n", "NAME", "STATUS", "NODE", "START_TIME", "RUNNING_TIME")
+
 	for _, plugin := range list.Items {
 		if strings.Contains(plugin.Name, "wes") {
 			continue
@@ -424,27 +416,30 @@ func (p *PluginCtl) GetPlugins() (formattedList string, err error) {
 		startTime = ""
 		duration = ""
 		status = "UNKNOWN"
+		node = plugin.Spec.NodeName
 		if plugin.Status.StartTime != nil {
 			// NOTE: Time format in Go is so special. https://pkg.go.dev/time#Time.Format
 			startTime = plugin.Status.StartTime.Time.UTC().Format("2006/01/02 15:04:05 MST")
 		}
-		if len(plugin.Status.Conditions) > 0 {
-			status = string(plugin.Status.Conditions[0].Type)
-			if plugin.Status.CompletionTime != nil {
-				duration = plugin.Status.CompletionTime.Sub(plugin.Status.StartTime.Time).String()
-			}
-		} else {
-			podPhase, err := p.ResourceManager.GetPluginStatus(plugin.Name)
-			if err != nil {
-				status = "ERROR"
+		status = string(plugin.Status.Phase)
+		switch plugin.Status.Phase {
+		case apiv1.PodSucceeded:
+			if t := plugin.Status.ContainerStatuses[0].State.Terminated; t != nil {
+				duration = t.FinishedAt.Sub(plugin.Status.StartTime.Time).String()
 			} else {
-				status = string(podPhase)
-				duration = time.Since(plugin.Status.StartTime.Time).String()
+				logger.Debug.Printf("failed to get container status %q: the container has not finished but the Pod %s", plugin.Name, status)
+			}
+		case apiv1.PodRunning:
+			duration = time.Since(plugin.Status.StartTime.Time).String()
+		case apiv1.PodFailed:
+			if r := plugin.Status.Reason; r != "" {
+				status = plugin.Status.Reason
 			}
 		}
-		formattedList += fmt.Sprintf("%-*s%-*s%-*s%-*s\n", maxLengthName+3, plugin.Name, maxLengthStatus+3, status, maxLengthStartTime+3, startTime, maxLengthDuration+3, duration)
+		fmt.Fprintf(writer, "%s\t%s\t%s\t%s\t%s\n", plugin.Name, status, node, startTime, duration)
 	}
-	return
+	writer.Flush()
+	return nil
 }
 
 func (p *PluginCtl) GetPerformanceData(s time.Time, e time.Time, pluginName string) error {
