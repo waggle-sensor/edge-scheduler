@@ -15,7 +15,6 @@ import (
 	"time"
 
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
-	"github.com/influxdata/influxdb-client-go/v2/domain"
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
 	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
 	"github.com/waggle-sensor/edge-scheduler/pkg/nodescheduler"
@@ -469,7 +468,7 @@ func (p *PluginCtl) GetPerformanceData(s time.Time, e time.Time, pluginName stri
 	queryAPI := p.MetricsServer.Client.QueryAPI("waggle")
 	f, err := os.OpenFile(fmt.Sprintf("%s.csv", pluginName), os.O_CREATE|os.O_WRONLY, 0644)
 	defer f.Close()
-	result, err := queryAPI.QueryRaw(context.Background(), q, &domain.Dialect{})
+	result, err := queryAPI.QueryRaw(context.Background(), q, influxdb2.DefaultDialect())
 	if err == nil {
 		n, err := f.WriteString(result)
 		if err != nil {
