@@ -348,7 +348,10 @@ func (p *PluginCtl) RunAsync(dep *Deployment, chEvent chan<- datatype.Event, out
 }
 
 func (p *PluginCtl) PrintLog(pluginName string, follow bool) (func(), chan os.Signal, error) {
-	podLog, err := p.ResourceManager.GetPodLogHandler(pluginName, follow)
+	podLog, err := p.ResourceManager.GetPodLogHandler(pluginName, &apiv1.PodLogOptions{
+		Container: pluginName,
+		Follow:    follow,
+	})
 	if err != nil {
 		return nil, nil, err
 	}
