@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -102,7 +101,7 @@ func (p *PluginCtl) ConnectToMetricsServer(config MetricsServerConfig) error {
 	} else {
 		path = config.InfluxDBTokenPath
 	}
-	tokenBlob, err := ioutil.ReadFile(path)
+	tokenBlob, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("Failed to read token at %s: %s", config.InfluxDBTokenPath, err)
 	}
