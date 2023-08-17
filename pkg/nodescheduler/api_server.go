@@ -4,11 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 
 	// "net/http/pprof"
-	"strconv"
 
 	"github.com/gorilla/mux"
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
@@ -35,72 +33,16 @@ func (api *APIServer) Run() {
 	// mux := http.NewServeMux()
 	// mux.HandleFunc("/debug/pprof", pprof.Index)
 	// go http.ListenAndServe(":18080", nil)
-	api_route.Handle("/kb/rules", http.HandlerFunc(api.handlerRules)).Methods(http.MethodGet, http.MethodPost)
-	api_route.Handle("/kb/senses", http.HandlerFunc(api.handlerSenses)).Methods(http.MethodGet, http.MethodPost, http.MethodDelete)
 	api_route.Handle("/goals", http.HandlerFunc(api.handlerGoals)).Methods(http.MethodGet, http.MethodPost, http.MethodPut)
+	api_route.Handle("/schedule", http.HandlerFunc(api.handlerSchedule)).Methods(http.MethodGet, http.MethodPost, http.MethodPut)
 	// api_route.Handle("/status/queue/waiting", http.HandlerFunc(api.handlerGoals)).Methods(http.MethodGet, http.MethodPost, http.MethodPut)
 	logger.Info.Fatalln(http.ListenAndServe(api_address_port, r))
 }
 
-func respondJSON(w http.ResponseWriter, statusCode int, data interface{}) {
+func respondJSON(w http.ResponseWriter, statusCode int, data []byte) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-
-	// json.NewEncoder(w).Encode(data)
-	s, err := json.MarshalIndent(data, "", "  ")
-	if err == nil {
-		w.Write(s)
-	}
-}
-
-func (api *APIServer) handlerRules(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		clauses := ""
-		respondJSON(w, http.StatusOK, clauses)
-	case http.MethodPost:
-		r.ParseForm()
-		clause := r.Form.Get("clause")
-		respondJSON(w, http.StatusOK, clause)
-	}
-}
-
-func (api *APIServer) handlerSenses(w http.ResponseWriter, r *http.Request) {
-
-	switch r.Method {
-	case http.MethodGet:
-		queries := r.URL.Query()
-		if _, exist := queries["key"]; exist {
-			if _, exist := queries["value"]; exist {
-				if v, err := strconv.ParseFloat(queries.Get("value"), 64); err != nil {
-					api.nodeScheduler.Knowledgebase.AddRawMeasure(queries.Get("key"), queries.Get("value"))
-				} else {
-					api.nodeScheduler.Knowledgebase.AddRawMeasure(queries.Get("key"), v)
-				}
-				response := datatype.NewAPIMessageBuilder().AddEntity("status", "success").Build()
-				respondJSON(w, http.StatusOK, response.ToJson())
-			} else {
-				response := datatype.NewAPIMessageBuilder().AddError("no value= found").Build()
-				respondJSON(w, http.StatusOK, response.ToJson())
-			}
-		} else {
-			response := datatype.NewAPIMessageBuilder().AddError("no key= found").Build()
-			respondJSON(w, http.StatusOK, response.ToJson())
-		}
-	case http.MethodPost:
-		r.ParseForm()
-		subject := r.Form.Get("subject")
-		value := r.Form.Get("value")
-		log.Printf("%s %s", subject, value)
-		// Memorize(subject, value)
-		// api.nodeScheduler.Knowledgebase.
-		respondJSON(w, http.StatusOK, subject+value)
-	case http.MethodDelete:
-		log.Print("hit DELETE")
-		r.ParseForm()
-		subject := r.Form.Get("subject")
-		respondJSON(w, http.StatusOK, subject)
-	}
+	w.Write(data)
 }
 
 func (api *APIServer) handlerGoals(w http.ResponseWriter, r *http.Request) {
@@ -130,6 +72,43 @@ func (api *APIServer) handlerGoals(w http.ResponseWriter, r *http.Request) {
 			api.nodeScheduler.GoalManager.AddGoal(&goal)
 		}
 		response := datatype.NewAPIMessageBuilder().AddEntity("status", "success").Build()
+		respondJSON(w, http.StatusOK, response.ToJson())
+	}
+}
+
+func (api *APIServer) handlerSchedule(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		// clauses := PrintClauses()
+		// respondJSON(w, http.StatusOK, clauses)
+	case http.MethodPost:
+		var newPlugin datatype.Plugin
+		defer r.Body.Close()
+		blob, err := io.ReadAll(r.Body)
+		if err != nil {
+			response := datatype.NewAPIMessageBuilder().AddError(err.Error()).Build()
+			respondJSON(w, http.StatusBadRequest, response.ToJson())
+			return
+		} else {
+			logger.Debug.Printf("%s", string(blob))
+			err = json.Unmarshal(blob, &newPlugin)
+			if err != nil {
+				response := datatype.NewAPIMessageBuilder().AddError(err.Error()).Build()
+				respondJSON(w, http.StatusBadRequest, response.ToJson())
+				return
+			}
+		}
+		logger.Info.Printf("locally requested to add plugin %q to schedule", newPlugin.Name)
+		e := datatype.NewEventBuilder(datatype.EventPluginStatusPromoted).AddReason("locally scheduled").Build()
+		// api.nodeScheduler.LogToBeehive.SendWaggleMessageOnNodeAsync(response.ToWaggleMessage(), "node")
+		pr := datatype.NewPluginRuntimeWithScienceRule(newPlugin, datatype.ScienceRule{})
+		pr.EnablePluginController = true
+		api.nodeScheduler.readyQueue.Push(pr)
+		api.nodeScheduler.chanNeedScheduling <- e
+
+		response := datatype.NewAPIMessageBuilder().
+			AddEntity("plugin_name", pr.Plugin.Name).
+			AddEntity("status", "success").Build()
 		respondJSON(w, http.StatusOK, response.ToJson())
 	}
 }

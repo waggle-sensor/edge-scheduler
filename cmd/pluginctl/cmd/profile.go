@@ -20,6 +20,7 @@ var metricsServerConfig pluginctl.MetricsServerConfig
 var (
 	start string
 	end   string
+	since string
 )
 
 func init() {
@@ -38,8 +39,9 @@ func init() {
 	flags = cmdProfileGet.Flags()
 	flags.StringVar(&start, "start", "", "Search data since the start time in UTC. Should be formatted as RFC3339")
 	flags.StringVar(&end, "end", "", "Search data until the end time in UTC. Should be formatted as RFC3339")
-	cmdProfileGet.MarkFlagRequired("start")
-	cmdProfileGet.MarkFlagRequired("end")
+	flags.StringVar(&since, "since", "", "Search data from now to given time window. If --end given, it starts from the given end time. --start will be ignored. The format requires '-' sign: examples are -1h, -1d, -30m")
+	// cmdProfileGet.MarkFlagRequired("start")
+	// cmdProfileGet.MarkFlagRequired("end")
 	cmdProfile.AddCommand(cmdProfileGet)
 	rootCmd.AddCommand(cmdProfile)
 }
@@ -167,14 +169,31 @@ var cmdProfileGet = &cobra.Command{
 			logger.Error.Println("Abort profiling due to the error")
 			return err
 		}
-		s, err := time.Parse(time.RFC3339Nano, start)
-		if err != nil {
-			return err
+		var s time.Time
+		var e time.Time
+		if end != "" {
+			e, err = time.Parse(time.RFC3339Nano, end)
+			if err != nil {
+				return err
+			}
+		} else {
+			e = time.Now()
 		}
-		e, err := time.Parse(time.RFC3339Nano, end)
-		if err != nil {
-			return err
+		if since != "" {
+			d, err := time.ParseDuration(since)
+			if err != nil {
+				return err
+			}
+			s = e.Add(-d)
+		} else if start != "" {
+			s, err = time.Parse(time.RFC3339Nano, start)
+			if err != nil {
+				return err
+			}
+		} else {
+			return fmt.Errorf("one of --start and --since should be given to set the beginning of the time window")
 		}
+		logger.Info.Printf("time window is set: %s - %s", s.Format(time.RFC3339), e.Format(time.RFC3339))
 		pluginCtl.GetPerformanceData(s, e, pluginName)
 		return nil
 	},

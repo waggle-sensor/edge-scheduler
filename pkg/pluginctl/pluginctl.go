@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -15,7 +14,6 @@ import (
 	"time"
 
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
-	"github.com/influxdata/influxdb-client-go/v2/domain"
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
 	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
 	"github.com/waggle-sensor/edge-scheduler/pkg/nodescheduler"
@@ -103,7 +101,7 @@ func (p *PluginCtl) ConnectToMetricsServer(config MetricsServerConfig) error {
 	} else {
 		path = config.InfluxDBTokenPath
 	}
-	tokenBlob, err := ioutil.ReadFile(path)
+	tokenBlob, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("Failed to read token at %s: %s", config.InfluxDBTokenPath, err)
 	}
@@ -349,7 +347,10 @@ func (p *PluginCtl) RunAsync(dep *Deployment, chEvent chan<- datatype.Event, out
 }
 
 func (p *PluginCtl) PrintLog(pluginName string, follow bool) (func(), chan os.Signal, error) {
-	podLog, err := p.ResourceManager.GetPodLogHandler(pluginName, follow)
+	podLog, err := p.ResourceManager.GetPodLogHandler(pluginName, &apiv1.PodLogOptions{
+		Container: pluginName,
+		Follow:    follow,
+	})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -469,7 +470,7 @@ func (p *PluginCtl) GetPerformanceData(s time.Time, e time.Time, pluginName stri
 	queryAPI := p.MetricsServer.Client.QueryAPI("waggle")
 	f, err := os.OpenFile(fmt.Sprintf("%s.csv", pluginName), os.O_CREATE|os.O_WRONLY, 0644)
 	defer f.Close()
-	result, err := queryAPI.QueryRaw(context.Background(), q, &domain.Dialect{})
+	result, err := queryAPI.QueryRaw(context.Background(), q, influxdb2.DefaultDialect())
 	if err == nil {
 		n, err := f.WriteString(result)
 		if err != nil {

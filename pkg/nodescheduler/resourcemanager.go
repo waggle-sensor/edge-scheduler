@@ -1079,41 +1079,42 @@ func (rm *ResourceManager) GetPodName(jobName string) (string, error) {
 	return pod.Name, nil
 }
 
-func (rm *ResourceManager) GetPodLogHandler(podName string, follow bool) (io.ReadCloser, error) {
-	req := rm.Clientset.CoreV1().Pods(rm.Namespace).
-		GetLogs(podName, &apiv1.PodLogOptions{
-			Follow:    follow,
-			Container: podName,
-		})
+func (rm *ResourceManager) GetPodLogHandler(n string, o *apiv1.PodLogOptions) (io.ReadCloser, error) {
+	req := rm.Clientset.CoreV1().Pods(rm.Namespace).GetLogs(n, o)
 	return req.Stream(context.TODO())
 }
 
-// GetLastPluginLog fills up given buffer with the last plugin log.
-func (rm *ResourceManager) GetPodLog(podName string, lastLog []byte) (int, error) {
-	logReader, err := rm.GetPodLogHandler(podName, false)
+// GetContainerLastLog returns container's last log as string. It returns the last 3 lines of the log with the given
+// limited byte length
+func (rm *ResourceManager) GetContainerLastLog(podName string, containerName string, length int) (string, error) {
+	logReader, err := rm.GetPodLogHandler(podName, &apiv1.PodLogOptions{
+		Container:  containerName,
+		TailLines:  int64Ptr(3),
+		LimitBytes: int64Ptr(int64(length)),
+	})
 	if err != nil {
-		return 0, nil
+		return "", err
 	}
 	defer logReader.Close()
 	totalLength := 0
-	buffer := make([]byte, len(lastLog))
+	buffer := make([]byte, length)
 	for {
 		n, err := logReader.Read(buffer)
 		if err != nil {
 			if err == io.EOF {
-				if totalLength > n {
-					lastLog = append(lastLog[totalLength-n:], buffer[:n]...)
-				} else {
-					totalLength = n
-					copy(lastLog, buffer[:n])
-				}
 				break
+			} else {
+				logger.Error.Printf("error on reading plugin's %q container %q log: %s", podName, containerName, err.Error())
+				return "", err
 			}
 		}
-		copy(lastLog, buffer)
-		totalLength = n
+		totalLength = totalLength + n
+		if totalLength > length {
+			totalLength = length
+			break
+		}
 	}
-	return totalLength, nil
+	return string(buffer[:totalLength]), nil
 }
 
 func (rm *ResourceManager) GetServiceClusterIP(serviceName string, namespace string) (string, error) {
@@ -1198,38 +1199,108 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(pr *datatype.PluginRuntime) {
 						Build())
 					return
 				case v1.PodFailed:
-					// even if the pod failed, if the plugin container succeeded
-					// we consider the pod succeeded.
-					pluginContainerStatus := _pod.Status.ContainerStatuses[0]
-					if pluginContainerStatus.State.Terminated.ExitCode == 0 {
-						// only for debugging purpose
-						if pcStatus := _pod.Status.ContainerStatuses[1].State.Terminated; pcStatus != nil {
-							logger.Debug.Printf("%s's plugin controller failed: %d (%s) %s", _pod.Name, pcStatus.ExitCode, pcStatus.Reason, pcStatus.Message)
-						}
-						rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusComplete).
-							AddPodMeta(_pod).
-							AddPluginMeta(&pr.Plugin).
-							Build())
-						return
-					}
-					logger.Error.Printf("Plugin %q has failed.", _pod.Name)
 					eventBuilder := datatype.NewEventBuilder(datatype.EventPluginStatusFailed).
 						AddPodMeta(_pod).
 						AddPluginMeta(&pr.Plugin)
-					if state := _pod.Status.ContainerStatuses[0].State.Terminated; state != nil {
-						eventBuilder = eventBuilder.AddReason(state.Reason).
-							AddEntry("return_code", fmt.Sprintf("%d", state.ExitCode))
+					// first, check if the init container failed
+					if len(_pod.Status.InitContainerStatuses) < 1 {
+						logger.Error.Printf("init container of %s does not exist: %s (%s)", _pod.Name, _pod.Status.Reason, _pod.Status.Message)
+						// Pod failed even before the init container finishes
+						rm.Notifier.Notify(eventBuilder.
+							AddReason(fmt.Sprintf("pod failed: %s", _pod.Status.Reason)).
+							AddEntry("err_msg", _pod.Status.Message).
+							Build())
+						return
 					}
-					lastLog := make([]byte, 1024)
-					if lengthRead, err := rm.GetPodLog(_pod.Name, lastLog); err == nil {
-						eventBuilder = eventBuilder.AddEntry("error_log", string(lastLog[:lengthRead]))
-						logger.Debug.Printf("Logs of the plugin %q: %s", _pod.Name, string(lastLog[:lengthRead]))
+					initContainerStatus := _pod.Status.InitContainerStatuses[0]
+					if t := initContainerStatus.State.Terminated; t == nil {
+						logger.Error.Printf("pod failed before init container of %s terminates: %s (%s)", _pod.Name, _pod.Status.Reason, _pod.Status.Message)
+						// Pod failed even before the init container finishes
+						rm.Notifier.Notify(eventBuilder.
+							AddReason(fmt.Sprintf("pod failed: %s", _pod.Status.Reason)).
+							AddEntry("err_msg", _pod.Status.Message).
+							Build())
+						return
 					} else {
-						eventBuilder = eventBuilder.AddEntry("error_log", err.Error())
-						logger.Debug.Printf("Failed to get plugin log: %s", err.Error())
+						if t.ExitCode != 0 {
+							// init container terminated with an error
+							logger.Error.Printf("init container of %s has failed: %s", _pod.Name, t.String())
+							if containerLog, err := rm.GetContainerLastLog(_pod.Name, initContainerStatus.Name, 1024); err == nil {
+								eventBuilder = eventBuilder.AddEntry("error_log", containerLog)
+							} else {
+								logger.Error.Printf("failed to get plugin %q container %q log: %s", _pod.Name, initContainerStatus.Name, err.Error())
+							}
+							rm.Notifier.Notify(eventBuilder.
+								AddReason("init container failed").
+								AddEntry("return_code", t.ExitCode).
+								Build())
+							return
+						}
 					}
-					rm.Notifier.Notify(eventBuilder.Build())
-					return
+					// even if the pod failed, if the plugin container succeeded
+					// we consider the pod succeeded.
+					if len(_pod.Status.ContainerStatuses) < 2 {
+						// NOTE: this should not happen; PodFailure only occurs when all containers terminated
+						// Pod must have 2 containers: plugin and its controller
+						logger.Error.Printf("pod must have plugin and its controller containers for %s", _pod.Name)
+						rm.Notifier.Notify(eventBuilder.
+							AddReason(fmt.Sprintf("pod failed: %s", _pod.Status.Reason)).
+							AddEntry("err_msg", _pod.Status.Message).
+							Build())
+						return
+					}
+					var (
+						pluginStatus           v1.ContainerStatus
+						pluginControllerStatus v1.ContainerStatus
+					)
+					// we do not know which is which
+					if _pod.Status.ContainerStatuses[0].Name == _pod.Name {
+						pluginStatus = _pod.Status.ContainerStatuses[0]
+						pluginControllerStatus = _pod.Status.ContainerStatuses[1]
+					} else {
+						pluginStatus = _pod.Status.ContainerStatuses[1]
+						pluginControllerStatus = _pod.Status.ContainerStatuses[0]
+					}
+					if t := pluginStatus.State.Terminated; t == nil {
+						// NOTE: This should not happen as PodFailure means all containers were terminated
+						logger.Error.Printf("Pod failed, but plugin %q did not", _pod.Name)
+						rm.Notifier.Notify(eventBuilder.
+							AddReason("pod failed, but plugin did not terminate").
+							Build())
+						return
+					} else {
+						if t.ExitCode == 0 {
+							// only for debugging purpose
+							if pcStatus := pluginControllerStatus.State.Terminated; pcStatus != nil {
+								containerLog, _ := rm.GetContainerLastLog(_pod.Name, initContainerStatus.Name, 1024)
+								logger.Error.Printf("%s's plugin controller failed: exitcode: %d, reason: %s, message: %s, log: %s",
+									_pod.Name,
+									pcStatus.ExitCode,
+									pcStatus.Reason,
+									pcStatus.Message,
+									containerLog,
+								)
+							}
+							logger.Info.Printf("Pod failed, but plugin %q succeeded", _pod.Name)
+							rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusComplete).
+								AddPodMeta(_pod).
+								AddPluginMeta(&pr.Plugin).
+								Build())
+							return
+						} else {
+							logger.Error.Printf("Plugin %q has failed", _pod.Name)
+							if containerLog, err := rm.GetContainerLastLog(_pod.Name, pluginStatus.Name, 1024); err == nil {
+								eventBuilder = eventBuilder.AddEntry("error_log", containerLog)
+							} else {
+								logger.Error.Printf("failed to get plugin %q container %q log: %s", _pod.Name, pluginStatus.Name, err.Error())
+							}
+							rm.Notifier.Notify(eventBuilder.
+								AddReason(t.Reason).
+								AddEntry("return_code", t.ExitCode).
+								Build())
+							return
+						}
+					}
 				}
 			case watch.Deleted:
 				logger.Debug.Printf("Plugin got deleted. Returning resource and notify")
