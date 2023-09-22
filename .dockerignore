@@ -1,0 +1,7 @@
+*
+!go.mod
+!go.sum
+!**/*.go
+!requirements.txt
+!**/*.py
+!Makefile
