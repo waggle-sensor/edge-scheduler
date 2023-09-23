@@ -4,4 +4,3 @@
 !**/*.go
 !requirements.txt
 !**/*.py
-!Makefile
