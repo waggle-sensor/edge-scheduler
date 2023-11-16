@@ -111,13 +111,12 @@ func generateRandomString(n int) string {
 
 func (rm *ResourceManager) labelsForPlugin(plugin *datatype.Plugin) map[string]string {
 	labels := map[string]string{
-		"app":                               plugin.Name,
-		"app.kubernetes.io/name":            plugin.Name,
-		"app.kubernetes.io/managed-by":      rm.runner,
-		"app.kubernetes.io/created-by":      rm.runner,
-		"sagecontinuum.org/plugin-job":      plugin.PluginSpec.Job,
-		"sagecontinuum.org/plugin-task":     plugin.Name,
-		"sagecontinuum.org/plugin-instance": plugin.Name + "-" + generateRandomString(6),
+		"app":                           plugin.Name,
+		"app.kubernetes.io/name":        plugin.Name,
+		"app.kubernetes.io/managed-by":  rm.runner,
+		"app.kubernetes.io/created-by":  rm.runner,
+		"sagecontinuum.org/plugin-job":  plugin.PluginSpec.Job,
+		"sagecontinuum.org/plugin-task": plugin.Name,
 	}
 
 	// in develop mode, we omit the role labels to opt out of network traffic filtering
@@ -731,6 +730,8 @@ func (rm *ResourceManager) CreatePodTemplate(pr *datatype.PluginRuntime) (*apiv1
 	if err != nil {
 		return nil, err
 	}
+	// add instance label to distinguish between Pods of the same plugin
+	template.Labels["sagecontinuum.org/plugin-instance"] = pr.Plugin.Name + "-" + generateRandomString(6)
 	template.Spec.RestartPolicy = apiv1.RestartPolicyNever
 	return &apiv1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
