@@ -56,6 +56,7 @@ def fill_completion_failure(df):
             found = failed[failed.k3s_pod_instance == p.k3s_pod_instance]
             if len(found) > 0:
                 launched.loc[index, "failed_at"] = found.iloc[0].timestamp
+                launched.loc[index, "execution_time"] = (found.iloc[0].timestamp - p.timestamp).total_seconds()
                 launched.loc[index, "reason"] = found.iloc[0].reason
                 if "error_log" in found.iloc[0]:
                     launched.loc[index, "error_log"] = found.iloc[0]["error_log"]
