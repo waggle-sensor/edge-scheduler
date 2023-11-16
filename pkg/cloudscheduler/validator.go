@@ -59,6 +59,17 @@ func (jv *JobValidator) GetPluginManifest(pluginImage string, updateDBIfNotExist
 	}
 }
 
+// IsPluginNameValid checks if given plugin name is valid.
+// Plugin name must follow RFC 1123.
+// Reference: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#dns-subdomain-names
+func (jv *JobValidator) IsPluginNameValid(name string) bool {
+	if len(name) > 256 {
+		return false
+	}
+	var validNamePattern = regexp.MustCompile("^[a-z0-9-]+$")
+	return validNamePattern.MatchString(name)
+}
+
 // LoadDatabase loads node and plugin manifests
 // this function should be called only at initialization
 func (jv *JobValidator) LoadDatabase() error {

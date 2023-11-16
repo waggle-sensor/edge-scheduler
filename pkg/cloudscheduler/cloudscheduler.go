@@ -122,6 +122,10 @@ func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(jobID string, user *Us
 			continue
 		}
 		for _, plugin := range job.Plugins {
+			if !cs.Validator.IsPluginNameValid(plugin.Name) {
+				errorList = append(errorList, fmt.Errorf("plugin name %q must consist of up to 256 alphanumeric characters with '-' or '.' in the middle, RFC1123", plugin.Name))
+				continue
+			}
 			pluginImage, err := plugin.GetPluginImage()
 			if err != nil {
 				errorList = append(errorList, fmt.Errorf("%s does not specify plugin image", plugin.Name))
