@@ -731,6 +731,8 @@ func (rm *ResourceManager) CreatePodTemplate(pr *datatype.PluginRuntime) (*apiv1
 		return nil, err
 	}
 	// add instance label to distinguish between Pods of the same plugin
+	// reference on the fact that Pods are not designed to be updated
+	// https://github.com/kubernetes/kubernetes/issues/24913#issuecomment-694817890
 	template.Labels["sagecontinuum.org/plugin-instance"] = pr.Plugin.Name + "-" + generateRandomString(6)
 	template.Spec.RestartPolicy = apiv1.RestartPolicyNever
 	return &apiv1.Pod{
