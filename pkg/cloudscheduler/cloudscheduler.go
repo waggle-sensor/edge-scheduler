@@ -119,9 +119,15 @@ func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(job *datatype.Job, use
 			errorList = append(errorList, fmt.Errorf("%s does not exist", nodeName))
 			continue
 		}
+		// pluginNameForDuplication checks if plugin names are duplicate
+		pluginNameForDuplication := map[string]bool{}
 		for _, plugin := range job.Plugins {
 			if !cs.Validator.IsPluginNameValid(plugin.Name) {
 				errorList = append(errorList, fmt.Errorf("plugin name %q must consist of up to 256 alphanumeric characters with '-' or '.' in the middle, RFC1123", plugin.Name))
+				continue
+			}
+			if _, found := pluginNameForDuplication[plugin.Name]; found {
+				errorList = append(errorList, fmt.Errorf("the plugin name %q is duplicated. plugin names must be unique", plugin.Name))
 				continue
 			}
 			pluginImage, err := plugin.GetPluginImage()
@@ -164,7 +170,6 @@ func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(job *datatype.Job, use
 				continue
 			}
 			logger.Info.Printf("%s passed Check 3", plugin.Name)
-
 			// Check 4: the required resource is available in node devices
 			// for _, c := range supportedComputes {
 			// 	supported, _ := c.GetUnsupportedPluginProfiles(pluginManifest)
@@ -181,6 +186,7 @@ func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(job *datatype.Job, use
 			// }
 			// }
 			approvedPlugins = append(approvedPlugins, plugin)
+			pluginNameForDuplication[plugin.Name] = true
 		}
 		// Check 4: conditions of job are valid
 
