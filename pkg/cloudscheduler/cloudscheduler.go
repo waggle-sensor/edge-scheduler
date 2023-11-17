@@ -67,11 +67,7 @@ func (cs *CloudScheduler) Configure() error {
 	return nil
 }
 
-func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(jobID string, user *User, dryrun bool) (errorList []error) {
-	job, err := cs.GoalManager.GetJob(jobID)
-	if err != nil {
-		return []error{err}
-	}
+func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(job *datatype.Job, user *User) (scienceGoal *datatype.ScienceGoal, errorList []error) {
 	scienceGoalBuilder := datatype.NewScienceGoalBuilder(job.Name, job.JobID)
 	logger.Info.Printf("Validating %s...", job.Name)
 	// Step 1: Resolve node tags
@@ -79,12 +75,14 @@ func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(jobID string, user *Us
 	// TODO: Jobs may be submitted without nodes in the future
 	//       For example, Chicago nodes without having any node in Chicago yet
 	if len(job.Nodes) < 1 {
-		return []error{fmt.Errorf("Node is not selected")}
+		errorList = append(errorList, fmt.Errorf("Node is not selected"))
+		return
 	}
 	// Check if email is set for notification
 	if len(job.NotificationOn) > 0 {
 		if job.Email == "" {
-			return []error{fmt.Errorf("No email is set for notification")}
+			errorList = append(errorList, fmt.Errorf("No email is set for notification"))
+			return
 		}
 		// Check if given notification types are valid
 		for _, s := range job.NotificationOn {
@@ -200,21 +198,35 @@ func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(jobID string, user *Us
 		scienceGoalBuilder = scienceGoalBuilder.AddSubGoal(nodeName, approvedPlugins, rules)
 	}
 	if len(errorList) > 0 {
-		logger.Info.Printf("Validation failed for Job ID %q: %v", jobID, errorList)
-		return errorList
+		logger.Info.Printf("Validation failed for Job %q: %v", job.Name, errorList)
+	} else {
+		scienceGoal = scienceGoalBuilder.Build()
+		logger.Info.Printf("A new goal %q is generated for Job %q", scienceGoal.ID, job.Name)
+	}
+	return
+}
+
+func (cs *CloudScheduler) ValidateJobAndCreateScienceGoalForExistingJob(jobID string, user *User, dryrun bool) (errorList []error) {
+	job, err := cs.GoalManager.GetJob(jobID)
+	if err != nil {
+		return []error{err}
+	}
+	sg, errorList := cs.ValidateJobAndCreateScienceGoal(job, user)
+	if len(errorList) > 0 {
+		return
 	}
 	logger.Info.Printf("Updating science goal for JOB ID %q", jobID)
 	if job.ScienceGoal != nil {
 		logger.Info.Printf("job ID %q has an existing goal %q. dropping it first...", jobID, job.ScienceGoal.ID)
 		cs.GoalManager.RemoveScienceGoal(job.ScienceGoal.ID)
 	}
-	job.ScienceGoal = scienceGoalBuilder.Build()
+	job.ScienceGoal = sg
 	if dryrun {
 		cs.GoalManager.UpdateJob(job, false)
 	} else {
 		cs.GoalManager.UpdateJob(job, true)
 	}
-	return nil
+	return
 }
 
 func (cs *CloudScheduler) updateNodes(nodes []string) {
