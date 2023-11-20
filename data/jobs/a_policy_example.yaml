@@ -16,10 +16,10 @@ plugins:
     - -c
     - "echo hello world; sleep 5; echo bye"
 nodes:
-  W023:
+  W097:
 scienceRules:
-- "myfirstapp: True"
-- "mysecondapp: True"
+- "schedule(myfirstapp): True"
+- "schedule(mysecondapp): True"
 #- "myfirstapp: cronjob('myfirstapp', '0 * * * *')"
 successcriteria:
 - WallClock(1d)

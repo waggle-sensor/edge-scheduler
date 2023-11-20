@@ -63,7 +63,9 @@ func (jv *JobValidator) GetPluginManifest(pluginImage string, updateDBIfNotExist
 // Plugin name must follow RFC 1123.
 // Reference: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#dns-subdomain-names
 func (jv *JobValidator) IsPluginNameValid(name string) bool {
-	if len(name) > 256 {
+	// the maximum length allowed is 256, but the scheduler may use several characters
+	// to indicate job ID when it names a plugin, thus reduce length of user plugins to 200
+	if len(name) > 200 {
 		return false
 	}
 	var validNamePattern = regexp.MustCompile("^[a-z0-9-]+$")

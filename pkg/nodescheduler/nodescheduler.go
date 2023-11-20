@@ -123,6 +123,9 @@ func (ns *NodeScheduler) Run() {
 								pr := datatype.NewPluginRuntimeWithScienceRule(_p, *r)
 								// TODO: we enable plugin-controller always. we will want to control this later.
 								pr.SetPluginController(true)
+								// we name Kubenetes Pod of the plugin using << pluginName-jobID >>
+								// to distinguish the same plugin names from different jobs
+								pr.Plugin.JobID = sg.JobID
 								if _pr := ns.waitingQueue.Pop(pr); _pr != nil {
 									ns.readyQueue.Push(pr)
 									triggerScheduling = true
@@ -269,27 +272,29 @@ func (ns *NodeScheduler) registerGoal(goal *datatype.ScienceGoal) {
 
 func (ns *NodeScheduler) cleanUpGoal(goal *datatype.ScienceGoal) {
 	ns.Knowledgebase.DropRules(goal.Name)
-	for _, p := range goal.GetMySubGoal(ns.NodeID).GetPlugins() {
-		_p := *p
-		pr := &datatype.PluginRuntime{
-			Plugin: _p,
-		}
-		if a := ns.waitingQueue.Pop(pr); a != nil {
-			logger.Debug.Printf("plugin %s is removed from the waiting queue", p.Name)
-		}
-		if a := ns.readyQueue.Pop(pr); a != nil {
-			logger.Debug.Printf("plugin %s is removed from the ready queue", p.Name)
-		}
-		if a := ns.scheduledPlugins.Pop(pr); a != nil {
-			if pod, err := ns.ResourceManager.GetPod(a.Plugin.Name); err != nil {
-				logger.Error.Printf("Failed to get pod of the plugin %q", a.Plugin.Name)
-			} else {
-				e := datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddPluginMeta(&a.Plugin).AddPodMeta(pod).AddReason("Cleaning up the plugin due to deletion of the goal").Build()
-				ns.LogToBeehive.SendWaggleMessageOnNodeAsync(e.ToWaggleMessage(), "all")
+	if mySubGoal := goal.GetMySubGoal(ns.NodeID); mySubGoal != nil {
+		for _, p := range goal.GetMySubGoal(ns.NodeID).GetPlugins() {
+			_p := *p
+			pr := &datatype.PluginRuntime{
+				Plugin: _p,
 			}
-			ns.ResourceManager.RemovePlugin(&a.Plugin)
-			logger.Debug.Printf("plugin %s is removed from running", p.Name)
+			if a := ns.waitingQueue.Pop(pr); a != nil {
+				logger.Debug.Printf("plugin %s is removed from the waiting queue", p.Name)
+			}
+			if a := ns.readyQueue.Pop(pr); a != nil {
+				logger.Debug.Printf("plugin %s is removed from the ready queue", p.Name)
+			}
+			if a := ns.scheduledPlugins.Pop(pr); a != nil {
+				if pod, err := ns.ResourceManager.GetPod(a.Plugin.Name); err != nil {
+					logger.Error.Printf("Failed to get pod of the plugin %q", a.Plugin.Name)
+				} else {
+					e := datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddPluginMeta(&a.Plugin).AddPodMeta(pod).AddReason("Cleaning up the plugin due to deletion of the goal").Build()
+					ns.LogToBeehive.SendWaggleMessageOnNodeAsync(e.ToWaggleMessage(), "all")
+				}
+				ns.ResourceManager.RemovePlugin(&a.Plugin)
+				logger.Debug.Printf("plugin %s is removed from running", p.Name)
 
+			}
 		}
 	}
 	ns.GoalManager.DropGoal(goal.ID)

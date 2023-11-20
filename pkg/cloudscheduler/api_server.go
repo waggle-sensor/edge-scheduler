@@ -324,6 +324,7 @@ func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) 
 					return
 				}
 			}
+			// TODO: we should not commit to change on the existing goal of job when --dry-run is given
 			errorList := api.cloudScheduler.ValidateJobAndCreateScienceGoalForExistingJob(queries.Get("id"), user, flagDryRun)
 			if len(errorList) > 0 {
 				response := datatype.NewAPIMessageBuilder().AddError(fmt.Sprintf("%v", errorList)).Build()
@@ -372,12 +373,15 @@ func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) 
 				return
 			} else {
 				newJob.ScienceGoal = sg
-				jobID := api.cloudScheduler.GoalManager.AddJob(newJob)
-				response := datatype.NewAPIMessageBuilder().AddEntity("job_id", jobID)
+				response := datatype.NewAPIMessageBuilder().AddEntity("job_name", newJob.Name)
 				if flagDryRun {
 					response = response.AddEntity("dryrun", true)
 				} else {
-					response = response.AddEntity("state", datatype.JobSubmitted)
+					jobID := api.cloudScheduler.GoalManager.AddJob(newJob)
+					newJob.UpdateJobID(jobID)
+					api.cloudScheduler.GoalManager.UpdateJob(newJob, true)
+					response = response.AddEntity("job_id", jobID).
+						AddEntity("state", datatype.JobSubmitted)
 				}
 				respondJSON(w, http.StatusOK, response.Build().ToJson())
 				return
