@@ -11,6 +11,7 @@ type Plugin struct {
 	Name       string      `json:"name" yaml:"name"`
 	PluginSpec *PluginSpec `json:"plugin_spec" yaml:"pluginSpec,omitempty"`
 	GoalID     string      `json:"goal_id,omitempty" yaml:"goalID,omitempty"`
+	JobID      string      `json:"job_id,omitempty" yaml:"jobID,omitempty"`
 }
 
 func (p *Plugin) GetPluginImage() (string, error) {

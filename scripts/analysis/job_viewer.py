@@ -21,6 +21,16 @@ def get_events(vsn, last):
         }
     )
 
+@st.cache_data
+def get_perf(plugin, last):
+    return query(
+        start=last,
+        bucket="grafana-agent",
+        filter={
+            "container": plugin,
+        }
+    )
+
 
 @st.cache_data
 def get_job_information(job_id):
@@ -39,6 +49,7 @@ with st.sidebar:
         "data to show",
         ("-30m", "-1h", "-3h", "-6h", "-12h", "-1d", "-7d", "-10d", "-1M", "-6M", "-1y"))
     st.button("analyze")
+    debug = st.checkbox("debug")
 
 if job_id == "":
     st.info("Please specify job ID")
@@ -73,9 +84,33 @@ else :
             st.header("Raw data")
             st.dataframe(events)
         elif mode == "Plugins":
-            plugin = st.selectbox('Plugins', tuple(p["name"] for p in job["plugins"]))
-            if "error_log" in events:
-                failed = events[(events["plugin_name"] == plugin) & (events["error_log"] != "")]
-                with st.expander(f'Errors in {plugin}, if exist'):
-                    for _, r in failed.iterrows():
-                        st.write(f'{r["plugin_name"]} failed on {r["vsn"]} ({r["k3s_pod_node_name"]}) at {r["failed_at"]}: {r["error_log"]}')
+            plugin_name = st.selectbox('Plugins', tuple(p["name"] for p in job["plugins"]))
+            plugin_events = events[events["plugin_name"] == plugin_name]
+            plugin_perf = get_perf(plugin_name, start_time)
+            if debug:
+                st.dataframe(plugin_events)
+                st.dataframe(plugin_perf)
+            for _, e in plugin_events.iterrows():
+                st.write(f'{e["k3s_pod_instance"]} ran on {e["vsn"]} ({e["k3s_pod_node_name"]})')
+                if e["end_state"] == "failed":
+                    st.error(f'{e["reason"]}: {e["error_log"]}')
+                d = int(e["execution_time"]) if e["execution_time"] > 0 else 0
+                mask = (e["vsn"] == plugin_perf["meta.vsn"]) & \
+                       (plugin_perf["timestamp"] >= e["timestamp"]) & \
+                       (plugin_perf["timestamp"] < e["timestamp"] + pd.Timedelta(d, unit='s'))
+                perf = plugin_perf[mask]
+                if len(perf) == 0:
+                    st.warning("no performance data found")
+                else:
+                    if debug:
+                        st.dataframe(perf)
+                    last_cpu_record = perf[perf["name"] == "container_cpu_usage_seconds_total"].sort_values("value").iloc[-1]
+                    # we assume 100 ms CPU time per second
+                    util = last_cpu_record["value"] / (last_cpu_record["timestamp"] - e["timestamp"]).total_seconds() / 0.1 * 100.
+
+                    mem = pd.to_numeric(perf[perf["name"] == "container_memory_working_set_bytes"]["value"]).mean()
+                    col1, col2, col3 = st.columns(3)
+                    col1.metric("Averaged CPU (%)", util, "")
+                    col2.metric("Averaged Memory (MB)", mem/1e6, "")
+                    col3.metric("Execution time (seconds)", e["execution_time"], "")
+                st.divider()

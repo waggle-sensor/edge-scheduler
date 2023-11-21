@@ -111,13 +111,12 @@ func generateRandomString(n int) string {
 
 func (rm *ResourceManager) labelsForPlugin(plugin *datatype.Plugin) map[string]string {
 	labels := map[string]string{
-		"app":                               plugin.Name,
-		"app.kubernetes.io/name":            plugin.Name,
-		"app.kubernetes.io/managed-by":      rm.runner,
-		"app.kubernetes.io/created-by":      rm.runner,
-		"sagecontinuum.org/plugin-job":      plugin.PluginSpec.Job,
-		"sagecontinuum.org/plugin-task":     plugin.Name,
-		"sagecontinuum.org/plugin-instance": plugin.Name + "-" + generateRandomString(6),
+		"app":                           plugin.Name,
+		"app.kubernetes.io/name":        plugin.Name,
+		"app.kubernetes.io/managed-by":  rm.runner,
+		"app.kubernetes.io/created-by":  rm.runner,
+		"sagecontinuum.org/plugin-job":  plugin.PluginSpec.Job,
+		"sagecontinuum.org/plugin-task": plugin.Name,
 	}
 
 	// in develop mode, we omit the role labels to opt out of network traffic filtering
@@ -731,6 +730,10 @@ func (rm *ResourceManager) CreatePodTemplate(pr *datatype.PluginRuntime) (*apiv1
 	if err != nil {
 		return nil, err
 	}
+	// add instance label to distinguish between Pods of the same plugin
+	// reference on the fact that Pods are not designed to be updated
+	// https://github.com/kubernetes/kubernetes/issues/24913#issuecomment-694817890
+	template.Labels["sagecontinuum.org/plugin-instance"] = pr.Plugin.Name + "-" + generateRandomString(6)
 	template.Spec.RestartPolicy = apiv1.RestartPolicyNever
 	return &apiv1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1148,6 +1151,10 @@ func (rm *ResourceManager) CleanUp() error {
 func (rm *ResourceManager) LaunchAndWatchPlugin(pr *datatype.PluginRuntime) {
 	logger.Debug.Printf("Running plugin %q...", pr.Plugin.Name)
 	pod, err := rm.CreatePodTemplate(pr)
+	// we override the plugin name to distinguish the same plugin name from different jobs
+	if pr.Plugin.JobID != "" {
+		pod.SetName(fmt.Sprintf("%s-%s", pod.GetName(), pr.Plugin.JobID))
+	}
 	if err != nil {
 		logger.Error.Printf("Failed to create Kubernetes Pod for %q: %q", pr.Plugin.Name, err.Error())
 		rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason(err.Error()).AddPluginMeta(&pr.Plugin).Build())

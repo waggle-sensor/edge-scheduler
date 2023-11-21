@@ -324,7 +324,8 @@ func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) 
 					return
 				}
 			}
-			errorList := api.cloudScheduler.ValidateJobAndCreateScienceGoal(queries.Get("id"), user, flagDryRun)
+			// TODO: we should not commit to change on the existing goal of job when --dry-run is given
+			errorList := api.cloudScheduler.ValidateJobAndCreateScienceGoalForExistingJob(queries.Get("id"), user, flagDryRun)
 			if len(errorList) > 0 {
 				response := datatype.NewAPIMessageBuilder().AddError(fmt.Sprintf("%v", errorList)).Build()
 				respondJSON(w, http.StatusBadRequest, response.ToJson())
@@ -362,21 +363,25 @@ func (api *APIServer) handlerSubmitJobs(w http.ResponseWriter, r *http.Request) 
 				return
 			}
 			newJob.User = user.GetUserName()
-			jobID := api.cloudScheduler.GoalManager.AddJob(newJob)
-			errorList := api.cloudScheduler.ValidateJobAndCreateScienceGoal(jobID, user, flagDryRun)
+			sg, errorList := api.cloudScheduler.ValidateJobAndCreateScienceGoal(newJob, user)
 			if len(errorList) > 0 {
 				response := datatype.NewAPIMessageBuilder().
-					AddEntity("job_id", jobID).
-					AddEntity("message", "job is added, but failed to be validated. Please edit the job and try again.").
+					AddEntity("job_name", newJob.Name).
+					AddEntity("message", "validation failed. Please revise the job and try again.").
 					AddError(fmt.Sprintf("%v", errorList)).Build()
 				respondJSON(w, http.StatusBadRequest, response.ToJson())
 				return
 			} else {
-				response := datatype.NewAPIMessageBuilder().AddEntity("job_id", jobID)
+				newJob.ScienceGoal = sg
+				response := datatype.NewAPIMessageBuilder().AddEntity("job_name", newJob.Name)
 				if flagDryRun {
 					response = response.AddEntity("dryrun", true)
 				} else {
-					response = response.AddEntity("state", datatype.JobSubmitted)
+					jobID := api.cloudScheduler.GoalManager.AddJob(newJob)
+					newJob.UpdateJobID(jobID)
+					api.cloudScheduler.GoalManager.UpdateJob(newJob, true)
+					response = response.AddEntity("job_id", jobID).
+						AddEntity("state", datatype.JobSubmitted)
 				}
 				respondJSON(w, http.StatusOK, response.Build().ToJson())
 				return

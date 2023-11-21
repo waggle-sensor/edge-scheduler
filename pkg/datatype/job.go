@@ -144,6 +144,13 @@ func (j *Job) DropNode(nodeName string) {
 	}
 }
 
+func (j *Job) UpdateJobID(id string) {
+	j.JobID = id
+	if j.ScienceGoal != nil {
+		j.ScienceGoal.JobID = id
+	}
+}
+
 // ConvertToTemplate returns a new job object that contains the job description. The new job object does
 // not contain user-specific information such as job ID, owner, email, etc. This is mostly useful
 // when someone creates a new job from an existing job.
