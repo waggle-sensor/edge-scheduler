@@ -28,12 +28,35 @@ type FakeAuthenticator struct {
 }
 
 func (auth *FakeAuthenticator) Authenticate(token string) (*User, error) {
-	return &User{
-		Token: "sampletoken",
-		Auth: &UserAuth{
-			UserName: "superuser",
-		},
-	}, nil
+	switch token {
+	case "admintoken":
+		return &User{
+			Token: token,
+			Auth: &UserAuth{
+				UserName:    "admin",
+				IsSuperUser: true,
+				IsStaff:     true,
+			},
+		}, nil
+	case "usertoken":
+		return &User{
+			Token: token,
+			Auth: &UserAuth{
+				UserName: "user",
+			},
+		}, nil
+	case "sampletoken":
+		// NOTE(sean) I'm keeping this token in case it was used for any other testing from before. Note
+		// that this user was not a superuser / staff, even though the name is superuser.
+		return &User{
+			Token: token,
+			Auth: &UserAuth{
+				UserName: "superuser",
+			},
+		}, nil
+	}
+
+	return nil, fmt.Errorf("user not found")
 }
 
 func (auth *FakeAuthenticator) UpdatePermissionTableForUser(u *User) error {
