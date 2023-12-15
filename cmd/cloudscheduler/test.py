@@ -43,8 +43,14 @@ def wrap_tests():
         yield
 
 
-def get_jobs_list():
+def get_job_list():
     r = requests.get("http://localhost:9770/api/v1/jobs/list")
+    r.raise_for_status()
+    return r.json()
+
+
+def get_job_detail(id):
+    r = requests.get(f"http://localhost:9770/api/v1/jobs/{id}/status")
     r.raise_for_status()
     return r.json()
 
@@ -180,15 +186,20 @@ successCriteria: []
     # TODO(sean) Use ACCEPTED instead of OK?
     assert r.status_code == HTTPStatus.OK
 
-    jobs = get_jobs_list()
+    job = get_job_detail(1)
+    assert job["name"] == "dbaserh"
+    assert job["user"] == "user"
+
+    jobs = get_job_list()
+
     assert len(jobs) == 1
-    # NOTE(sean) jobs currently returns a map of stringy ints -> jobs
-    assert jobs["1"]["name"] == "dbaserh"
-    assert jobs["1"]["user"] == "user"
-    # TODO(sean) test more fields here!
+
+    # check that list output and detail output match
+    for id, job in jobs.items():
+        assert get_job_detail(id) == job
 
 
-def test_submit_success_with_secrets():
+def test_secrets_hidden_from_public():
     headers = {
         "Authorization": "Sage usertoken",
     }
@@ -216,6 +227,10 @@ secrets:
     # TODO(sean) Use ACCEPTED instead of OK?
     assert r.status_code == HTTPStatus.OK
 
-    jobs = get_jobs_list()
-    # public list api should not include secrets!
-    assert "secrets" not in jobs["1"]
+    jobs = get_job_list()
+    assert len(jobs) > 0
+    for _, job in jobs.items():
+        assert "secrets" not in job
+
+    job = get_job_detail(1)
+    assert "secrets" not in job
