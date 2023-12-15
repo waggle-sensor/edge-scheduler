@@ -186,3 +186,36 @@ successCriteria: []
     assert jobs["1"]["name"] == "dbaserh"
     assert jobs["1"]["user"] == "user"
     # TODO(sean) test more fields here!
+
+
+def test_submit_success_with_secrets():
+    headers = {
+        "Authorization": "Sage usertoken",
+    }
+
+    r = requests.post(
+        f"http://localhost:9770/api/v1/submit",
+        headers=headers,
+        data="""name: dbaserh
+plugins:
+  - name: cloud-motion
+    pluginSpec:
+      image: registry.sagecontinuum.org/bhupendraraut/cloud-motion:0.22.11.10
+nodeTags: []
+nodes:
+  W01C: null
+  W022: null
+scienceRules:
+  - "schedule(panda-dbaserh): True"
+successCriteria: []
+secrets:
+  HOST: coolcloud.org
+  TOKEN: averysecrettoken
+""",
+    )
+    # TODO(sean) Use ACCEPTED instead of OK?
+    assert r.status_code == HTTPStatus.OK
+
+    jobs = get_jobs_list()
+    # public list api should not include secrets!
+    assert "secrets" not in jobs["1"]
