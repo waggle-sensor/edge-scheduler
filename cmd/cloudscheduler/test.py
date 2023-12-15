@@ -61,6 +61,20 @@ def test_submit_with_no_data():
     assert "validation failed" in data["message"]
 
 
+def test_submit_with_bad_data():
+    headers = {
+        "Authorization": "Sage usertoken",
+    }
+    r = requests.post(
+        f"http://localhost:9770/api/v1/submit",
+        headers=headers,
+        data="some made up random data!",
+    )
+    assert r.status_code == HTTPStatus.BAD_REQUEST
+    data = r.json()
+    assert "yaml: unmarshal errors" in data["error"]
+
+
 def test_submit_requires_node_permission():
     headers = {
         "Authorization": "Sage usertoken",
