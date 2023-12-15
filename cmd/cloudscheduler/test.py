@@ -43,6 +43,12 @@ def wrap_tests():
         yield
 
 
+def get_jobs_list():
+    r = requests.get("http://localhost:9770/api/v1/jobs/list")
+    r.raise_for_status()
+    return r.json()
+
+
 def test_submit_requires_auth():
     r = requests.post(f"http://localhost:9770/api/v1/submit")
     assert r.status_code == HTTPStatus.UNAUTHORIZED
@@ -174,9 +180,7 @@ successCriteria: []
     # TODO(sean) Use ACCEPTED instead of OK?
     assert r.status_code == HTTPStatus.OK
 
-    r = requests.get("http://localhost:9770/api/v1/jobs/list")
-    r.raise_for_status()
-    jobs = r.json()
+    jobs = get_jobs_list()
     assert len(jobs) == 1
     # NOTE(sean) jobs currently returns a map of stringy ints -> jobs
     assert jobs["1"]["name"] == "dbaserh"
