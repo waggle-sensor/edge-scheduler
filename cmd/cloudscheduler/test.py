@@ -220,17 +220,19 @@ scienceRules:
   - "schedule(panda-dbaserh): True"
 successCriteria: []
 secrets:
-  HOST: coolcloud.org
-  TOKEN: averysecrettoken
+  TOKEN: 5550d2cf50d79c11
 """,
     )
     # TODO(sean) Use ACCEPTED instead of OK?
     assert r.status_code == HTTPStatus.OK
 
-    jobs = get_job_list()
-    assert len(jobs) > 0
-    for _, job in jobs.items():
-        assert "secrets" not in job
+    # the secret token must not appear in the list view
+    r = requests.get("http://localhost:9770/api/v1/jobs/list")
+    r.raise_for_status()
+    assert len(r.json()) > 0
+    assert "5550d2cf50d79c11" not in r.text
 
-    job = get_job_detail(1)
-    assert "secrets" not in job
+    # the secret token must not appear in the detail view
+    r = requests.get("http://localhost:9770/api/v1/jobs/1/status")
+    r.raise_for_status()
+    assert "5550d2cf50d79c11" not in r.text
