@@ -28,13 +28,15 @@ from pathlib import Path
 @pytest.fixture(autouse=True)
 def wrap_tests():
     # isolate cloud scheduler data between runs
-    data_dir = Path("data")
-    rmtree(data_dir)
+    data_dir = Path("test-data")
+    rmtree(data_dir, ignore_errors=True)
     data_dir.mkdir(parents=True)
 
     with ExitStack() as es:
         proc = es.enter_context(
-            subprocess.Popen("./cloudscheduler", stdout=subprocess.PIPE)
+            subprocess.Popen(
+                ["./cloudscheduler", "-data-dir", "test-data"], stdout=subprocess.PIPE
+            )
         )
         es.callback(proc.terminate)
         for line in proc.stdout:
