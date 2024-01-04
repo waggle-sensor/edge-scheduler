@@ -384,6 +384,13 @@ func (rm *ResourceManager) WatchPod(name string, namespace string, retry int) (w
 	return
 }
 
+func getAppMetaCacheImage() string {
+	if s, ok := os.LookupEnv("APP_META_CACHE_IMAGE"); ok {
+		return s
+	}
+	return "waggle/app-meta-cache:0.1.2"
+}
+
 func (rm *ResourceManager) createPodTemplateSpecForPlugin(pr *datatype.PluginRuntime) (v1.PodTemplateSpec, error) {
 	envs := []apiv1.EnvVar{
 		{
@@ -560,7 +567,7 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(pr *datatype.PluginRun
 	initContainers := []apiv1.Container{
 		{
 			Name:  "init-app-meta-cache",
-			Image: "waggle/app-meta-cache:0.1.1",
+			Image: getAppMetaCacheImage(),
 			Command: []string{
 				"/update-app-cache",
 				"set",
