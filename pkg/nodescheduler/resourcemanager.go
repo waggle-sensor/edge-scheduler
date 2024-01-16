@@ -1380,10 +1380,6 @@ func (rm *ResourceManager) RunGabageCollector() error {
 	return nil
 }
 
-func (rm *ResourceManager) RemovePlugin(p *datatype.Plugin) {
-	rm.TerminatePod(p.Name)
-}
-
 func (rm *ResourceManager) Configure() (err error) {
 	err = rm.CreateNamespace("ses")
 	if err != nil {
