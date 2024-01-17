@@ -2,6 +2,7 @@ package nodescheduler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"sync"
 	"time"
@@ -167,7 +168,9 @@ func (ns *NodeScheduler) Run() {
 				}
 			}
 			if triggerScheduling {
-				response := datatype.NewEventBuilder(datatype.EventPluginStatusPromoted).AddReason("kb triggered").Build()
+				response := datatype.NewEventBuilder(datatype.EventPluginStatusPromoted).
+					AddReason("kb triggered").
+					Build()
 				ns.LogToBeehive.SendWaggleMessageOnNodeAsync(response.ToWaggleMessage(), "node")
 				ns.chanNeedScheduling <- response
 			}
@@ -188,7 +191,10 @@ func (ns *NodeScheduler) Run() {
 				logger.Error.Printf("Failed to get the best task to run %q", err.Error())
 			} else {
 				for _, _pr := range pluginsToRun {
-					e := datatype.NewEventBuilder(datatype.EventPluginStatusScheduled).AddReason("Fit to resource").AddPluginMeta(&_pr.Plugin).Build()
+					e := datatype.NewEventBuilder(datatype.EventPluginStatusScheduled).
+						AddReason("Fit to resource").
+						AddPluginMeta(&_pr.Plugin).
+						Build()
 					logger.Debug.Printf("%s: %q (%q)", e.ToString(), e.GetPluginName(), e.GetReason())
 					ns.LogToBeehive.SendWaggleMessageOnNodeAsync(e.ToWaggleMessage(), "all")
 					pr := ns.readyQueue.Pop(_pr)
@@ -200,6 +206,8 @@ func (ns *NodeScheduler) Run() {
 			logger.Debug.Printf("%s", event.ToString())
 			switch event.Type {
 			case datatype.EventPluginStatusLaunched:
+				pluginName := event.GetPluginName()
+				logger.Info.Printf("Plugin %q is launched", pluginName)
 				ns.LogToBeehive.SendWaggleMessageOnNodeAsync(event.ToWaggleMessage(), "all")
 			case datatype.EventPluginStatusComplete:
 				// publish plugin completion message locally so that
@@ -208,6 +216,7 @@ func (ns *NodeScheduler) Run() {
 				//       it if the checker is called before the delivery. We will need to make sure
 				//       the message is delivered before triggering rule checking.
 				pluginName := event.GetPluginName()
+				logger.Info.Printf("Plugin %q is successfully completed", pluginName)
 				message := datatype.NewMessage(
 					string(datatype.EventPluginLastExecution),
 					pluginName,
@@ -285,15 +294,25 @@ func (ns *NodeScheduler) cleanUpGoal(goal *datatype.ScienceGoal) {
 				logger.Debug.Printf("plugin %s is removed from the ready queue", p.Name)
 			}
 			if a := ns.scheduledPlugins.Pop(pr); a != nil {
-				if pod, err := ns.ResourceManager.GetPod(a.Plugin.Name); err != nil {
+				// Pods have their job ID in the name
+				var podName string
+				if a.Plugin.JobID != "" {
+					podName = fmt.Sprintf("%s-%s", a.Plugin.Name, a.Plugin.JobID)
+				} else {
+					podName = a.Plugin.Name
+				}
+				if pod, err := ns.ResourceManager.GetPod(podName); err != nil {
 					logger.Error.Printf("Failed to get pod of the plugin %q", a.Plugin.Name)
 				} else {
-					e := datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddPluginMeta(&a.Plugin).AddPodMeta(pod).AddReason("Cleaning up the plugin due to deletion of the goal").Build()
+					e := datatype.NewEventBuilder(datatype.EventPluginStatusFailed).
+						AddPluginMeta(&a.Plugin).
+						AddPodMeta(pod).
+						AddReason("Cleaning up the plugin due to deletion of the goal").
+						Build()
 					ns.LogToBeehive.SendWaggleMessageOnNodeAsync(e.ToWaggleMessage(), "all")
+					ns.ResourceManager.TerminatePod(podName)
+					logger.Info.Printf("plugin %s is removed from running", p.Name)
 				}
-				ns.ResourceManager.RemovePlugin(&a.Plugin)
-				logger.Debug.Printf("plugin %s is removed from running", p.Name)
-
 			}
 		}
 	}
