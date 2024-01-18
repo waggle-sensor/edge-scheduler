@@ -46,10 +46,11 @@ const (
 )
 
 var (
-	hostPathDirectoryOrCreate       = apiv1.HostPathDirectoryOrCreate
-	hostPathDirectory               = apiv1.HostPathDirectory
-	backOffLimit              int32 = 0
-	ttlSecondsAfterFinished   int32 = 3600
+	hostPathDirectoryOrCreate            = apiv1.HostPathDirectoryOrCreate
+	hostPathDirectory                    = apiv1.HostPathDirectory
+	backOffLimit                   int32 = 0
+	ttlSecondsAfterFinished        int32 = 3600
+	pluginEnvFromSecretRegexFormat       = regexp.MustCompile(`^{secret\.([a-z0-9-]+).([a-zA-Z0-9]+)}$`)
 )
 
 // ResourceManager structs a resource manager talking to a local computing cluster to schedule plugins
@@ -286,6 +287,13 @@ func (rm *ResourceManager) ForwardService(serviceName string, fromNamespace stri
 	return err
 }
 
+func (rm *ResourceManager) GetSecret(secretName string) (*apiv1.Secret, error) {
+	// TODO: Later we use pod name as we run plugins in one-shot?
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return rm.Clientset.CoreV1().Secrets(rm.Namespace).Get(ctx, secretName, metav1.GetOptions{})
+}
+
 func (rm *ResourceManager) CreateConfigMap(name string, data map[string]string, namespace string, overwrite bool) error {
 	var config apiv1.ConfigMap
 	config.Name = name
@@ -446,13 +454,54 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(pr *datatype.PluginRun
 				},
 			},
 		},
+		// {
+		// 	Name: "MYENV_A",
+		// 	ValueFrom: &apiv1.EnvVarSource{
+		// 		SecretKeyRef: &apiv1.SecretKeySelector{
+		// 			LocalObjectReference: v1.LocalObjectReference{Name: "mysecret"},
+		// 			Key:                  "a",
+		// 			Optional:             booltoPtr(true),
+		// 		},
+		// 	},
+		// },
+		// {
+		// 	Name: "MYENV_B",
+		// 	ValueFrom: &apiv1.EnvVarSource{
+		// 		SecretKeyRef: &apiv1.SecretKeySelector{
+		// 			LocalObjectReference: v1.LocalObjectReference{Name: "mysecret"},
+		// 			Key:                  "b",
+		// 			Optional:             booltoPtr(true),
+		// 		},
+		// 	},
+		// },
 	}
 
 	for k, v := range pr.Plugin.PluginSpec.Env {
-		envs = append(envs, apiv1.EnvVar{
-			Name:  k,
-			Value: v,
-		})
+		// If the environment variable value refers to a Kubernetes Secret,
+		// then we check and load the value from the Kubernetes Secret.
+		// Else, it must be just a value.
+		if sp := pluginEnvFromSecretRegexFormat.FindStringSubmatch(v); len(sp) == 3 {
+			secretName := sp[1]
+			secret, err := rm.GetSecret(secretName)
+			if err != nil {
+				return v1.PodTemplateSpec{}, err
+			}
+
+			keyName := sp[2]
+			if secretV, found := secret.Data[keyName]; found {
+				envs = append(envs, apiv1.EnvVar{
+					Name:  k,
+					Value: string(secretV),
+				})
+			} else {
+				return v1.PodTemplateSpec{}, fmt.Errorf("Secret %s does not have the variable %s. Please check.", secretName, keyName)
+			}
+		} else {
+			envs = append(envs, apiv1.EnvVar{
+				Name:  k,
+				Value: v,
+			})
+		}
 	}
 
 	tag, err := pr.Plugin.PluginSpec.GetImageTag()
@@ -490,6 +539,15 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(pr *datatype.PluginRun
 				},
 			},
 		},
+		// {
+		// 	Name: "my-secret",
+		// 	VolumeSource: apiv1.VolumeSource{
+		// 		Secret: &apiv1.SecretVolumeSource{
+		// 			SecretName: "mysecret",
+		// 			Optional:   booltoPtr(true),
+		// 		},
+		// 	},
+		// },
 	}
 
 	volumeMounts := []apiv1.VolumeMount{
@@ -507,6 +565,10 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(pr *datatype.PluginRun
 			MountPath: "/etc/asound.conf",
 			SubPath:   "asound.conf",
 		},
+		// {
+		// 	Name:      "my-secret",
+		// 	MountPath: "/my/secret",
+		// },
 	}
 
 	if pr.EnablePluginController {
@@ -716,6 +778,14 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(pr *datatype.PluginRun
 			InitContainers:        initContainers,
 			Containers:            containers,
 			Volumes:               volumes,
+			// TODO: HostAliases may be used to include IP-based sensors that the plugin wants to use
+			//       Below is an example for the bottom camera
+			// HostAliases: []apiv1.HostAlias{
+			// 	{
+			// 		IP: "10.31.81.10",
+			// 		Hostnames: []string{"bottom_camera", "bottom"},
+			// 	},
+			// },
 		},
 	}, nil
 }
