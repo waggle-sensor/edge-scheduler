@@ -17,7 +17,7 @@ var cmdRm = &cobra.Command{
 	Use:              "rm APP_NAME",
 	Short:            "Remove plugin",
 	TraverseChildren: true,
-	Args:             cobra.MaximumNArgs(1),
+	Args:             cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
 		logger.Debug.Printf("kubeconfig: %s", kubeconfig)
 		name := args[0]

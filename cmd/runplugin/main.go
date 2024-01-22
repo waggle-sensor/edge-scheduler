@@ -66,7 +66,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	resourceManager, err := nodescheduler.NewK3SResourceManager(false, kubeconfig, "runplugin", false)
+	resourceManager, err := nodescheduler.NewK3SResourceManager(false, kubeconfig, "runplugin")
 	if err != nil {
 		log.Fatalf("nodescheduler.NewK3SResourceManager: %s", err.Error())
 	}
@@ -164,7 +164,7 @@ func runPlugin(resourceManager *nodescheduler.ResourceManager, plugin *datatype.
 	return nil
 }
 
-func updateDeployment(clientset *kubernetes.Clientset, deployment *v1.Deployment) error {
+func updateDeployment(clientset kubernetes.Interface, deployment *v1.Deployment) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

@@ -30,8 +30,10 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
@@ -46,16 +48,17 @@ const (
 )
 
 var (
-	hostPathDirectoryOrCreate       = apiv1.HostPathDirectoryOrCreate
-	hostPathDirectory               = apiv1.HostPathDirectory
-	backOffLimit              int32 = 0
-	ttlSecondsAfterFinished   int32 = 3600
+	hostPathDirectoryOrCreate            = apiv1.HostPathDirectoryOrCreate
+	hostPathDirectory                    = apiv1.HostPathDirectory
+	backOffLimit                   int32 = 0
+	ttlSecondsAfterFinished        int32 = 3600
+	pluginEnvFromSecretRegexFormat       = regexp.MustCompile(`^{secret\.([a-z0-9-]+).([a-zA-Z0-9]+)}$`)
 )
 
 // ResourceManager structs a resource manager talking to a local computing cluster to schedule plugins
 type ResourceManager struct {
 	Namespace     string
-	Clientset     *kubernetes.Clientset
+	Clientset     kubernetes.Interface
 	MetricsClient *metrics.Clientset
 	RMQManagement *RMQManagement
 	Notifier      *interfacing.Notifier
@@ -65,16 +68,7 @@ type ResourceManager struct {
 }
 
 // NewResourceManager returns an instance of ResourceManager
-func NewK3SResourceManager(incluster bool, kubeconfig string, runner string, simulate bool) (rm *ResourceManager, err error) {
-	if simulate {
-		return &ResourceManager{
-			Namespace:     namespace,
-			Clientset:     nil,
-			MetricsClient: nil,
-			Simulate:      simulate,
-			runner:        runner,
-		}, nil
-	}
+func NewK3SResourceManager(incluster bool, kubeconfig string, runner string) (rm *ResourceManager, err error) {
 	k3sClient, err := GetK3SClient(incluster, kubeconfig)
 	if err != nil {
 		return
@@ -87,9 +81,19 @@ func NewK3SResourceManager(incluster bool, kubeconfig string, runner string, sim
 		Namespace:     namespace,
 		Clientset:     k3sClient,
 		MetricsClient: metricsClient,
-		Simulate:      simulate,
 		runner:        runner,
 	}, nil
+}
+
+// NewFakeK3SResourceManager creates a ResourceManager object with the fake Kubernetes Clientset
+// which holds given objects.
+func NewFakeK3SResourceManager(objects []runtime.Object) (rm *ResourceManager) {
+	return &ResourceManager{
+		Namespace:     namespace,
+		Clientset:     fake.NewSimpleClientset(objects...),
+		MetricsClient: nil,
+		runner:        "fake",
+	}
 }
 
 func generatePassword() string {
@@ -175,6 +179,39 @@ func securityContextForConfig(pluginSpec *datatype.PluginSpec) *apiv1.SecurityCo
 		return &apiv1.SecurityContext{Privileged: &pluginSpec.Privileged}
 	}
 	return nil
+}
+
+func (rm *ResourceManager) parseEnv(rawEnv map[string]string) (parsedEnv []apiv1.EnvVar, err error) {
+	for k, v := range rawEnv {
+		// If the environment variable value refers to a Kubernetes Secret,
+		// then we check and load the value from the Kubernetes Secret.
+		// Else, it must be just a value.
+		if sp := pluginEnvFromSecretRegexFormat.FindStringSubmatch(v); len(sp) == 3 {
+			secretName := sp[1]
+			secret, _err := rm.GetSecret(secretName)
+			if _err != nil {
+				err = _err
+				return
+			}
+
+			keyName := sp[2]
+			if secretV, found := secret.Data[keyName]; found {
+				parsedEnv = append(parsedEnv, apiv1.EnvVar{
+					Name:  k,
+					Value: string(secretV),
+				})
+			} else {
+				err = fmt.Errorf("Secret %s does not have the variable %s. Please check.", secretName, keyName)
+				return
+			}
+		} else {
+			parsedEnv = append(parsedEnv, apiv1.EnvVar{
+				Name:  k,
+				Value: v,
+			})
+		}
+	}
+	return
 }
 
 func (rm *ResourceManager) ConfigureKubernetes(inCluster bool, kubeconfig string) error {
@@ -286,6 +323,13 @@ func (rm *ResourceManager) ForwardService(serviceName string, fromNamespace stri
 	return err
 }
 
+func (rm *ResourceManager) GetSecret(secretName string) (*apiv1.Secret, error) {
+	// TODO: Later we use pod name as we run plugins in one-shot?
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return rm.Clientset.CoreV1().Secrets(rm.Namespace).Get(ctx, secretName, metav1.GetOptions{})
+}
+
 func (rm *ResourceManager) CreateConfigMap(name string, data map[string]string, namespace string, overwrite bool) error {
 	var config apiv1.ConfigMap
 	config.Name = name
@@ -392,7 +436,14 @@ func getAppMetaCacheImage() string {
 }
 
 func (rm *ResourceManager) createPodTemplateSpecForPlugin(pr *datatype.PluginRuntime) (v1.PodTemplateSpec, error) {
-	envs := []apiv1.EnvVar{
+	// We put user environmental variables first, so that they don't
+	// override our environmental variagbles.
+	envs, err := rm.parseEnv(pr.Plugin.PluginSpec.Env)
+	if err != nil {
+		return v1.PodTemplateSpec{}, err
+	}
+
+	envs = append(envs, []apiv1.EnvVar{
 		{
 			Name:  "PULSE_SERVER",
 			Value: "tcp:wes-audio-server.default.svc.cluster.local:4713",
@@ -453,14 +504,27 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(pr *datatype.PluginRun
 				},
 			},
 		},
-	}
-
-	for k, v := range pr.Plugin.PluginSpec.Env {
-		envs = append(envs, apiv1.EnvVar{
-			Name:  k,
-			Value: v,
-		})
-	}
+		// {
+		// 	Name: "MYENV_A",
+		// 	ValueFrom: &apiv1.EnvVarSource{
+		// 		SecretKeyRef: &apiv1.SecretKeySelector{
+		// 			LocalObjectReference: v1.LocalObjectReference{Name: "mysecret"},
+		// 			Key:                  "a",
+		// 			Optional:             booltoPtr(true),
+		// 		},
+		// 	},
+		// },
+		// {
+		// 	Name: "MYENV_B",
+		// 	ValueFrom: &apiv1.EnvVarSource{
+		// 		SecretKeyRef: &apiv1.SecretKeySelector{
+		// 			LocalObjectReference: v1.LocalObjectReference{Name: "mysecret"},
+		// 			Key:                  "b",
+		// 			Optional:             booltoPtr(true),
+		// 		},
+		// 	},
+		// },
+	}...)
 
 	tag, err := pr.Plugin.PluginSpec.GetImageTag()
 	if err != nil {
@@ -497,6 +561,15 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(pr *datatype.PluginRun
 				},
 			},
 		},
+		// {
+		// 	Name: "my-secret",
+		// 	VolumeSource: apiv1.VolumeSource{
+		// 		Secret: &apiv1.SecretVolumeSource{
+		// 			SecretName: "mysecret",
+		// 			Optional:   booltoPtr(true),
+		// 		},
+		// 	},
+		// },
 	}
 
 	volumeMounts := []apiv1.VolumeMount{
@@ -514,6 +587,10 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(pr *datatype.PluginRun
 			MountPath: "/etc/asound.conf",
 			SubPath:   "asound.conf",
 		},
+		// {
+		// 	Name:      "my-secret",
+		// 	MountPath: "/my/secret",
+		// },
 	}
 
 	if pr.EnablePluginController {
@@ -723,6 +800,14 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(pr *datatype.PluginRun
 			InitContainers:        initContainers,
 			Containers:            containers,
 			Volumes:               volumes,
+			// TODO: HostAliases may be used to include IP-based sensors that the plugin wants to use
+			//       Below is an example for the bottom camera
+			// HostAliases: []apiv1.HostAlias{
+			// 	{
+			// 		IP: "10.31.81.10",
+			// 		Hostnames: []string{"bottom_camera", "bottom"},
+			// 	},
+			// },
 		},
 	}, nil
 }

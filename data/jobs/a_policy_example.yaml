@@ -4,22 +4,21 @@ plugins:
 - name: myfirstapp
   pluginSpec:
     image: registry.sagecontinuum.org/theone/imagesampler:0.3.0
-    entrypoint: /bin/bash
+    entrypoint: bash
     args:
     - -c
-    - "echo hello world; sleep 10; echo bye"
+    - "echo hello world; sleep 60; echo bye"
 - name: mysecondapp
   pluginSpec:
     image: registry.sagecontinuum.org/theone/imagesampler:0.3.0
-    entrypoint: /bin/bash
+    entrypoint: bash
     args:
     - -c
-    - "echo hello world; sleep 5; echo bye"
+    - "echo hello world; sleep 30; echo bye"
 nodes:
-  W097:
+  W023:
 scienceRules:
-- "schedule(myfirstapp): True"
-- "schedule(mysecondapp): True"
-#- "myfirstapp: cronjob('myfirstapp', '0 * * * *')"
+- "schedule(myfirstapp): cronjob('myfirstapp', '*/10 * * * *')"
+- "schedule(mysecondapp): cronjob('mysecondapp', '*/10 * * * *')"
 successcriteria:
 - WallClock(1d)
