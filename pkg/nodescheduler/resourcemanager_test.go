@@ -1,38 +1,58 @@
 package nodescheduler
 
 import (
-	"reflect"
-	"regexp"
 	"testing"
+
+	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
+	"gopkg.in/yaml.v2"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 func TestEnvFromSecret(t *testing.T) {
-	pluginEnvFromSecretRegexFormat = regexp.MustCompile(`^{secret\.([a-z0-9-]+).([a-zA-Z0-9]+)}$`)
+	mySecretWord := "helloworld"
+	// A secret which we will retrieve the data from.
+	objects := []runtime.Object{
+		&corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "mysecret",
+				Namespace: "ses", // ResourceManager uses ses namespace by default
+			},
+			Data: map[string][]byte{
+				"greeting": []byte(mySecretWord),
+			},
+		},
+	}
+	fake_rm := NewFakeK3SResourceManager(objects)
 
-	kv := map[string]string{
-		"ENV1":                    "123",
-		"{secret.mysecret.myenv}": "helloworld",
+	pr := datatype.NewPluginRuntimeWithScienceRule(
+		datatype.Plugin{
+			Name: "test-plguin",
+			PluginSpec: &datatype.PluginSpec{
+				Image: "myimage:latest",
+				Env: map[string]string{
+					"ENV1":  "123",
+					"MYENV": "{secret.mysecret.greeting}",
+				},
+			},
+		}, datatype.ScienceRule{},
+	)
+	pluginSpec, err := fake_rm.createPodTemplateSpecForPlugin(pr)
+	if err != nil {
+		t.Error(err)
 	}
-	expected := map[string]string{
-		"ENV1":  "123",
-		"myenv": "helloworld",
-	}
-	parsed := make(map[string]string)
-	for k, v := range kv {
-		// if the environment variable name refers to a Kubernetes Secret,
-		// then we check and load the Secret from Kubernetes.
-		// Else, the it may be just a variable name
-		// FYI, len(sp) must be 3; [{secret.mysecret.myenv} mysecret myenv]
-		if sp := pluginEnvFromSecretRegexFormat.FindStringSubmatch(k); len(sp) == 3 {
-			// secretName := sp[1]
-			keyName := sp[2]
-			// fmt.Printf("%v and name is %q, env name is %q", sp, secretName, keyName)
-			parsed[keyName] = v
-		} else {
-			parsed[k] = v
+	pluginContainer := pluginSpec.Spec.Containers[0]
+	found := false
+	for _, e := range pluginContainer.Env {
+		if e.Name == "MYENV" && e.Value == mySecretWord {
+			found = true
+			break
 		}
 	}
-	if !reflect.DeepEqual(parsed, expected) {
-		t.Errorf("%+v but expected %+v", parsed, expected)
+	if !found {
+		t.Errorf("%s was expected in %v, but not found", mySecretWord, pluginContainer.Env)
 	}
+	out, _ := yaml.Marshal(pluginSpec)
+	t.Logf("%s", out)
 }
