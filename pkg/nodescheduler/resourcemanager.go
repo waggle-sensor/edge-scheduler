@@ -1243,14 +1243,14 @@ func (rm *ResourceManager) CleanUp() error {
 func (rm *ResourceManager) LaunchAndWatchPlugin(pr *datatype.PluginRuntime) {
 	logger.Debug.Printf("Running plugin %q...", pr.Plugin.Name)
 	pod, err := rm.CreatePodTemplate(pr)
-	// we override the plugin name to distinguish the same plugin name from different jobs
-	if pr.Plugin.JobID != "" {
-		pod.SetName(fmt.Sprintf("%s-%s", pod.GetName(), pr.Plugin.JobID))
-	}
 	if err != nil {
 		logger.Error.Printf("Failed to create Kubernetes Pod for %q: %q", pr.Plugin.Name, err.Error())
 		rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusFailed).AddReason(err.Error()).AddPluginMeta(&pr.Plugin).Build())
 		return
+	}
+	// we override the plugin name to distinguish the same plugin name from different jobs
+	if pr.Plugin.JobID != "" {
+		pod.SetName(fmt.Sprintf("%s-%s", pod.GetName(), pr.Plugin.JobID))
 	}
 	err = rm.CreatePod(pod)
 	defer rm.TerminatePod(pod.Name)
