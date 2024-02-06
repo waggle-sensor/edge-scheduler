@@ -38,7 +38,7 @@ func NewNodeSchedulerBuilder(config *NodeSchedulerConfig) *NodeSchedulerBuilder 
 			SchedulingPolicy:            policy.GetSchedulingPolicyByName(config.SchedulingPolicy),
 			chanContextEventToScheduler: make(chan datatype.EventPluginContext, maxChannelBuffer),
 			chanFromResourceManager:     make(chan datatype.Event, maxChannelBuffer),
-			chanFromCloudScheduler:      make(chan *datatype.Event, maxChannelBuffer),
+			chanFromCloudScheduler:      make(chan datatype.Event, maxChannelBuffer),
 			chanNeedScheduling:          make(chan datatype.Event, maxChannelBuffer),
 		},
 	}

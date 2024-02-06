@@ -250,7 +250,7 @@ func (cs *CloudScheduler) updateNodes(nodes []string) {
 		if err != nil {
 			logger.Error.Printf("Failed to compress goals for node %q before pushing", nodeName)
 		} else {
-			event := datatype.NewEventBuilder(datatype.EventGoalStatusUpdated).AddEntry("goals", string(blob)).Build()
+			event := datatype.NewSchedulerEventBuilder(datatype.EventGoalStatusUpdated).AddEntry("goals", string(blob)).Build()
 			cs.APIServer.Push(nodeName, &event)
 		}
 	}
@@ -259,12 +259,16 @@ func (cs *CloudScheduler) updateNodes(nodes []string) {
 func (cs *CloudScheduler) Run() {
 	logger.Info.Printf("Cloud Scheduler %s starts...", cs.Name)
 	go cs.APIServer.Run()
-	chanEventFromNode := make(chan *datatype.Event)
+	chanEventFromNode := make(chan datatype.Event)
 	if cs.eventListener != nil {
 		logger.Info.Printf("Connecting to RabbitMQ to receive node events")
 		queueName := fmt.Sprintf("to-scheduler-%s", cs.Config.Name)
 		logger.Debug.Printf("RabbitMQ Queue name for messages is %s", queueName)
-		err := cs.eventListener.SubscribeEvents("waggle.msg", queueName, datatype.EventRabbitMQSubscriptionPatternGoals, chanEventFromNode)
+		err := cs.eventListener.SubscribeEvents(
+			"waggle.msg",
+			queueName,
+			datatype.EventRabbitMQSubscriptionPatternGoals,
+			chanEventFromNode)
 		if err != nil {
 			logger.Error.Printf("Failed to set up a connection to RabbitMQ: %s", err.Error())
 		}
@@ -281,13 +285,14 @@ func (cs *CloudScheduler) Run() {
 		case <-ticker.C:
 			logger.Debug.Printf("Job re-evaluation")
 		case event := <-chanEventFromNode:
-			logger.Debug.Printf("%s:%v", event.ToString(), event)
+			e := event.(datatype.SchedulerEvent)
+			logger.Debug.Printf("%s:%v", e.ToString(), event)
 			// TODO: stat aggregator for jobs may use this event
-			sender := event.GetEntry("vsn")
+			sender := e.GetEntry("vsn")
 			// sender must be identified
-			switch event.Type {
+			switch e.Type {
 			case datatype.EventGoalStatusReceived, datatype.EventGoalStatusUpdated:
-				goalID := event.GetGoalID()
+				goalID := e.GetGoalID()
 				logger.Debug.Printf("%s received science goal %s", sender, goalID)
 				scienceGoal, err := cs.GoalManager.GetScienceGoal(goalID)
 				if err != nil {
@@ -309,8 +314,9 @@ func (cs *CloudScheduler) Run() {
 			// TODO: How do we determine if a job is failed
 			//       by looking at EventPluginStatusFailed?
 		case event := <-cs.chanFromGoalManager:
-			logger.Debug.Printf("%s: %q", event.ToString(), event.GetGoalName())
-			switch event.Type {
+			e := event.(datatype.SchedulerEvent)
+			logger.Debug.Printf("%s: %q", e.ToString(), e.GetGoalName())
+			switch e.Type {
 			case datatype.EventJobStatusRemoved:
 				// job, err := cs.GoalManager.GetJob(event.GetJobID())
 				// if err != nil {
@@ -318,7 +324,7 @@ func (cs *CloudScheduler) Run() {
 				// 	break
 				// }
 				// The job is removed. Corresponding science goal should also be removed
-				if goalID := event.GetGoalID(); goalID != "" {
+				if goalID := e.GetGoalID(); goalID != "" {
 					scienceGoal, err := cs.GoalManager.GetScienceGoal(goalID)
 					if err != nil {
 						logger.Error.Printf("Failed to get science goal %q", goalID)
@@ -335,9 +341,9 @@ func (cs *CloudScheduler) Run() {
 					logger.Info.Printf("failed to retreive goal ID from the event")
 				}
 			case datatype.EventJobStatusSuspended:
-				job, err := cs.GoalManager.GetJob(event.GetJobID())
+				job, err := cs.GoalManager.GetJob(e.GetJobID())
 				if err != nil {
-					logger.Error.Printf("Failed to get job %q", event.GetJobID())
+					logger.Error.Printf("Failed to get job %q", e.GetJobID())
 					break
 				}
 				// The job is removed. Corresponding science goal should also be removed
@@ -356,9 +362,9 @@ func (cs *CloudScheduler) Run() {
 					cs.updateNodes(NodesToUpdate)
 				}
 			case datatype.EventGoalStatusSubmitted:
-				scienceGoal, err := cs.GoalManager.GetScienceGoal(event.GetGoalID())
+				scienceGoal, err := cs.GoalManager.GetScienceGoal(e.GetGoalID())
 				if err != nil {
-					logger.Error.Printf("Failed to get science goal %q", event.GetGoalID())
+					logger.Error.Printf("Failed to get science goal %q", e.GetGoalID())
 					break
 				}
 				logger.Info.Printf("Goal %q is submitted for job id %q.", scienceGoal.Name, scienceGoal.JobID)
