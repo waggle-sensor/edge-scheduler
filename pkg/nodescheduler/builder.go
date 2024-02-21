@@ -46,7 +46,8 @@ func NewNodeSchedulerBuilder(config *NodeSchedulerConfig) *NodeSchedulerBuilder 
 
 func (nsb *NodeSchedulerBuilder) AddGoalManager(appID string) *NodeSchedulerBuilder {
 	nsb.nodeScheduler.GoalManager = &NodeGoalManager{
-		ScienceGoals: make(map[string]datatype.ScienceGoal),
+		ScienceGoals:  make(map[string]datatype.ScienceGoal),
+		LoadedPlugins: make(map[PluginIndex]datatype.PluginRuntime),
 	}
 	return nsb
 }
@@ -67,7 +68,7 @@ func (nsb *NodeSchedulerBuilder) AddResourceManager() *NodeSchedulerBuilder {
 func (nsb *NodeSchedulerBuilder) AddKnowledgebase() *NodeSchedulerBuilder {
 	nsb.nodeScheduler.Knowledgebase = &KnowledgeBase{
 		nodeID:         nsb.nodeScheduler.Config.Name,
-		rules:          make(map[string][]*datatype.ScienceRule),
+		rules:          make(map[string][]datatype.ScienceRule),
 		measures:       map[string]interface{}{},
 		ruleCheckerURI: nsb.nodeScheduler.Config.RuleCheckerURI,
 	}

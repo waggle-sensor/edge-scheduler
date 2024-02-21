@@ -13,7 +13,7 @@ import (
 
 type KnowledgeBase struct {
 	nodeID         string
-	rules          map[string][]*datatype.ScienceRule
+	rules          map[string][]datatype.ScienceRule
 	measures       map[string]interface{}
 	ruleCheckerURI string
 }
@@ -21,7 +21,7 @@ type KnowledgeBase struct {
 func NewKnowledgeBase(nodeID string, ruleCheckerURI string) *KnowledgeBase {
 	return &KnowledgeBase{
 		nodeID:         nodeID,
-		rules:          make(map[string][]*datatype.ScienceRule),
+		rules:          make(map[string][]datatype.ScienceRule),
 		measures:       map[string]interface{}{},
 		ruleCheckerURI: ruleCheckerURI,
 	}
@@ -45,10 +45,14 @@ func (kb *KnowledgeBase) add(obj interface{}, k string, v interface{}) {
 func (kb *KnowledgeBase) AddRulesFromScienceGoal(s *datatype.ScienceGoal) error {
 	if mySubGoal := s.GetMySubGoal(kb.nodeID); mySubGoal != nil {
 		// This is to make sure the rules are parsed before evaluated
+		parsedScienceRules := []datatype.ScienceRule{}
 		for _, r := range mySubGoal.ScienceRules {
-			r.Parse(r.Rule)
+			if err := r.Parse(r.Rule); err != nil {
+				logger.Error.Printf("Failed to parse ScienceRule %q: %s", r.Rule, err.Error())
+			}
+			parsedScienceRules = append(parsedScienceRules, r)
 		}
-		kb.rules[s.ID] = mySubGoal.ScienceRules
+		kb.rules[s.ID] = parsedScienceRules
 		return nil
 	} else {
 		return fmt.Errorf("Failed to find my sub goal from science goal %q", s.ID)
@@ -118,10 +122,10 @@ func (kb *KnowledgeBase) EvaluateRule(rule *datatype.ScienceRule) (bool, error) 
 	}
 }
 
-func (kb *KnowledgeBase) EvaluateGoal(goalID string) (results []*datatype.ScienceRule, err error) {
+func (kb *KnowledgeBase) EvaluateGoal(goalID string) (results []datatype.ScienceRule, err error) {
 	if rules, exist := kb.rules[goalID]; exist {
 		for _, rule := range rules {
-			if valid, err := kb.EvaluateRule(rule); err != nil {
+			if valid, err := kb.EvaluateRule(&rule); err != nil {
 				logger.Error.Printf("Failed to evaluate rule %q: %s", rule, err.Error())
 			} else if valid {
 				results = append(results, rule)

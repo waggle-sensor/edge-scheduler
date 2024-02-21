@@ -191,7 +191,7 @@ func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(job *datatype.Job, use
 		// Check 4: conditions of job are valid
 
 		// Check 5: valiables are valid
-		var rules []*datatype.ScienceRule
+		var rules []datatype.ScienceRule
 		for _, rule := range job.ScienceRules {
 			r, err := datatype.NewScienceRule(rule)
 			if err != nil {
@@ -199,7 +199,7 @@ func (cs *CloudScheduler) ValidateJobAndCreateScienceGoal(job *datatype.Job, use
 					fmt.Errorf("Failed to parse science rule %q: %s", rule, err.Error()))
 				continue
 			}
-			rules = append(rules, r)
+			rules = append(rules, *r)
 		}
 		scienceGoalBuilder = scienceGoalBuilder.AddSubGoal(nodeName, approvedPlugins, rules)
 	}

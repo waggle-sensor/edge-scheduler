@@ -59,7 +59,7 @@ func (s *SchedulerEventBuilder) AddEntry(k string, v interface{}) *SchedulerEven
 	return s
 }
 
-func (s *SchedulerEventBuilder) AddPluginMeta(plugin *Plugin) *SchedulerEventBuilder {
+func (s *SchedulerEventBuilder) AddPluginMeta(plugin Plugin) *SchedulerEventBuilder {
 	s.e.Meta["plugin_name"] = plugin.Name
 	s.e.Meta["plugin_image"] = plugin.PluginSpec.Image
 	s.e.Meta["plugin_task"] = plugin.PluginSpec.Job
@@ -194,13 +194,16 @@ const (
 	EventGoalStatusReceived     EventType = "sys.scheduler.status.goal.received"
 	EventGoalStatusReceivedBulk EventType = "sys.scheduler.status.goal.received.bulk"
 	EventGoalStatusRemoved      EventType = "sys.scheduler.status.goal.removed"
-	EventPluginStatusPromoted   EventType = "sys.scheduler.status.plugin.promoted"
-	EventPluginStatusScheduled  EventType = "sys.scheduler.status.plugin.scheduled"
-	EventPluginStatusLaunched   EventType = "sys.scheduler.status.plugin.launched"
-	EventPluginStatusComplete   EventType = "sys.scheduler.status.plugin.complete"
-	EventPluginLastExecution    EventType = "sys.scheduler.plugin.lastexecution"
-	EventPluginStatusFailed     EventType = "sys.scheduler.status.plugin.failed"
-	EventFailure                EventType = "sys.scheduler.failure"
+
+	EventPluginStatusQueued    EventType = "sys.scheduler.status.plugin.queued"
+	EventPluginStatusSelected  EventType = "sys.scheduler.status.plugin.selected"
+	EventPluginStatusScheduled EventType = "sys.scheduler.status.plugin.scheduled"
+	EventPluginStatusRunning   EventType = "sys.scheduler.status.plugin.running"
+	EventPluginStatusLaunched  EventType = "sys.scheduler.status.plugin.launched"
+	EventPluginStatusCompleted EventType = "sys.scheduler.status.plugin.completed"
+	EventPluginLastExecution   EventType = "sys.scheduler.plugin.lastexecution"
+	EventPluginStatusFailed    EventType = "sys.scheduler.status.plugin.failed"
+	EventFailure               EventType = "sys.scheduler.failure"
 
 	EventPluginPerfCPU EventType = "sys.plugin.perf.cpu"
 	EventPluginPerfMem EventType = "sys.plugin.perf.mem"

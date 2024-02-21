@@ -14,7 +14,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	rabbithole "github.com/michaelklishin/rabbit-hole"
@@ -36,6 +35,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
 	metrics "k8s.io/metrics/pkg/client/clientset/versioned"
@@ -46,6 +46,13 @@ const (
 	rancherKubeconfigPath = "/etc/rancher/k3s/k3s.yaml"
 	configMapNameForGoals = "waggle-plugin-scheduler-goals"
 	letters               = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+	PodLabelPluginTask = "sagecontinuum.org/plugin-task"
+	PodLabelGoalID     = "sagecontinuum.org/plugin-goal-id"
+	PodLabelJobID      = "sagecontinuum.org/plugin-job-id"
+
+	InitContainerName             = "init-app-meta-cache"
+	PluginControllerContainerName = "plugin-controller"
 )
 
 var (
@@ -56,6 +63,47 @@ var (
 	pluginEnvFromSecretRegexFormat       = regexp.MustCompile(`^{secret\.([a-z0-9-]+).([a-zA-Z0-9]+)}$`)
 )
 
+type KubernetesEventType string
+
+const (
+	KubernetesEventTypePod       KubernetesEventType = "pod"
+	KubernetesEventTypeEvent     KubernetesEventType = "event"
+	KubernetesEventTypeConfigMap KubernetesEventType = "configmap"
+)
+
+type KubernetesEventActionType string
+
+const (
+	KubernetesEventTypeAdd      KubernetesEventActionType = "Added"
+	KubernetesEventTypeModified KubernetesEventActionType = "Modified"
+	KubernetesEventTypeDeleted  KubernetesEventActionType = "Deleted"
+)
+
+type KubernetesEvent struct {
+	Type   KubernetesEventType
+	Action KubernetesEventActionType
+	*v1.Pod
+	*v1.Event
+	*v1.ConfigMap
+}
+
+func NewKubernetesEvent(t KubernetesEventType, a KubernetesEventActionType, obj interface{}) KubernetesEvent {
+	switch t {
+	case KubernetesEventTypePod:
+		return KubernetesEvent{Type: t, Action: a, Pod: obj.(*v1.Pod)}
+	case KubernetesEventTypeEvent:
+		return KubernetesEvent{Type: t, Action: a, Event: obj.(*v1.Event)}
+	case KubernetesEventTypeConfigMap:
+		return KubernetesEvent{Type: t, Action: a, ConfigMap: obj.(*v1.ConfigMap)}
+	default:
+		return KubernetesEvent{}
+	}
+}
+
+func (e KubernetesEvent) Build() datatype.Event {
+	return e
+}
+
 // ResourceManager structs a resource manager talking to a local computing cluster to schedule plugins
 type ResourceManager struct {
 	Namespace           string
@@ -65,7 +113,6 @@ type ResourceManager struct {
 	RMQManagement       *RMQManagement
 	Notifier            *interfacing.Notifier
 	Simulate            bool
-	mutex               sync.Mutex
 	runner              string
 }
 
@@ -115,14 +162,103 @@ func generateRandomString(n int) string {
 	return string(s)
 }
 
+func (*ResourceManager) GetInitContainerStatusFromPod(p *v1.Pod, containerName string) v1.ContainerStatus {
+	for _, c := range p.Status.InitContainerStatuses {
+		if c.Name == containerName {
+			return c
+		}
+	}
+	return v1.ContainerStatus{}
+}
+
+func (*ResourceManager) GetContainerStatusFromPod(p *v1.Pod, containerName string) v1.ContainerStatus {
+	for _, c := range p.Status.ContainerStatuses {
+		if c.Name == containerName {
+			return c
+		}
+	}
+	return v1.ContainerStatus{}
+}
+
+// AnalyzeFailureOfPod carefully analyzes the reason of PodFailure.
+// It checks if the Plugin container failed or other containers
+// (e.g., initcontainer) failed. If the Plugin container succeeded,
+// we consider the Pod as PodSucceeded
+func (rm *ResourceManager) AnalyzeFailureOfPod(p *v1.Pod) (*datatype.SchedulerEventBuilder, error) {
+	pluginName := p.Labels[PodLabelPluginTask]
+	message := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).AddPodMeta(p)
+
+	// first, check if the init container failed
+	initContainerStatus := rm.GetInitContainerStatusFromPod(p, InitContainerName)
+	if t := initContainerStatus.State.Terminated; t == nil {
+		// Pod failed even before the init container finishes
+		message = message.AddReason(fmt.Sprintf("pod failed: termination state not exist in container %q", InitContainerName))
+		return message, fmt.Errorf("pod %q failed before init container terminates: %s %q", p.Name, p.Status.Reason, p.Status.Message)
+	} else {
+		if t.ExitCode != 0 {
+			// init container terminated with an error
+			logger.Error.Printf("init container of %s has failed: %s", p.Name, t.String())
+			if containerLog, err := rm.GetContainerLastLog(p.Name, initContainerStatus.Name, 1024); err == nil {
+				message = message.AddEntry("error_log", containerLog)
+			} else {
+				logger.Error.Printf("failed to get plugin %q container %q log: %s", p.Name, initContainerStatus.Name, err.Error())
+			}
+			message = message.AddReason("init container failed").
+				AddEntry("return_code", t.ExitCode)
+			return message, nil
+		}
+	}
+
+	// even if the pod failed, if the plugin container succeeded
+	// we consider the pod succeeded.
+	pluginContainerStatus := rm.GetContainerStatusFromPod(p, pluginName)
+	if t := pluginContainerStatus.State.Terminated; t == nil {
+		// NOTE: This should not happen as PodFailure means all containers have their termination state
+		message = message.AddReason(fmt.Sprintf("pod failed: termination state not exist in container %q", pluginName))
+		return message, fmt.Errorf("pod %q failed, but termination state not exist: %s %q", p.Name, p.Status.Reason, p.Status.Message)
+	} else {
+		if t.ExitCode == 0 {
+			// for debugging purpose,
+			// we check if the plugin controller failed
+			// TODO: we will want to send this error to the cloud for further analysis
+			pluginControllerContainerStatus := rm.GetContainerStatusFromPod(p, PluginControllerContainerName)
+			if _t := pluginControllerContainerStatus.State.Terminated; _t != nil {
+				containerLog, _ := rm.GetContainerLastLog(p.Name, pluginControllerContainerStatus.Name, 1024)
+				logger.Error.Printf("Pod's %s failed: %s; logs: %s", p.Name, t.String(), containerLog)
+			}
+			logger.Info.Printf("Pod failed, but plugin %q succeeded", p.Name)
+			message2 := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusCompleted).
+				AddPodMeta(p)
+			return message2, nil
+		} else {
+			logger.Error.Printf("Plugin %q has failed", p.Name)
+			if containerLog, err := rm.GetContainerLastLog(p.Name, pluginContainerStatus.Name, 1024); err == nil {
+				message = message.AddEntry("error_log", containerLog).
+					AddEntry("return_code", t.ExitCode)
+			} else {
+				logger.Error.Printf("failed to get plugin %q container %q log: %s", p.Name, pluginContainerStatus.Name, err.Error())
+			}
+			return message, nil
+		}
+	}
+}
+
 func (rm *ResourceManager) labelsForPlugin(plugin *datatype.Plugin) map[string]string {
 	labels := map[string]string{
-		"app":                           plugin.Name,
-		"app.kubernetes.io/name":        plugin.Name,
-		"app.kubernetes.io/managed-by":  rm.runner,
-		"app.kubernetes.io/created-by":  rm.runner,
-		"sagecontinuum.org/plugin-job":  plugin.PluginSpec.Job,
-		"sagecontinuum.org/plugin-task": plugin.Name,
+		"app":                          plugin.Name,
+		"app.kubernetes.io/name":       plugin.Name,
+		"app.kubernetes.io/managed-by": rm.runner,
+		"app.kubernetes.io/created-by": rm.runner,
+		"sagecontinuum.org/plugin-job": plugin.PluginSpec.Job,
+		PodLabelPluginTask:             plugin.Name,
+	}
+
+	// add job ID and goal ID if the plugin has
+	if plugin.GoalID != "" {
+		labels[PodLabelGoalID] = plugin.GoalID
+	}
+	if plugin.JobID != "" {
+		labels[PodLabelJobID] = plugin.JobID
 	}
 
 	// in develop mode, we omit the role labels to opt out of network traffic filtering
@@ -148,27 +284,27 @@ func nodeSelectorForConfig(pluginSpec *datatype.PluginSpec) map[string]string {
 	return vals
 }
 
-func resourceListForConfig(pluginSpec *datatype.PluginSpec) (apiv1.ResourceRequirements, error) {
-	resources := apiv1.ResourceRequirements{
-		Limits:   apiv1.ResourceList{},
-		Requests: apiv1.ResourceList{},
+func resourceListForConfig(pluginSpec *datatype.PluginSpec) (v1.ResourceRequirements, error) {
+	resources := v1.ResourceRequirements{
+		Limits:   v1.ResourceList{},
+		Requests: v1.ResourceList{},
 	}
 	for resourceName, quantityString := range pluginSpec.Resource {
 		quantity, err := resource.ParseQuantity(quantityString)
 		if err != nil {
-			return resources, fmt.Errorf("Failed to parse %q: %s", quantityString, err.Error())
+			return resources, fmt.Errorf("failed to parse %q: %s", quantityString, err.Error())
 		}
 		switch resourceName {
 		case "limit.cpu":
-			resources.Limits[apiv1.ResourceCPU] = quantity
+			resources.Limits[v1.ResourceCPU] = quantity
 		case "limit.memory":
-			resources.Limits[apiv1.ResourceMemory] = quantity
+			resources.Limits[v1.ResourceMemory] = quantity
 		case "limit.gpu":
 			resources.Limits["nvidia.com/gpu"] = quantity
 		case "request.cpu":
-			resources.Requests[apiv1.ResourceCPU] = quantity
+			resources.Requests[v1.ResourceCPU] = quantity
 		case "request.memory":
-			resources.Requests[apiv1.ResourceMemory] = quantity
+			resources.Requests[v1.ResourceMemory] = quantity
 		default:
 			resources.Limits[v1.ResourceName(resourceName)] = quantity
 			// return resources, fmt.Errorf("Unknown resource name %q", resourceName)
@@ -177,14 +313,14 @@ func resourceListForConfig(pluginSpec *datatype.PluginSpec) (apiv1.ResourceRequi
 	return resources, nil
 }
 
-func securityContextForConfig(pluginSpec *datatype.PluginSpec) *apiv1.SecurityContext {
+func securityContextForConfig(pluginSpec *datatype.PluginSpec) *v1.SecurityContext {
 	if pluginSpec.Privileged {
-		return &apiv1.SecurityContext{Privileged: &pluginSpec.Privileged}
+		return &v1.SecurityContext{Privileged: &pluginSpec.Privileged}
 	}
 	return nil
 }
 
-func (rm *ResourceManager) parseEnv(rawEnv map[string]string) (parsedEnv []apiv1.EnvVar, err error) {
+func (rm *ResourceManager) parseEnv(rawEnv map[string]string) (parsedEnv []v1.EnvVar, err error) {
 	for k, v := range rawEnv {
 		// If the environment variable value refers to a Kubernetes Secret,
 		// then we check and load the value from the Kubernetes Secret.
@@ -204,7 +340,7 @@ func (rm *ResourceManager) parseEnv(rawEnv map[string]string) (parsedEnv []apiv1
 					Value: string(secretV),
 				})
 			} else {
-				err = fmt.Errorf("Secret %s does not have the variable %s. Please check.", secretName, keyName)
+				err = fmt.Errorf("secret %s does not have the variable %s. Please check.", secretName, keyName)
 				return
 			}
 		} else {
@@ -639,7 +775,7 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(pr *datatype.PluginRun
 
 	initContainers := []apiv1.Container{
 		{
-			Name:  "init-app-meta-cache",
+			Name:  InitContainerName,
 			Image: "waggle/app-meta-cache:0.1.1",
 			Command: []string{
 				"/update-app-cache",
@@ -720,7 +856,7 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(pr *datatype.PluginRun
 		}
 		// adding plugin-controller to the pod
 		containers = append(containers, apiv1.Container{
-			Name:  "plugin-controller",
+			Name:  PluginControllerContainerName,
 			Image: "waggle/plugin-controller:0.2.0",
 			Args:  pluginControllerArgs,
 			Env: []apiv1.EnvVar{
@@ -1236,12 +1372,16 @@ func (rm *ResourceManager) CleanUp() error {
 	return nil
 }
 
+// LaunchAndWatchPlugin manages the lifecycle of a Plugin run. It sends out
+// notifications to subscribers regarding state changes.
+//
+// Deprecated: use Kubernetes Informer instead.
 func (rm *ResourceManager) LaunchAndWatchPlugin(pr *datatype.PluginRuntime) {
 	logger.Debug.Printf("Running plugin %q...", pr.Plugin.Name)
 	pod, err := rm.CreatePodTemplate(pr)
 	if err != nil {
 		logger.Error.Printf("Failed to create Kubernetes Pod for %q: %q", pr.Plugin.Name, err.Error())
-		rm.Notifier.Notify(datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).AddReason(err.Error()).AddPluginMeta(&pr.Plugin).Build())
+		rm.Notifier.Notify(datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).AddReason(err.Error()).AddPluginMeta(pr.Plugin).Build())
 		return
 	}
 	// we override the plugin name to distinguish the same plugin name from different jobs
@@ -1252,7 +1392,7 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(pr *datatype.PluginRuntime) {
 	defer rm.TerminatePod(pod.Name)
 	if err != nil {
 		logger.Error.Printf("Failed to run %q: %q", pod.Name, err.Error())
-		rm.Notifier.Notify(datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).AddReason(err.Error()).AddPluginMeta(&pr.Plugin).Build())
+		rm.Notifier.Notify(datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).AddReason(err.Error()).AddPluginMeta(pr.Plugin).Build())
 		return
 	}
 	logger.Info.Printf("Plugin %q is scheduled", pod.Name)
@@ -1266,7 +1406,7 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(pr *datatype.PluginRuntime) {
 			rm.Notifier.Notify(datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).
 				AddReason(err.Error()).
 				AddPodMeta(pod).
-				AddPluginMeta(&pr.Plugin).
+				AddPluginMeta(pr.Plugin).
 				Build())
 			return
 		}
@@ -1286,22 +1426,22 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(pr *datatype.PluginRuntime) {
 			case watch.Added:
 				rm.Notifier.Notify(datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusLaunched).
 					AddPodMeta(_pod).
-					AddPluginMeta(&pr.Plugin).
+					AddPluginMeta(pr.Plugin).
 					Build())
 			case watch.Modified:
 				switch _pod.Status.Phase {
 				// case v1.PodPending:
 				// 	_pod.Status.ContainerStatuses
 				case v1.PodSucceeded:
-					rm.Notifier.Notify(datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusComplete).
+					rm.Notifier.Notify(datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusCompleted).
 						AddPodMeta(_pod).
-						AddPluginMeta(&pr.Plugin).
+						AddPluginMeta(pr.Plugin).
 						Build())
 					return
 				case v1.PodFailed:
 					eventBuilder := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).
 						AddPodMeta(_pod).
-						AddPluginMeta(&pr.Plugin)
+						AddPluginMeta(pr.Plugin)
 					// first, check if the init container failed
 					if len(_pod.Status.InitContainerStatuses) < 1 {
 						logger.Error.Printf("init container of %s does not exist: %s (%s)", _pod.Name, _pod.Status.Reason, _pod.Status.Message)
@@ -1382,9 +1522,9 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(pr *datatype.PluginRuntime) {
 								)
 							}
 							logger.Info.Printf("Pod failed, but plugin %q succeeded", _pod.Name)
-							rm.Notifier.Notify(datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusComplete).
+							rm.Notifier.Notify(datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusCompleted).
 								AddPodMeta(_pod).
-								AddPluginMeta(&pr.Plugin).
+								AddPluginMeta(pr.Plugin).
 								Build())
 							return
 						} else {
@@ -1407,7 +1547,7 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(pr *datatype.PluginRuntime) {
 				rm.Notifier.Notify(datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).
 					AddReason("Plugin deleted").
 					AddPodMeta(_pod).
-					AddPluginMeta(&pr.Plugin).
+					AddPluginMeta(pr.Plugin).
 					Build())
 				return
 			case watch.Error:
@@ -1415,7 +1555,7 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(pr *datatype.PluginRuntime) {
 				rm.Notifier.Notify(datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).
 					AddReason("Error on watcher").
 					AddPodMeta(_pod).
-					AddPluginMeta(&pr.Plugin).
+					AddPluginMeta(pr.Plugin).
 					Build())
 				return
 			default:
@@ -1440,7 +1580,6 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(pr *datatype.PluginRuntime) {
 		// }
 		logger.Info.Printf("attemping to re-connect for pod %q", pod.Name)
 	}
-
 }
 
 // RunGabageCollector cleans up completed/failed jobs that exceed
@@ -1473,6 +1612,86 @@ func (rm *ResourceManager) RunGabageCollector() error {
 	return nil
 }
 
+// ConfigureKubernetesInformer sets Kubernetes Informers for the scheduler
+// to receive events on Pods, Events, and ConfigMaps.
+func (rm *ResourceManager) ConfigureKubernetesInformer() error {
+	if rm.Clientset == nil {
+		return fmt.Errorf("Kubernetes clientset is null. Please initialize Kubernetes connection first")
+	}
+	rm.kubeInformerFactory = kubeinformers.NewSharedInformerFactoryWithOptions(
+		rm.Clientset,
+		0,
+		kubeinformers.WithNamespace(rm.Namespace))
+	podInformer := rm.kubeInformerFactory.Core().V1().Pods().Informer()
+	podInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			// fmt.Printf("event added: %s \n", obj)
+			p := obj.(*v1.Pod)
+			e := NewKubernetesEvent(KubernetesEventTypePod, KubernetesEventTypeAdd, p)
+			rm.Notifier.Notify(e.Build())
+		},
+		DeleteFunc: func(obj interface{}) {
+			// fmt.Printf("event deleted: %s \n", obj)
+			p := obj.(*v1.Pod)
+			e := NewKubernetesEvent(KubernetesEventTypePod, KubernetesEventTypeDeleted, p)
+			rm.Notifier.Notify(e.Build())
+		},
+		UpdateFunc: func(old, new interface{}) {
+			// fmt.Printf("event changed: %s \n", new)
+			p := new.(*v1.Pod)
+			e := NewKubernetesEvent(KubernetesEventTypePod, KubernetesEventTypeModified, p)
+			rm.Notifier.Notify(e.Build())
+		},
+	})
+	evtInformer := rm.kubeInformerFactory.Core().V1().Events().Informer()
+	evtInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			// fmt.Printf("event added: %s \n", obj)
+			o := obj.(*v1.Event)
+			e := NewKubernetesEvent(KubernetesEventTypeEvent, KubernetesEventTypeAdd, o)
+			rm.Notifier.Notify(e.Build())
+		},
+		DeleteFunc: func(obj interface{}) {
+			// fmt.Printf("event deleted: %s \n", obj)
+			o := obj.(*v1.Event)
+			e := NewKubernetesEvent(KubernetesEventTypeEvent, KubernetesEventTypeDeleted, o)
+			rm.Notifier.Notify(e.Build())
+		},
+		UpdateFunc: func(old, new interface{}) {
+			// fmt.Printf("event changed: %s \n", new)
+			o := new.(*v1.Event)
+			e := NewKubernetesEvent(KubernetesEventTypeEvent, KubernetesEventTypeModified, o)
+			rm.Notifier.Notify(e.Build())
+		},
+	})
+	cfgMapInformer := rm.kubeInformerFactory.Core().V1().ConfigMaps().Informer()
+	cfgMapInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			// fmt.Printf("event added: %s \n", obj)
+			cm := obj.(*v1.ConfigMap)
+			e := NewKubernetesEvent(KubernetesEventTypeConfigMap, KubernetesEventTypeAdd, cm)
+			rm.Notifier.Notify(e.Build())
+		},
+		DeleteFunc: func(obj interface{}) {
+			// fmt.Printf("event deleted: %s \n", obj)
+			cm := obj.(*v1.ConfigMap)
+			e := NewKubernetesEvent(KubernetesEventTypeConfigMap, KubernetesEventTypeDeleted, cm)
+			rm.Notifier.Notify(e.Build())
+		},
+		UpdateFunc: func(old, new interface{}) {
+			// fmt.Printf("event changed: %s \n", new)
+			cm := new.(*v1.ConfigMap)
+			e := NewKubernetesEvent(KubernetesEventTypeConfigMap, KubernetesEventTypeModified, cm)
+			rm.Notifier.Notify(e.Build())
+		},
+	})
+	stop := make(chan struct{})
+	// We don't want to stop the informer.
+	// defer close(stop)
+	rm.kubeInformerFactory.Start(stop)
+	return nil
+}
+
 func (rm *ResourceManager) Configure() (err error) {
 	err = rm.CreateNamespace("ses")
 	if err != nil {
@@ -1496,55 +1715,7 @@ func (rm *ResourceManager) Configure() (err error) {
 	if err != nil {
 		return
 	}
-
-	// The informer watches plugin Pods and their Events, as well as the ConfigMap for new jobs
-	// rm.kubeInformerFactory = kubeinformers.NewSharedInformerFactoryWithOptions(
-	// 	rm.Clientset,
-	// 	0,
-	// 	kubeinformers.WithNamespace(rm.Namespace))
-	// podInformer := rm.kubeInformerFactory.Core().V1().Pods().Informer()
-	// podInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-	// 	AddFunc: func(obj interface{}) {
-	// 		fmt.Printf("event added: %s \n", obj)
-	// 		p := obj.(*v1.Pod)
-	// 		rm.Notifier.Notify(datatype.NewEventBuilder(datatype.EventPluginStatusScheduled).
-	// 			AddPodMeta(p).
-	// 			Build())
-	// 	},
-	// 	DeleteFunc: func(obj interface{}) {
-	// 		fmt.Printf("event deleted: %s \n", obj)
-	// 	},
-	// 	UpdateFunc: func(old, new interface{}) {
-	// 		oldObj := old.(*unstructured.Unstructured)
-	// 		newObj := new.(*unstructured.Unstructured)
-	// 		if diff := deep.Equal(oldObj, newObj); diff != nil {
-	// 			fmt.Printf("diff %v", diff)
-	// 		}
-	// 		fmt.Printf("event changed: %s \n", newObj)
-	// 	},
-	// })
-	// evtInformer := kubeInformerFactory.Core().V1().Events().Informer()
-	// // cfgMapInformer := kubeInformerFactory.Core().V1().ConfigMaps().Informer()
-	// evtInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-	// 	AddFunc: func(obj interface{}) {
-	// 		fmt.Printf("event added: %s \n", obj)
-	// 	},
-	// 	DeleteFunc: func(obj interface{}) {
-	// 		fmt.Printf("event deleted: %s \n", obj)
-	// 	},
-	// 	UpdateFunc: func(old, new interface{}) {
-	// 		oldObj := old.(*unstructured.Unstructured)
-	// 		newObj := new.(*unstructured.Unstructured)
-	// 		if diff := deep.Equal(oldObj, newObj); diff != nil {
-	// 			fmt.Printf("diff %v", diff)
-	// 		}
-	// 		fmt.Printf("event changed: %s \n", newObj)
-	// 	},
-	// })
-	// stop := make(chan struct{})
-	// // We don't want to stop the informer.
-	// // defer close(stop)
-	// kubeInformerFactory.Start(stop)
+	err = rm.ConfigureKubernetesInformer()
 	return
 }
 
@@ -1560,56 +1731,56 @@ func (rm *ResourceManager) Run() {
 	//       via k3s server --kube-control-manager-arg feature-gates=TTL...=true
 	// go ns.ResourceManager.RunGabageCollector()
 	// gabageCollectorTicker := time.NewTicker(1 * time.Minute)
-	logger.Info.Printf("Pull goals from k3s configmap %s", configMapNameForGoals)
-	goalConfigMapFunc, _ := rm.GetConfigMapWatcher(configMapNameForGoals, rm.Namespace)
-	goalWatcher := NewAdvancedWatcher(configMapNameForGoals, goalConfigMapFunc)
-	goalWatcher.Run()
-	logger.Info.Println("Starting the main loop of resource manager...")
-	for {
-		select {
-		// case <-gabageCollectorTicker.C:
-		// 	err := rm.RunGabageCollector()
-		// 	if err != nil {
-		// 		logger.Error.Printf("Failed to run gabage collector: %s", err.Error())
-		// 	}
-		case event := <-goalWatcher.C:
-			switch event.Type {
-			case watch.Added, watch.Modified:
-				if updatedConfigMap, ok := event.Object.(*apiv1.ConfigMap); ok {
-					logger.Debug.Printf("%v", updatedConfigMap.Data)
-					event := datatype.NewSchedulerEventBuilder(datatype.EventGoalStatusReceivedBulk).
-						AddEntry("goals", updatedConfigMap.Data["goals"]).Build()
-					rm.Notifier.Notify(event)
-				}
-			}
-			// case watch.Deleted, watch.Error:
-			// 	logger.Error.Printf("Failed on %q k3s watcher", configMapName)
-			// 	break
-			// }
-			// case <-metricsTicker.C:
-			// 	nodeMetrics, err := rm.MetricsClient.MetricsV1beta1().NodeMetricses().List(context.TODO(), metav1.ListOptions{})
-			// 	if err != nil {
-			// 		logger.Error.Println("Error:", err)
-			// 		return
-			// 	}
-			// 	for _, nodeMetric := range nodeMetrics.Items {
-			// 		cpuQuantity := nodeMetric.Usage.Cpu().String()
-			// 		memQuantity := nodeMetric.Usage.Memory().String()
-			// 		msg := fmt.Sprintf("Node Name: %s \n CPU usage: %s \n Memory usage: %s", nodeMetric.Name, cpuQuantity, memQuantity)
-			// 		logger.Debug.Println(msg)
-			// 	}
-			// podMetrics, err := rm.MetricsClient.MetricsV1beta1().PodMetricses(rm.Namespace).List(context.TODO(), metav1.ListOptions{})
-			// 	for _, podMetric := range podMetrics.Items {
-			// 		podContainers := podMetric.Containers
-			// 		for _, container := range podContainers {
-			// 			cpuQuantity := container.Usage.Cpu().String()
-			// 			memQuantity := container.Usage.Memory().String()
-			// 			msg := fmt.Sprintf("Container Name: %s \n CPU usage: %s \n Memory usage: %s", container.Name, cpuQuantity, memQuantity)
-			// 			logger.Debug.Println(msg)
-			// 		}
-			// 	}
-		}
-	}
+	// logger.Info.Printf("Pull goals from k3s configmap %s", configMapNameForGoals)
+	// goalConfigMapFunc, _ := rm.GetConfigMapWatcher(configMapNameForGoals, rm.Namespace)
+	// goalWatcher := NewAdvancedWatcher(configMapNameForGoals, goalConfigMapFunc)
+	// goalWatcher.Run()
+	// logger.Info.Println("Starting the main loop of resource manager...")
+	// for {
+	// 	select {
+	// 	// case <-gabageCollectorTicker.C:
+	// 	// 	err := rm.RunGabageCollector()
+	// 	// 	if err != nil {
+	// 	// 		logger.Error.Printf("Failed to run gabage collector: %s", err.Error())
+	// 	// 	}
+	// 	case event := <-goalWatcher.C:
+	// 		switch event.Type {
+	// 		case watch.Added, watch.Modified:
+	// 			if updatedConfigMap, ok := event.Object.(*apiv1.ConfigMap); ok {
+	// 				logger.Debug.Printf("%v", updatedConfigMap.Data)
+	// 				event := datatype.NewSchedulerEventBuilder(datatype.EventGoalStatusReceivedBulk).
+	// 					AddEntry("goals", updatedConfigMap.Data["goals"]).Build()
+	// 				rm.Notifier.Notify(event)
+	// 			}
+	// 		}
+	// 		// case watch.Deleted, watch.Error:
+	// 		// 	logger.Error.Printf("Failed on %q k3s watcher", configMapName)
+	// 		// 	break
+	// 		// }
+	// 		// case <-metricsTicker.C:
+	// 		// 	nodeMetrics, err := rm.MetricsClient.MetricsV1beta1().NodeMetricses().List(context.TODO(), metav1.ListOptions{})
+	// 		// 	if err != nil {
+	// 		// 		logger.Error.Println("Error:", err)
+	// 		// 		return
+	// 		// 	}
+	// 		// 	for _, nodeMetric := range nodeMetrics.Items {
+	// 		// 		cpuQuantity := nodeMetric.Usage.Cpu().String()
+	// 		// 		memQuantity := nodeMetric.Usage.Memory().String()
+	// 		// 		msg := fmt.Sprintf("Node Name: %s \n CPU usage: %s \n Memory usage: %s", nodeMetric.Name, cpuQuantity, memQuantity)
+	// 		// 		logger.Debug.Println(msg)
+	// 		// 	}
+	// 		// podMetrics, err := rm.MetricsClient.MetricsV1beta1().PodMetricses(rm.Namespace).List(context.TODO(), metav1.ListOptions{})
+	// 		// 	for _, podMetric := range podMetrics.Items {
+	// 		// 		podContainers := podMetric.Containers
+	// 		// 		for _, container := range podContainers {
+	// 		// 			cpuQuantity := container.Usage.Cpu().String()
+	// 		// 			memQuantity := container.Usage.Memory().String()
+	// 		// 			msg := fmt.Sprintf("Container Name: %s \n CPU usage: %s \n Memory usage: %s", container.Name, cpuQuantity, memQuantity)
+	// 		// 			logger.Debug.Println(msg)
+	// 		// 		}
+	// 		// 	}
+	// 	}
+	// }
 	// for {
 	// nodeMetrics, err := rm.MetricsClient.MetricsV1beta1().NodeMetricses().List(context.TODO(), metav1.ListOptions{})
 	// 	if err != nil {

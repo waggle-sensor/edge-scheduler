@@ -11,6 +11,7 @@ import (
 	"github.com/waggle-sensor/edge-scheduler/pkg/interfacing"
 	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
 	"github.com/waggle-sensor/edge-scheduler/pkg/nodescheduler/policy"
+	v1 "k8s.io/api/core/v1"
 )
 
 const (
@@ -116,23 +117,27 @@ func (ns *NodeScheduler) Run() {
 							// TODO: We will need to find a way to pass parameters to the plugin
 							//       For example, schedule(plugin-a, duration=5m) <<
 							pluginName := r.ActionObject
-							plugin := sg.GetMySubGoal(ns.NodeID).GetPlugin(pluginName)
-							if plugin == nil {
-								logger.Error.Printf("failed to promote plugin: plugin name %q does not exist in goal %q", pluginName, goalID)
+							if pr := ns.GoalManager.GetPluginRuntime(PluginIndex{
+								name:   pluginName,
+								jobID:  sg.JobID,
+								goalID: sg.ID,
+							}); pr == nil {
+								logger.Error.Printf("failed to promote plugin: plugin name %q for goal %q not registered", pluginName, goalID)
+								// TODO: we may want to verify what exist and why this happens
 							} else {
-								// make a hard copy of the plugin
-								_p := *plugin
-								pr := datatype.NewPluginRuntimeWithScienceRule(_p, *r)
+								pr.UpdateWithScienceRule(r)
 								// TODO: we enable plugin-controller always. we will want to control this later.
 								pr.SetPluginController(true)
-								// we name Kubenetes Pod of the plugin using << pluginName-jobID >>
-								// to distinguish the same plugin names from different jobs
-								pr.Plugin.JobID = sg.JobID
-								if _pr := ns.waitingQueue.Pop(pr); _pr != nil {
-									ns.readyQueue.Push(pr)
-									triggerScheduling = true
-									logger.Debug.Printf("Plugin %s is promoted by rules", plugin.Name)
-								}
+								pr.Queued()
+								msg := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusQueued).
+									AddPluginMeta(pr.Plugin).
+									AddReason(fmt.Sprintf("triggered by %s", r.Condition)).
+									Build().(datatype.SchedulerEvent)
+								ns.LogToBeehive.SendWaggleMessageOnNodeAsync(msg.ToWaggleMessage(), "all")
+								// NOTE: readyQueue mimics a job queue for scheduling policy
+								ns.readyQueue.Push(pr)
+								triggerScheduling = true
+								logger.Debug.Printf("Plugin %s is queued by %s", pr.Plugin.Name, r.Condition)
 							}
 						case datatype.ScienceRuleActionPublish:
 							eventName := r.ActionObject
@@ -169,10 +174,9 @@ func (ns *NodeScheduler) Run() {
 				}
 			}
 			if triggerScheduling {
-				response := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusPromoted).
+				response := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusQueued).
 					AddReason("kb triggered").
 					Build().(datatype.SchedulerEvent)
-				ns.LogToBeehive.SendWaggleMessageOnNodeAsync(response.ToWaggleMessage(), "node")
 				ns.chanNeedScheduling <- response
 			}
 		case event := <-ns.chanNeedScheduling:
@@ -193,72 +197,241 @@ func (ns *NodeScheduler) Run() {
 				logger.Error.Printf("Failed to get the best task to run %q", err.Error())
 			} else {
 				for _, _pr := range pluginsToRun {
-					pluginEvent := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusScheduled).
+					pluginEvent := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusSelected).
 						AddReason("Fit to resource").
-						AddPluginMeta(&_pr.Plugin).
+						AddPluginMeta(_pr.Plugin).
 						Build().(datatype.SchedulerEvent)
 					logger.Debug.Printf("%s: %q (%q)", pluginEvent.ToString(), pluginEvent.GetPluginName(), pluginEvent.GetReason())
 					ns.LogToBeehive.SendWaggleMessageOnNodeAsync(pluginEvent.ToWaggleMessage(), "all")
 					pr := ns.readyQueue.Pop(_pr)
 					ns.scheduledPlugins.Push(pr)
-					go ns.ResourceManager.LaunchAndWatchPlugin(pr)
+					go func() {
+						// TODO: when failed we need to put the pr back to inactive...???
+						logger.Debug.Printf("Running plugin %q...", pr.Plugin.Name)
+						pod, err := ns.ResourceManager.CreatePodTemplate(pr)
+						if err != nil {
+							logger.Error.Printf("Failed to create Kubernetes Pod for %q: %q", pr.Plugin.Name, err.Error())
+							msg := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).
+								AddReason(err.Error()).
+								AddPluginMeta(pr.Plugin).
+								Build().(datatype.SchedulerEvent)
+							ns.LogToBeehive.SendWaggleMessageOnNodeAsync(msg.ToWaggleMessage(), "all")
+							return
+						}
+						// we override the plugin name to distinguish the same plugin name from different jobs
+						if pr.Plugin.JobID != "" {
+							pod.SetName(fmt.Sprintf("%s-%s", pod.GetName(), pr.Plugin.JobID))
+						}
+						err = ns.ResourceManager.CreatePod(pod)
+						// defer rm.TerminatePod(pod.Name)
+						if err != nil {
+							logger.Error.Printf("Failed to run %q: %q", pod.Name, err.Error())
+							msg := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).
+								AddReason(err.Error()).
+								AddPluginMeta(pr.Plugin).
+								Build().(datatype.SchedulerEvent)
+							ns.LogToBeehive.SendWaggleMessageOnNodeAsync(msg.ToWaggleMessage(), "all")
+							if err = ns.ResourceManager.TerminatePod(pod.Name); err != nil {
+								logger.Error.Printf("Failed to delete %s: %s", pod.Name, err.Error())
+							} else {
+								logger.Info.Printf("%s is deleted as it failed to run", pod.Name)
+							}
+							return
+						}
+						logger.Info.Printf("Plugin %q is created", pod.Name)
+						pr.Plugin.PluginSpec.Job = pod.Name
+					}()
 				}
 			}
 		case event := <-ns.chanFromResourceManager:
-			e := event.(datatype.SchedulerEvent)
-			logger.Debug.Printf("%s", e.ToString())
+			e := event.(KubernetesEvent)
+			logger.Debug.Printf("Event received from Resource Manager: %s %q", e.Type, e.Action)
 			switch e.Type {
-			case datatype.EventPluginStatusLaunched:
-				pluginName := e.GetPluginName()
-				logger.Info.Printf("Plugin %q is launched", pluginName)
-				ns.LogToBeehive.SendWaggleMessageOnNodeAsync(e.ToWaggleMessage(), "all")
-			case datatype.EventPluginStatusComplete:
-				// publish plugin completion message locally so that
-				// rule checker knows when the last execution was
-				// TODO: The message takes time to get into DB so the rule checker may not notice
-				//       it if the checker is called before the delivery. We will need to make sure
-				//       the message is delivered before triggering rule checking.
-				pluginName := e.GetPluginName()
-				logger.Info.Printf("Plugin %q is successfully completed", pluginName)
-				message := datatype.NewMessage(
-					string(datatype.EventPluginLastExecution),
-					pluginName,
-					e.Timestamp,
-					map[string]string{},
-				)
-				ns.LogToBeehive.SendWaggleMessageOnNodeAsync(message, "node")
-				fallthrough
-			case datatype.EventPluginStatusFailed:
-				scienceGoal, err := ns.GoalManager.GetScienceGoalByID(e.GetGoalID())
-				if err != nil {
-					logger.Error.Printf("Could not get goal to update plugin status: %q", err.Error())
-				} else {
-					pluginName := e.GetPluginName()
-					if plugin := scienceGoal.GetMySubGoal(ns.NodeID).GetPlugin(pluginName); plugin != nil {
-						p := *plugin
-						_pr := &datatype.PluginRuntime{
-							Plugin: p,
-						}
-						pr := ns.scheduledPlugins.Pop(_pr)
-						ns.waitingQueue.Push(pr)
-						ns.LogToBeehive.SendWaggleMessageOnNodeAsync(e.ToWaggleMessage(), "all")
-					}
-				}
-				// We trigger the scheduling logic for plugins that need to run
-				ns.chanNeedScheduling <- event
-			case datatype.EventGoalStatusReceivedBulk:
-				// A goal set is received. We add or update the goals.
-				logger.Debug.Printf("A bulk goal is received")
-				data := e.GetEntry("goals").(string)
-				var goals []datatype.ScienceGoal
-				err := json.Unmarshal([]byte(data), &goals)
-				if err != nil {
-					logger.Error.Printf("Failed to load bulk goals %q", err.Error())
-				} else {
-					ns.handleBulkGoals(goals)
-				}
+			case KubernetesEventTypePod:
+				ns.handleKubernetesPodEvent(e)
+			case KubernetesEventTypeEvent:
+				ns.handleKubernetesEventEvent(e)
+			case KubernetesEventTypeConfigMap:
+				ns.handleKubernetesConfigMapEvent(e)
+			default:
+				// We shouldn't receive unknown type event. If so, we need to implement it here
+				panic(fmt.Sprintf("Unknown event received from Resource Manager: %s", e.Type))
 			}
+			// case datatype.EventPluginStatusFailed:
+			// 	scienceGoal, err := ns.GoalManager.GetScienceGoalByID(e.GetGoalID())
+			// 	if err != nil {
+			// 		logger.Error.Printf("Could not get goal to update plugin status: %q", err.Error())
+			// 	} else {
+			// 		pluginName := e.GetPluginName()
+			// 		if plugin := scienceGoal.GetMySubGoal(ns.NodeID).GetPlugin(pluginName); plugin != nil {
+			// 			p := *plugin
+			// 			_pr := &datatype.PluginRuntime{
+			// 				Plugin: p,
+			// 			}
+			// 			pr := ns.scheduledPlugins.Pop(_pr)
+			// 			ns.waitingQueue.Push(pr)
+			// 			ns.LogToBeehive.SendWaggleMessageOnNodeAsync(e.ToWaggleMessage(), "all")
+			// 		}
+			// 	}
+			// 	// We trigger the scheduling logic for plugins that need to run
+			// 	ns.chanNeedScheduling <- event
+			// case datatype.EventGoalStatusReceivedBulk:
+			// 	// A goal set is received. We add or update the goals.
+			// 	logger.Debug.Printf("A bulk goal is received")
+			// 	data := e.GetEntry("goals").(string)
+			// 	var goals []datatype.ScienceGoal
+			// 	err := json.Unmarshal([]byte(data), &goals)
+			// 	if err != nil {
+			// 		logger.Error.Printf("Failed to load bulk goals %q", err.Error())
+			// 	} else {
+			// 		ns.handleBulkGoals(goals)
+			// 	}
+			// }
 		}
+	}
+}
+
+func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
+	pod := e.Pod
+	for _, i := range pod.Status.InitContainerStatuses {
+		logger.Debug.Printf("%s: (%s) %s", pod.Name, i.Name, &i.State)
+	}
+	for _, c := range pod.Status.ContainerStatuses {
+		logger.Debug.Printf("%s: (%s) %s", pod.Name, c.Name, &c.State)
+	}
+
+	pluginName, pluginNameExist := pod.Labels[PodLabelPluginTask]
+	goalID, goalIDExist := pod.Labels[PodLabelGoalID]
+	jobID, jobIDExist := pod.Labels[PodLabelJobID]
+	if !pluginNameExist || !goalIDExist || !jobIDExist {
+		logger.Error.Printf("Pod %q labels do not have information for Plugin Runtime from Pod: %v", pod.Name, pod.Labels)
+		return
+	}
+	pluginIndex := PluginIndex{
+		name:   pluginName,
+		goalID: goalID,
+		jobID:  jobID,
+	}
+	pr := ns.GoalManager.GetPluginRuntime(pluginIndex)
+	if pr == nil {
+		logger.Error.Printf("Failed to find Plugin Runtime using index %v", pluginIndex)
+		return
+	}
+
+	switch e.Action {
+	case KubernetesEventTypeAdd:
+		logger.Info.Printf("Plugin %q is scheduled", pod.Name)
+		pr.Scheduled()
+		msg := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusScheduled).
+			AddPodMeta(pod).
+			AddPluginMeta(pr.Plugin).
+			Build().(datatype.SchedulerEvent)
+		ns.LogToBeehive.SendWaggleMessageOnNodeAsync(msg.ToWaggleMessage(), "all")
+	case KubernetesEventTypeModified:
+		switch pod.Status.Phase {
+		case v1.PodPending:
+			// we expect init container running and completion
+			// NOTE: for now we have nothing to react and report
+		case v1.PodRunning:
+			// we expect the application container starts to run.
+			// we may not consider the start of our plugin-controller container
+			pluginContainerStatus := ns.ResourceManager.GetContainerStatusFromPod(pod, pluginName)
+			if pluginContainerStatus.State.Running != nil {
+				logger.Info.Printf("Plugin %q starts to run", pod.Name)
+				pr.Running()
+				msg := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusRunning).
+					AddPodMeta(pod).
+					AddPluginMeta(pr.Plugin).
+					Build().(datatype.SchedulerEvent)
+				ns.LogToBeehive.SendWaggleMessageOnNodeAsync(msg.ToWaggleMessage(), "all")
+			}
+		case v1.PodSucceeded:
+			// this event occurs when all containers finished successfully
+			logger.Info.Printf("Plugin %q succeeded", pod.Name)
+			pr.Completed()
+			// 	// publish plugin completion message locally so that
+			// 	// rule checker knows when the last execution was
+			// 	// TODO: The message takes time to get into DB so the rule checker may not notice
+			// 	//       it if the checker is called before the delivery. We will need to make sure
+			// 	//       the message is delivered before triggering rule checking.
+			message := datatype.NewMessage(
+				string(datatype.EventPluginLastExecution),
+				pluginName,
+				time.Now().UnixNano(),
+				map[string]string{},
+			)
+			ns.LogToBeehive.SendWaggleMessageOnNodeAsync(message, "node")
+
+			message2 := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusCompleted).
+				AddPodMeta(pod).
+				AddPluginMeta(pr.Plugin).
+				Build().(datatype.SchedulerEvent)
+			ns.scheduledPlugins.Pop(pr)
+			ns.LogToBeehive.SendWaggleMessageOnNodeAsync(message2.ToWaggleMessage(), "all")
+
+			// trigger the scheduler to schedule next Plugins
+			ns.chanNeedScheduling <- message2
+			defer ns.ResourceManager.TerminatePod(pod.Name)
+		case v1.PodFailed:
+			// one of the containers failed
+			// if plugin-controller container failed, we consider the Pod as success
+			logger.Info.Printf("Plugin %q failed", pod.Name)
+			pr.Failed()
+			messageBuilder, err := ns.ResourceManager.AnalyzeFailureOfPod(pod)
+			if err != nil {
+				logger.Error.Println(err.Error())
+			}
+			message := messageBuilder.AddPluginMeta(pr.Plugin).
+				Build().(datatype.SchedulerEvent)
+			ns.scheduledPlugins.Pop(pr)
+			ns.LogToBeehive.SendWaggleMessageOnNodeAsync(message.ToWaggleMessage(), "all")
+
+			// trigger the scheduler to schedule next Plugins
+			ns.chanNeedScheduling <- message
+			defer ns.ResourceManager.TerminatePod(pod.Name)
+		case v1.PodUnknown:
+			fallthrough
+		default:
+			// unknown Pod phase; we should notify us in case we
+			// care this event
+		}
+	case KubernetesEventTypeDeleted:
+		logger.Info.Printf("Plugin got deleted")
+	}
+}
+
+func (ns *NodeScheduler) handleKubernetesEventEvent(e KubernetesEvent) {
+	event := e.Event
+	switch e.Action {
+	case KubernetesEventTypeAdd, KubernetesEventTypeModified:
+	}
+	logger.Debug.Printf("event %s: %s, %s", event.Name, event.Reason, event.Message)
+}
+
+func (ns *NodeScheduler) handleKubernetesConfigMapEvent(e KubernetesEvent) {
+	cm := e.ConfigMap
+	// Currently we only care the ConfigMap that contains a given job (goal) set
+	// under the name "waggle-plugin-scheduler-goals"
+	if cm.Name != "waggle-plugin-scheduler-goals" {
+		return
+	}
+	switch e.Action {
+	case KubernetesEventTypeAdd, KubernetesEventTypeModified:
+		logger.Debug.Printf("A bulk goal is received: %v", cm.Data)
+		if data, found := cm.Data["goals"]; found {
+			var goals []datatype.ScienceGoal
+			err := json.Unmarshal([]byte(data), &goals)
+			if err != nil {
+				logger.Error.Printf("Failed to load bulk goals %s: %q", data, err.Error())
+			} else {
+				ns.handleBulkGoals(goals)
+			}
+		} else {
+			logger.Error.Printf("Kubernetes ConfigMap %q for goals does not have \"goals\" data: %s",
+				cm.Name,
+				cm.Data)
+		}
+	default:
 	}
 }
 
@@ -274,9 +447,12 @@ func (ns *NodeScheduler) registerGoal(goal *datatype.ScienceGoal) {
 		for _, p := range mySubGoal.GetPlugins() {
 			// copy plugin object
 			_p := *p
-			ns.waitingQueue.Push(&datatype.PluginRuntime{
-				Plugin: _p,
-			})
+			// make sure plugins has its job and goal IDs
+			_p.GoalID = goal.ID
+			_p.JobID = goal.JobID
+
+			pr := datatype.NewPluginRuntime(_p)
+			ns.GoalManager.AddPluginRuntime(*pr)
 			logger.Debug.Printf("plugin %s is added to the watiting queue", p.Name)
 		}
 	}
@@ -286,35 +462,42 @@ func (ns *NodeScheduler) cleanUpGoal(goal *datatype.ScienceGoal) {
 	ns.Knowledgebase.DropRules(goal.Name)
 	if mySubGoal := goal.GetMySubGoal(ns.NodeID); mySubGoal != nil {
 		for _, p := range goal.GetMySubGoal(ns.NodeID).GetPlugins() {
-			_p := *p
-			pr := &datatype.PluginRuntime{
-				Plugin: _p,
-			}
-			if a := ns.waitingQueue.Pop(pr); a != nil {
-				logger.Debug.Printf("plugin %s is removed from the waiting queue", p.Name)
-			}
-			if a := ns.readyQueue.Pop(pr); a != nil {
-				logger.Debug.Printf("plugin %s is removed from the ready queue", p.Name)
-			}
-			if a := ns.scheduledPlugins.Pop(pr); a != nil {
-				// Pods have their job ID in the name
-				var podName string
-				if a.Plugin.JobID != "" {
-					podName = fmt.Sprintf("%s-%s", a.Plugin.Name, a.Plugin.JobID)
-				} else {
-					podName = a.Plugin.Name
+			if pr := ns.GoalManager.GetPluginRuntime(PluginIndex{
+				name:   p.Name,
+				goalID: goal.ID,
+				jobID:  goal.JobID,
+			}); pr == nil {
+				logger.Error.Printf("failed to remove plugin: plugin name %q for goal %q not registered", p.Name, goal.ID)
+				// TODO: we may want to verify what exist and why this happens
+			} else {
+				if a := ns.readyQueue.Pop(pr); a != nil {
+					logger.Debug.Printf("plugin %s is removed from the ready queue", p.Name)
 				}
-				if pod, err := ns.ResourceManager.GetPod(podName); err != nil {
-					logger.Error.Printf("Failed to get pod of the plugin %q", a.Plugin.Name)
-				} else {
-					e := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).
-						AddPluginMeta(&a.Plugin).
-						AddPodMeta(pod).
-						AddReason("Cleaning up the plugin due to deletion of the goal").
-						Build().(datatype.SchedulerEvent)
-					ns.LogToBeehive.SendWaggleMessageOnNodeAsync(e.ToWaggleMessage(), "all")
-					ns.ResourceManager.TerminatePod(podName)
-					logger.Info.Printf("plugin %s is removed from running", p.Name)
+				if a := ns.scheduledPlugins.Pop(pr); a != nil {
+					// Pods have their job ID in the name
+					var podName string
+					if a.Plugin.JobID != "" {
+						podName = fmt.Sprintf("%s-%s", a.Plugin.Name, a.Plugin.JobID)
+					} else {
+						podName = a.Plugin.Name
+					}
+					if pod, err := ns.ResourceManager.GetPod(podName); err != nil {
+						logger.Error.Printf("Failed to get pod of the plugin %q", a.Plugin.Name)
+					} else {
+						e := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).
+							AddPluginMeta(a.Plugin).
+							AddPodMeta(pod).
+							AddReason("Cleaning up the plugin due to deletion of the goal").
+							Build().(datatype.SchedulerEvent)
+						ns.LogToBeehive.SendWaggleMessageOnNodeAsync(e.ToWaggleMessage(), "all")
+						ns.ResourceManager.TerminatePod(podName)
+						logger.Info.Printf("plugin %s is removed from running", p.Name)
+					}
+					ns.GoalManager.DropPluginRuntime(PluginIndex{
+						name:   p.Name,
+						goalID: goal.ID,
+						jobID:  goal.JobID,
+					})
 				}
 			}
 		}
