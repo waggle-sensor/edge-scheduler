@@ -94,6 +94,7 @@ func (s *SchedulerEventBuilder) AddPodMeta(pod *apiv1.Pod) *SchedulerEventBuilde
 	if v, found := pod.Labels["sagecontinuum.org/plugin-instance"]; found {
 		s.e.Meta["k3s_pod_instance"] = v
 	}
+	s.e.Meta["k3s_pod_uid"] = pod.UID
 	return s
 }
 
@@ -195,15 +196,19 @@ const (
 	EventGoalStatusReceivedBulk EventType = "sys.scheduler.status.goal.received.bulk"
 	EventGoalStatusRemoved      EventType = "sys.scheduler.status.goal.removed"
 
-	EventPluginStatusQueued    EventType = "sys.scheduler.status.plugin.queued"
-	EventPluginStatusSelected  EventType = "sys.scheduler.status.plugin.selected"
-	EventPluginStatusScheduled EventType = "sys.scheduler.status.plugin.scheduled"
-	EventPluginStatusRunning   EventType = "sys.scheduler.status.plugin.running"
-	EventPluginStatusLaunched  EventType = "sys.scheduler.status.plugin.launched"
-	EventPluginStatusCompleted EventType = "sys.scheduler.status.plugin.completed"
-	EventPluginLastExecution   EventType = "sys.scheduler.plugin.lastexecution"
-	EventPluginStatusFailed    EventType = "sys.scheduler.status.plugin.failed"
-	EventFailure               EventType = "sys.scheduler.failure"
+	EventPluginStatusQueued       EventType = "sys.scheduler.status.plugin.queued"
+	EventPluginStatusSelected     EventType = "sys.scheduler.status.plugin.selected"
+	EventPluginStatusScheduled    EventType = "sys.scheduler.status.plugin.scheduled"
+	EventPluginStatusInitializing EventType = "sys.scheduler.status.plugin.initializing"
+	EventPluginStatusRunning      EventType = "sys.scheduler.status.plugin.running"
+	EventPluginStatusCompleted    EventType = "sys.scheduler.status.plugin.completed"
+	EventPluginLastExecution      EventType = "sys.scheduler.plugin.lastexecution"
+	EventPluginStatusFailed       EventType = "sys.scheduler.status.plugin.failed"
+	EventPluginStatusEvent        EventType = "sys.scheduler.status.plugin.event"
+	EventFailure                  EventType = "sys.scheduler.failure"
+
+	// Deprecated: use EventPluginStatusScheduled instead
+	EventPluginStatusLaunched EventType = "sys.scheduler.status.plugin.launched"
 
 	EventPluginPerfCPU EventType = "sys.plugin.perf.cpu"
 	EventPluginPerfMem EventType = "sys.plugin.perf.mem"

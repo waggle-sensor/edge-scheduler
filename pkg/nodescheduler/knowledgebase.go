@@ -27,20 +27,21 @@ func NewKnowledgeBase(nodeID string, ruleCheckerURI string) *KnowledgeBase {
 	}
 }
 
-func (kb *KnowledgeBase) add(obj interface{}, k string, v interface{}) {
-	currentKB := obj.(map[string]interface{})
-	keys := strings.SplitN(k, ".", 2)
-	if len(keys) == 1 {
-		currentKB[keys[0]] = v
-	} else {
-		if nextKB, exist := currentKB[keys[0]]; !exist {
-			currentKB[keys[0]] = map[string]interface{}{}
-			kb.add(currentKB[keys[0]], keys[1], v)
-		} else {
-			kb.add(nextKB, keys[1], v)
-		}
-	}
-}
+// Archived
+// func (kb *KnowledgeBase) add(obj interface{}, k string, v interface{}) {
+// 	currentKB := obj.(map[string]interface{})
+// 	keys := strings.SplitN(k, ".", 2)
+// 	if len(keys) == 1 {
+// 		currentKB[keys[0]] = v
+// 	} else {
+// 		if nextKB, exist := currentKB[keys[0]]; !exist {
+// 			currentKB[keys[0]] = map[string]interface{}{}
+// 			kb.add(currentKB[keys[0]], keys[1], v)
+// 		} else {
+// 			kb.add(nextKB, keys[1], v)
+// 		}
+// 	}
+// }
 
 func (kb *KnowledgeBase) AddRulesFromScienceGoal(s *datatype.ScienceGoal) error {
 	if mySubGoal := s.GetMySubGoal(kb.nodeID); mySubGoal != nil {
@@ -55,16 +56,15 @@ func (kb *KnowledgeBase) AddRulesFromScienceGoal(s *datatype.ScienceGoal) error 
 		kb.rules[s.ID] = parsedScienceRules
 		return nil
 	} else {
-		return fmt.Errorf("Failed to find my sub goal from science goal %q", s.ID)
+		return fmt.Errorf("failed to find my sub goal from science goal %q", s.ID)
 	}
 }
 
 func (kb *KnowledgeBase) DropRules(goalID string) {
-	if _, exist := kb.rules[goalID]; exist {
-		delete(kb.rules, goalID)
-	}
+	delete(kb.rules, goalID)
 }
 
+// Archived
 func (kb *KnowledgeBase) AddRawMeasure(k string, v interface{}) {
 	logger.Debug.Printf("Added raw measure %q:%s", k, v)
 	// kb.add(kb.measures, k, v)
@@ -89,10 +89,6 @@ func (kb *KnowledgeBase) AddRawMeasure(k string, v interface{}) {
 	// } else {
 	// 	kb.measures[k] = v
 	// }
-}
-
-func (kb *KnowledgeBase) AddMeasure(v *datatype.WaggleMessage) {
-
 }
 
 func (kb *KnowledgeBase) EvaluateRule(rule *datatype.ScienceRule) (bool, error) {
@@ -142,7 +138,6 @@ func (kb *KnowledgeBase) Run() {
 		t := time.Now()
 		kb.AddRawMeasure("minutevariable", t.Minute())
 	})
-
 }
 
 func duration() time.Duration {

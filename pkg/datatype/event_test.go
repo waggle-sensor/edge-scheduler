@@ -11,7 +11,7 @@ func TestEventWaggleConversion(t *testing.T) {
 		Payload map[string]interface{}
 	}{
 		"simple": {
-			Type: string(EventPluginStatusLaunched),
+			Type: string(EventPluginStatusScheduled),
 			Payload: map[string]interface{}{
 				"test":  "great",
 				"float": 3.14,

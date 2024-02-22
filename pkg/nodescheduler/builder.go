@@ -47,7 +47,7 @@ func NewNodeSchedulerBuilder(config *NodeSchedulerConfig) *NodeSchedulerBuilder 
 func (nsb *NodeSchedulerBuilder) AddGoalManager(appID string) *NodeSchedulerBuilder {
 	nsb.nodeScheduler.GoalManager = &NodeGoalManager{
 		ScienceGoals:  make(map[string]datatype.ScienceGoal),
-		LoadedPlugins: make(map[PluginIndex]datatype.PluginRuntime),
+		LoadedPlugins: make(map[PluginIndex]*datatype.PluginRuntime),
 	}
 	return nsb
 }

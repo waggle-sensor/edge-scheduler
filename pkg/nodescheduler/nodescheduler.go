@@ -78,8 +78,6 @@ func (ns *NodeScheduler) Configure() (err error) {
 
 // Run handles communications between components for scheduling
 func (ns *NodeScheduler) Run() {
-	logger.Info.Println("Attempting to clean up all plugins before starting scheduling...")
-	ns.ResourceManager.CleanUp()
 	go ns.ResourceManager.Run()
 	go ns.APIServer.Run()
 	ruleCheckingTicker := time.NewTicker(10 * time.Second)
@@ -124,10 +122,12 @@ func (ns *NodeScheduler) Run() {
 							}); pr == nil {
 								logger.Error.Printf("failed to promote plugin: plugin name %q for goal %q not registered", pluginName, goalID)
 								// TODO: we may want to verify what exist and why this happens
+							} else if !pr.IsState(datatype.Inactive) {
+								logger.Debug.Printf("plugin %q is already active. no need to activate it", pr.Plugin.Name)
 							} else {
 								pr.UpdateWithScienceRule(r)
 								// TODO: we enable plugin-controller always. we will want to control this later.
-								pr.SetPluginController(true)
+								// pr.SetPluginController(true)
 								pr.Queued()
 								msg := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusQueued).
 									AddPluginMeta(pr.Plugin).
@@ -317,11 +317,22 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 		logger.Error.Printf("Failed to find Plugin Runtime using index %v", pluginIndex)
 		return
 	}
+	logger.Debug.Printf("current Plugin %q state %s", pod.Name, pr.Status.State)
+
+	// we may receive Pod events from Kubernetes on already existing ones
+	// TODO: we need to not sending messages to cloud about those already exist
+	//       by skipping the following steps
+	if !ns.scheduledPlugins.IsExist(pr) {
+		// probably unmanaged one, we should ignore it
+		logger.Info.Printf("pod %q has no associated Plugin in the queue. Ignoring the event", pod.Name)
+		return
+	}
 
 	switch e.Action {
 	case KubernetesEventTypeAdd:
 		logger.Info.Printf("Plugin %q is scheduled", pod.Name)
 		pr.Scheduled()
+		pr.SetPodUID(string(pod.UID))
 		msg := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusScheduled).
 			AddPodMeta(pod).
 			AddPluginMeta(pr.Plugin).
@@ -331,7 +342,15 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 		switch pod.Status.Phase {
 		case v1.PodPending:
 			// we expect init container running and completion
-			// NOTE: for now we have nothing to react and report
+			if !pr.IsState(datatype.Initializing) {
+				logger.Info.Printf("plugin %q is being initialized", pod.Name)
+				pr.Initializing()
+				msg := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusInitializing).
+					AddPodMeta(pod).
+					AddPluginMeta(pr.Plugin).
+					Build().(datatype.SchedulerEvent)
+				ns.LogToBeehive.SendWaggleMessageOnNodeAsync(msg.ToWaggleMessage(), "all")
+			}
 		case v1.PodRunning:
 			// we expect the application container starts to run.
 			// we may not consider the start of our plugin-controller container
@@ -346,32 +365,32 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 				ns.LogToBeehive.SendWaggleMessageOnNodeAsync(msg.ToWaggleMessage(), "all")
 			}
 		case v1.PodSucceeded:
-			// this event occurs when all containers finished successfully
-			logger.Info.Printf("Plugin %q succeeded", pod.Name)
-			pr.Completed()
-			// 	// publish plugin completion message locally so that
-			// 	// rule checker knows when the last execution was
-			// 	// TODO: The message takes time to get into DB so the rule checker may not notice
-			// 	//       it if the checker is called before the delivery. We will need to make sure
-			// 	//       the message is delivered before triggering rule checking.
-			message := datatype.NewMessage(
-				string(datatype.EventPluginLastExecution),
-				pluginName,
-				time.Now().UnixNano(),
-				map[string]string{},
-			)
-			ns.LogToBeehive.SendWaggleMessageOnNodeAsync(message, "node")
+			// This event occurs when all containers finished successfully
+			// NOTE: we receive multiple of this event for a Pod. We don't want to
+			//       trigger message multiple times.
+			if !pr.IsState(datatype.Completed) {
+				logger.Info.Printf("Plugin %q succeeded", pod.Name)
+				pr.Completed()
+				// 	// publish plugin completion message locally so that
+				// 	// rule checker knows when the last execution was
+				// 	// TODO: The message takes time to get into DB so the rule checker may not notice
+				// 	//       it if the checker is called before the delivery. We will need to make sure
+				// 	//       the message is delivered before triggering rule checking.
+				message := datatype.NewMessage(
+					string(datatype.EventPluginLastExecution),
+					pluginName,
+					time.Now().UnixNano(),
+					map[string]string{},
+				)
+				ns.LogToBeehive.SendWaggleMessageOnNodeAsync(message, "node")
 
-			message2 := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusCompleted).
-				AddPodMeta(pod).
-				AddPluginMeta(pr.Plugin).
-				Build().(datatype.SchedulerEvent)
-			ns.scheduledPlugins.Pop(pr)
-			ns.LogToBeehive.SendWaggleMessageOnNodeAsync(message2.ToWaggleMessage(), "all")
-
-			// trigger the scheduler to schedule next Plugins
-			ns.chanNeedScheduling <- message2
-			defer ns.ResourceManager.TerminatePod(pod.Name)
+				message2 := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusCompleted).
+					AddPodMeta(pod).
+					AddPluginMeta(pr.Plugin).
+					Build().(datatype.SchedulerEvent)
+				ns.LogToBeehive.SendWaggleMessageOnNodeAsync(message2.ToWaggleMessage(), "all")
+				defer ns.ResourceManager.TerminatePod(pod.Name)
+			}
 		case v1.PodFailed:
 			// one of the containers failed
 			// if plugin-controller container failed, we consider the Pod as success
@@ -383,29 +402,79 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 			}
 			message := messageBuilder.AddPluginMeta(pr.Plugin).
 				Build().(datatype.SchedulerEvent)
-			ns.scheduledPlugins.Pop(pr)
 			ns.LogToBeehive.SendWaggleMessageOnNodeAsync(message.ToWaggleMessage(), "all")
-
-			// trigger the scheduler to schedule next Plugins
-			ns.chanNeedScheduling <- message
 			defer ns.ResourceManager.TerminatePod(pod.Name)
 		case v1.PodUnknown:
 			fallthrough
 		default:
 			// unknown Pod phase; we should notify us in case we
 			// care this event
+			logger.Error.Printf("plugin %q Pod is in unknown state: %s", pod.Name, pod.Status.Phase)
 		}
 	case KubernetesEventTypeDeleted:
-		logger.Info.Printf("Plugin got deleted")
+		logger.Info.Printf("Plugin %q removed", pod.Name)
+		var message datatype.SchedulerEvent
+		switch pr.Status.State {
+		case datatype.Completed:
+			// The Pod is deleted as plugin execution terminated successfully.
+			// We do nothing on this transition
+			message = datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusCompleted).
+				AddReason(fmt.Sprintf("plugin %q successfully removed", pod.Name)).
+				Build().(datatype.SchedulerEvent)
+		case datatype.Failed:
+			// The pod failed and should have been already reported. we do nothing
+			message = datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).
+				AddReason(fmt.Sprintf("plugin %q removed due to a failure", pod.Name)).
+				Build().(datatype.SchedulerEvent)
+		default:
+			// The pod was deleted for unknown reason. One of the reasons might be
+			// that the Pod was deleted from external, e.g. kubectl delete pod.
+			// We mark this as a failure.
+			pr.Failed()
+			message = datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).
+				AddReason("plugin deleted externally").
+				AddPluginMeta(pr.Plugin).
+				AddPodMeta(pod).
+				Build().(datatype.SchedulerEvent)
+			ns.LogToBeehive.SendWaggleMessageOnNodeAsync(message.ToWaggleMessage(), "all")
+		}
+		// trigger the scheduler to schedule next Plugins
+		ns.scheduledPlugins.Pop(pr)
+		pr.Inactive()
+		ns.chanNeedScheduling <- message
 	}
 }
 
+// handleKubernetesEventEvent processes Event messages sent from Kubernetes.
+// When starting, Kubernetes Informer sends all events from any existing resources.
+//
+// TODO: As of now, we are ignoring those events as we clean up all resources when
+// the scheduler starts. If we want to keep the objects/resources regardless of
+// scheduler runs, we may want to leaverage this to construct current state of Plugins
+// and resume managing them, instead of killing all of them due to a scheduler restart.
 func (ns *NodeScheduler) handleKubernetesEventEvent(e KubernetesEvent) {
 	event := e.Event
-	switch e.Action {
-	case KubernetesEventTypeAdd, KubernetesEventTypeModified:
-	}
 	logger.Debug.Printf("event %s: %s, %s", event.Name, event.Reason, event.Message)
+	logger.Debug.Printf("%v", event)
+
+	// we assume Events are always Add type
+	// switch e.Action {
+	// case KubernetesEventTypeAdd, KubernetesEventTypeModified:
+	// }
+	obj := event.InvolvedObject
+	switch obj.Kind {
+	case "Pod":
+		if pr := ns.GoalManager.GetPluginRuntimeByPodUID(string(obj.UID)); pr != nil {
+			message := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusEvent).
+				AddPluginMeta(pr.Plugin).
+				AddReason(event.Reason).
+				AddEntry("message", event.Message).
+				Build().(datatype.SchedulerEvent)
+			ns.LogToBeehive.SendWaggleMessageOnNodeAsync(message.ToWaggleMessage(), "all")
+		}
+	default:
+	}
+
 }
 
 func (ns *NodeScheduler) handleKubernetesConfigMapEvent(e KubernetesEvent) {
@@ -452,7 +521,7 @@ func (ns *NodeScheduler) registerGoal(goal *datatype.ScienceGoal) {
 			_p.JobID = goal.JobID
 
 			pr := datatype.NewPluginRuntime(_p)
-			ns.GoalManager.AddPluginRuntime(*pr)
+			ns.GoalManager.AddPluginRuntime(pr)
 			logger.Debug.Printf("plugin %s is added to the watiting queue", p.Name)
 		}
 	}

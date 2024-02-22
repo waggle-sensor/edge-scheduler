@@ -1697,6 +1697,10 @@ func (rm *ResourceManager) Configure() (err error) {
 	if err != nil {
 		return
 	}
+
+	logger.Info.Println("Attempting to clean up all plugins before starting scheduling...")
+	rm.CleanUp()
+
 	servicesToBringUp := []string{"wes-rabbitmq", "wes-audio-server", "wes-scoreboard", "wes-app-meta-cache"}
 	for _, service := range servicesToBringUp {
 		err = rm.ForwardService(service, "default", "ses")

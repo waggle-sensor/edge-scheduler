@@ -124,6 +124,7 @@ type PluginRuntime struct {
 	Duration               int
 	EnablePluginController bool
 	Resource               Resource
+	PodUID                 string
 	Status                 PluginStatus
 }
 
@@ -152,11 +153,27 @@ func (pr *PluginRuntime) UpdateWithScienceRule(runtimeArgs ScienceRule) {
 	// }
 }
 
+// Equal checks if given PluginRuntime object is the same in terms of its content.
+// It checks Plugin's name, JobID, and GoalID. If matched, returns true, else false.
+func (pr *PluginRuntime) Equal(_pr *PluginRuntime) bool {
+	return pr.Plugin.Name == _pr.Plugin.Name &&
+		pr.Plugin.JobID == _pr.Plugin.JobID &&
+		pr.Plugin.GoalID == _pr.Plugin.GoalID
+}
+
 func (pr *PluginRuntime) UpdateState(s PluginState) {
 	lastState := pr.Status.State
 	pr.Status.State = s
 	pr.Status.LastUpdated = time.Now()
 	pr.Status.LastState = lastState
+}
+
+func (pr *PluginRuntime) IsState(s PluginState) bool {
+	return pr.Status.State == s
+}
+
+func (pr *PluginRuntime) SetPodUID(UID string) {
+	pr.PodUID = UID
 }
 
 func (pr *PluginRuntime) Inactive() {

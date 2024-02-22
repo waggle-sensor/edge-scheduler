@@ -16,7 +16,7 @@ type PluginIndex struct {
 // GoalManager structs a goal manager for nodescheduler
 type NodeGoalManager struct {
 	ScienceGoals  map[string]datatype.ScienceGoal
-	LoadedPlugins map[PluginIndex]datatype.PluginRuntime
+	LoadedPlugins map[PluginIndex]*datatype.PluginRuntime
 }
 
 // GetScienceGoalByID returns the goal of given goal name
@@ -71,7 +71,7 @@ func (ngm *NodeGoalManager) AddGoal(goal *datatype.ScienceGoal) {
 	ngm.ScienceGoals[goal.ID] = *goal
 }
 
-func (ngm *NodeGoalManager) AddPluginRuntime(p datatype.PluginRuntime) {
+func (ngm *NodeGoalManager) AddPluginRuntime(p *datatype.PluginRuntime) {
 	index := PluginIndex{
 		jobID:  p.Plugin.JobID,
 		goalID: p.Plugin.GoalID,
@@ -86,7 +86,7 @@ func (ngm *NodeGoalManager) DropPluginRuntime(index PluginIndex) {
 
 func (ngm *NodeGoalManager) GetPluginRuntime(index PluginIndex) *datatype.PluginRuntime {
 	if p, found := ngm.LoadedPlugins[index]; found {
-		return &p
+		return p
 	} else {
 		return nil
 	}
@@ -107,10 +107,19 @@ func (ngm *NodeGoalManager) GetPluginRuntimeByNameAndJobID(name string, jobID st
 	})
 }
 
+func (ngm *NodeGoalManager) GetPluginRuntimeByPodUID(uid string) *datatype.PluginRuntime {
+	for _, pr := range ngm.LoadedPlugins {
+		if pr.PodUID == uid {
+			return pr
+		}
+	}
+	return nil
+}
+
 func (ngm *NodeGoalManager) GetQueuedPluginRuntime() (r []*datatype.PluginRuntime) {
 	for _, pr := range ngm.LoadedPlugins {
 		if pr.Status.State == datatype.Queued {
-			r = append(r, &pr)
+			r = append(r, pr)
 		}
 	}
 	return
