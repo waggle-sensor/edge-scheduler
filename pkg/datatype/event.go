@@ -10,19 +10,22 @@ import (
 	apiv1 "k8s.io/api/core/v1"
 )
 
-type EventBuilder struct {
-	e Event
+type Event interface {
 }
 
-type Event struct {
+type SchedulerEventBuilder struct {
+	e SchedulerEvent
+}
+
+type SchedulerEvent struct {
 	Type      EventType
 	Timestamp int64
 	Meta      map[string]interface{}
 }
 
-func NewEventBuilder(eventType EventType) *EventBuilder {
-	return &EventBuilder{
-		e: Event{
+func NewSchedulerEventBuilder(eventType EventType) *SchedulerEventBuilder {
+	return &SchedulerEventBuilder{
+		e: SchedulerEvent{
 			Type:      eventType,
 			Timestamp: time.Now().UnixNano(),
 			Meta:      map[string]interface{}{},
@@ -30,79 +33,76 @@ func NewEventBuilder(eventType EventType) *EventBuilder {
 	}
 }
 
-func (eb *EventBuilder) AddValue(v interface{}) *EventBuilder {
-	eb.e.Meta["value"] = v
-	return eb
+func (s *SchedulerEventBuilder) AddValue(v interface{}) *SchedulerEventBuilder {
+	s.e.Meta["value"] = v
+	return s
 }
 
-func (eb *EventBuilder) AddReason(reason string) *EventBuilder {
-	eb.e.Meta["reason"] = reason
-	return eb
+func (s *SchedulerEventBuilder) AddReason(reason string) *SchedulerEventBuilder {
+	s.e.Meta["reason"] = reason
+	return s
 }
 
-func (eb *EventBuilder) AddJob(j *Job) *EventBuilder {
-	eb.e.Meta["job_id"] = j.JobID
-	return eb
+func (s *SchedulerEventBuilder) AddJob(j *Job) *SchedulerEventBuilder {
+	s.e.Meta["job_id"] = j.JobID
+	return s
 }
 
-func (e *Event) GetJobID() string {
-	return e.get("job_id").(string)
+func (s *SchedulerEventBuilder) AddGoal(goal *ScienceGoal) *SchedulerEventBuilder {
+	s.e.Meta["goal_name"] = goal.Name
+	s.e.Meta["goal_id"] = goal.ID
+	return s
 }
 
-func (eb *EventBuilder) AddGoal(goal *ScienceGoal) *EventBuilder {
-	eb.e.Meta["goal_name"] = goal.Name
-	eb.e.Meta["goal_id"] = goal.ID
-	return eb
+func (s *SchedulerEventBuilder) AddEntry(k string, v interface{}) *SchedulerEventBuilder {
+	s.e.Meta[k] = v
+	return s
 }
 
-func (eb *EventBuilder) AddEntry(k string, v interface{}) *EventBuilder {
-	eb.e.Meta[k] = v
-	return eb
-}
-
-func (eb *EventBuilder) AddPluginMeta(plugin *Plugin) *EventBuilder {
-	eb.e.Meta["plugin_name"] = plugin.Name
-	eb.e.Meta["plugin_image"] = plugin.PluginSpec.Image
-	eb.e.Meta["plugin_task"] = plugin.PluginSpec.Job
-	eb.e.Meta["plugin_args"] = strings.Join(plugin.PluginSpec.Args, " ")
+func (s *SchedulerEventBuilder) AddPluginMeta(plugin Plugin) *SchedulerEventBuilder {
+	s.e.Meta["plugin_name"] = plugin.Name
+	s.e.Meta["plugin_image"] = plugin.PluginSpec.Image
+	s.e.Meta["plugin_task"] = plugin.PluginSpec.Job
+	s.e.Meta["plugin_args"] = strings.Join(plugin.PluginSpec.Args, " ")
 	selectors, err := json.Marshal(plugin.PluginSpec.Selector)
 	if err == nil {
-		eb.e.Meta["plugin_selector"] = string(selectors)
+		s.e.Meta["plugin_selector"] = string(selectors)
 	}
-	eb.e.Meta["goal_id"] = plugin.GoalID
-	return eb
+	s.e.Meta["goal_id"] = plugin.GoalID
+	return s
 }
 
-func (eb *EventBuilder) AddK3SJobMeta(job *batchv1.Job) *EventBuilder {
+func (s *SchedulerEventBuilder) AddK3SJobMeta(job *batchv1.Job) *SchedulerEventBuilder {
 	if job == nil {
-		return eb
+		return s
 	}
-	eb.e.Meta["k3s_job_name"] = job.Name
+	s.e.Meta["k3s_job_name"] = job.Name
 	if len(job.Status.Conditions) > 0 {
-		eb.e.Meta["k3s_job_status"] = string(job.Status.Conditions[0].Type)
+		s.e.Meta["k3s_job_status"] = string(job.Status.Conditions[0].Type)
 		// job.Status.Conditions[0].
 	}
-	return eb
+	return s
 }
 
-func (eb *EventBuilder) AddPodMeta(pod *apiv1.Pod) *EventBuilder {
+func (s *SchedulerEventBuilder) AddPodMeta(pod *apiv1.Pod) *SchedulerEventBuilder {
 	if pod == nil {
-		return eb
+		return s
 	}
-	eb.e.Meta["k3s_pod_name"] = pod.Name
-	eb.e.Meta["k3s_pod_status"] = string(pod.Status.Phase)
-	eb.e.Meta["k3s_pod_node_name"] = pod.Spec.NodeName
+	s.e.Meta["k3s_pod_name"] = pod.Name
+	s.e.Meta["k3s_pod_status"] = string(pod.Status.Phase)
+	s.e.Meta["k3s_pod_node_name"] = pod.Spec.NodeName
 	if v, found := pod.Labels["sagecontinuum.org/plugin-instance"]; found {
-		eb.e.Meta["k3s_pod_instance"] = v
+		s.e.Meta["k3s_pod_instance"] = v
 	}
-	return eb
+	s.e.Meta["k3s_pod_uid"] = pod.UID
+	return s
 }
 
-func (eb *EventBuilder) Build() Event {
-	return eb.e
+func (s *SchedulerEventBuilder) Build() Event {
+	return s.e
 }
 
-func (e *Event) get(name string) interface{} {
+func (e *SchedulerEvent) get(name string) interface{} {
 	if value, ok := e.Meta[name]; ok {
 		return value
 	} else {
@@ -110,32 +110,36 @@ func (e *Event) get(name string) interface{} {
 	}
 }
 
-func (e *Event) GetGoalName() string {
+func (e *SchedulerEvent) GetJobID() string {
+	return e.get("job_id").(string)
+}
+
+func (e *SchedulerEvent) GetGoalName() string {
 	return e.get("goal_name").(string)
 }
 
-func (e *Event) GetGoalID() string {
+func (e *SchedulerEvent) GetGoalID() string {
 	return e.get("goal_id").(string)
 }
 
-func (e *Event) GetPluginName() string {
+func (e *SchedulerEvent) GetPluginName() string {
 	return e.get("plugin_name").(string)
 }
 
-func (e *Event) GetReason() string {
+func (e *SchedulerEvent) GetReason() string {
 	return e.get("reason").(string)
 }
 
-func (e *Event) GetEntry(k string) interface{} {
+func (e *SchedulerEvent) GetEntry(k string) interface{} {
 	return e.get(k)
 }
 
-func (e *Event) ToString() string {
+func (e *SchedulerEvent) ToString() string {
 	return string(e.Type)
 }
 
-func NewEventBuilderFromWaggleMessage(m *WaggleMessage) (*EventBuilder, error) {
-	builder := NewEventBuilder(EventType(m.Name))
+func NewSchedulerEventBuilderFromWaggleMessage(m *WaggleMessage) (*SchedulerEventBuilder, error) {
+	builder := NewSchedulerEventBuilder(EventType(m.Name))
 	builder.e.Timestamp = m.Timestamp
 	var body map[string]interface{}
 	err := json.Unmarshal([]byte(m.Value.(string)), &body)
@@ -153,7 +157,7 @@ func NewEventBuilderFromWaggleMessage(m *WaggleMessage) (*EventBuilder, error) {
 // - Topic name "sys.scheduler" will be used in converted Waggle message
 //
 // - Event.Type, Event.Body, and Event.Meta will be encoded into a JSON blob and be used as a Value in Waggle message
-func (e *Event) ToWaggleMessage() *WaggleMessage {
+func (e *SchedulerEvent) ToWaggleMessage() *WaggleMessage {
 	// TODO: beehive-influxdb does not handle bytes so body is always string.
 	//       This should be lifted once it accepts bytes.
 	body := e.get("value")
@@ -173,7 +177,7 @@ func (e *Event) ToWaggleMessage() *WaggleMessage {
 	)
 }
 
-func (e *Event) EncodeMetaToJson() ([]byte, error) {
+func (e *SchedulerEvent) EncodeMetaToJson() ([]byte, error) {
 	return json.Marshal(e.Meta)
 }
 
@@ -191,13 +195,20 @@ const (
 	EventGoalStatusReceived     EventType = "sys.scheduler.status.goal.received"
 	EventGoalStatusReceivedBulk EventType = "sys.scheduler.status.goal.received.bulk"
 	EventGoalStatusRemoved      EventType = "sys.scheduler.status.goal.removed"
-	EventPluginStatusPromoted   EventType = "sys.scheduler.status.plugin.promoted"
-	EventPluginStatusScheduled  EventType = "sys.scheduler.status.plugin.scheduled"
-	EventPluginStatusLaunched   EventType = "sys.scheduler.status.plugin.launched"
-	EventPluginStatusComplete   EventType = "sys.scheduler.status.plugin.complete"
-	EventPluginLastExecution    EventType = "sys.scheduler.plugin.lastexecution"
-	EventPluginStatusFailed     EventType = "sys.scheduler.status.plugin.failed"
-	EventFailure                EventType = "sys.scheduler.failure"
+
+	EventPluginStatusQueued       EventType = "sys.scheduler.status.plugin.queued"
+	EventPluginStatusSelected     EventType = "sys.scheduler.status.plugin.selected"
+	EventPluginStatusScheduled    EventType = "sys.scheduler.status.plugin.scheduled"
+	EventPluginStatusInitializing EventType = "sys.scheduler.status.plugin.initializing"
+	EventPluginStatusRunning      EventType = "sys.scheduler.status.plugin.running"
+	EventPluginStatusCompleted    EventType = "sys.scheduler.status.plugin.completed"
+	EventPluginLastExecution      EventType = "sys.scheduler.plugin.lastexecution"
+	EventPluginStatusFailed       EventType = "sys.scheduler.status.plugin.failed"
+	EventPluginStatusEvent        EventType = "sys.scheduler.status.plugin.event"
+	EventFailure                  EventType = "sys.scheduler.failure"
+
+	// Deprecated: use EventPluginStatusScheduled instead
+	EventPluginStatusLaunched EventType = "sys.scheduler.status.plugin.launched"
 
 	EventPluginPerfCPU EventType = "sys.plugin.perf.cpu"
 	EventPluginPerfMem EventType = "sys.plugin.perf.mem"
