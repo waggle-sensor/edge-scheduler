@@ -98,23 +98,23 @@ func (kb *KnowledgeBase) EvaluateRule(rule *datatype.ScienceRule) (bool, error) 
 	})
 	resp, err := r.RequestPost("evaluate", data, nil)
 	if err != nil {
-		return false, fmt.Errorf("Failed to get data from checker: %s", err.Error())
+		return false, fmt.Errorf("failed to get data from checker: %s", err.Error())
 	}
 	decoder, err := r.ParseJSONHTTPResponse(resp)
 	if err != nil {
-		return false, fmt.Errorf("Failed to parse response: %s", err.Error())
+		return false, fmt.Errorf("failed to parse response: %s", err.Error())
 	}
 	var body map[string]interface{}
 	decoder.Decode(&body)
 	if r, exists := body["response"]; exists {
 		if r.(string) == "failed" {
-			return false, fmt.Errorf("Failed to evaluate rule: %s", body["error"])
+			return false, fmt.Errorf("failed to evaluate rule: %s", body["error"])
 		}
 	}
 	if v, exists := body["result"]; exists {
 		return v.(bool), nil
 	} else {
-		return false, fmt.Errorf("Response does not contain result: %v", body)
+		return false, fmt.Errorf("response does not contain result: %v", body)
 	}
 }
 
@@ -128,7 +128,7 @@ func (kb *KnowledgeBase) EvaluateGoal(goalID string) (results []datatype.Science
 			}
 		}
 	} else {
-		err = fmt.Errorf("Failed to find rules: rules for goal ID %q does not exist", goalID)
+		err = fmt.Errorf("failed to find rules: rules for goal ID %q does not exist", goalID)
 	}
 	return
 }
@@ -153,5 +153,5 @@ func parseRule(r string) (condition string, result string, err error) {
 	if len(sp) == 2 {
 		return strings.TrimSpace(sp[1]), strings.TrimSpace(sp[0]), nil
 	}
-	return "", "", fmt.Errorf("Failed to split %q using \":\"", r)
+	return "", "", fmt.Errorf("failed to split %q using \":\"", r)
 }

@@ -45,7 +45,6 @@ const (
 	namespace             = "ses"
 	rancherKubeconfigPath = "/etc/rancher/k3s/k3s.yaml"
 	configMapNameForGoals = "waggle-plugin-scheduler-goals"
-	letters               = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
 	PodLabelPluginTask = "sagecontinuum.org/plugin-task"
 	PodLabelGoalID     = "sagecontinuum.org/plugin-goal-id"
@@ -152,14 +151,6 @@ func generatePassword() string {
 		panic(err)
 	}
 	return hex.EncodeToString(b)
-}
-
-func generateRandomString(n int) string {
-	s := make([]byte, n)
-	for i := range s {
-		s[i] = letters[rand.Intn(len(letters))]
-	}
-	return string(s)
 }
 
 func (*ResourceManager) GetInitContainerStatusFromPod(p *v1.Pod, containerName string) v1.ContainerStatus {
@@ -340,7 +331,7 @@ func (rm *ResourceManager) parseEnv(rawEnv map[string]string) (parsedEnv []v1.En
 					Value: string(secretV),
 				})
 			} else {
-				err = fmt.Errorf("secret %s does not have the variable %s. Please check.", secretName, keyName)
+				err = fmt.Errorf("secret %s does not have the variable %s. Please check", secretName, keyName)
 				return
 			}
 		} else {
@@ -964,7 +955,7 @@ func (rm *ResourceManager) CreatePodTemplate(pr *datatype.PluginRuntime) (*apiv1
 	// add instance label to distinguish between Pods of the same plugin
 	// reference on the fact that Pods are not designed to be updated
 	// https://github.com/kubernetes/kubernetes/issues/24913#issuecomment-694817890
-	template.Labels["sagecontinuum.org/plugin-instance"] = pr.Plugin.Name + "-" + generateRandomString(6)
+	template.Labels["sagecontinuum.org/plugin-instance"] = pr.PodInstance
 	template.Spec.RestartPolicy = apiv1.RestartPolicyNever
 	return &apiv1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1598,7 +1589,7 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(pr *datatype.PluginRuntime) {
 func (rm *ResourceManager) RunGabageCollector() error {
 	jobList, err := rm.ListJobs()
 	if err != nil {
-		return fmt.Errorf("Failed to get job list: %s", err.Error())
+		return fmt.Errorf("failed to get job list: %s", err.Error())
 	}
 	for _, job := range jobList.Items {
 		podPhase, err := rm.GetPluginStatus(job.Name)
@@ -1957,21 +1948,21 @@ func (w *AdvancedWatcher) runWatcher() error {
 	timeOut := 30 * time.Minute
 	watcher, err := w.Func()
 	if err != nil {
-		return fmt.Errorf("Failed to get watcher from Kubernetes")
+		return fmt.Errorf("failed to get watcher from Kubernetes")
 	}
 	chanEvent := watcher.ResultChan()
 	for {
 		select {
 		case e, ok := <-chanEvent:
 			if !ok {
-				return fmt.Errorf("Watcher is closed")
+				return fmt.Errorf("watcher is closed")
 			} else {
 				w.C <- e
 				lastEvent = time.Now()
 			}
 		case <-ticker.C:
 			if time.Now().After(lastEvent.Add(timeOut)) {
-				return fmt.Errorf("Watcher timed out")
+				return fmt.Errorf("watcher timed out")
 			}
 		}
 	}

@@ -59,6 +59,11 @@ func (s *SchedulerEventBuilder) AddEntry(k string, v interface{}) *SchedulerEven
 	return s
 }
 
+func (s *SchedulerEventBuilder) AddPluginRuntimeMeta(pr PluginRuntime) *SchedulerEventBuilder {
+	s.e.Meta["pluginruntime_pod_instance"] = pr.PodInstance
+	return s
+}
+
 func (s *SchedulerEventBuilder) AddPluginMeta(plugin Plugin) *SchedulerEventBuilder {
 	s.e.Meta["plugin_name"] = plugin.Name
 	s.e.Meta["plugin_image"] = plugin.PluginSpec.Image

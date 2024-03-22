@@ -30,8 +30,7 @@ type NodeScheduler struct {
 	SchedulingPolicy            policy.SchedulingPolicy
 	LogToBeehive                *interfacing.RabbitMQHandler
 	ToScoreboard                *interfacing.RedisClient
-	waitingQueue                datatype.Queue
-	readyQueue                  datatype.Queue
+	readyQueue                  datatype.Queue // act a job queue for resource management
 	scheduledPlugins            datatype.Queue
 	chanContextEventToScheduler chan datatype.EventPluginContext
 	chanFromResourceManager     chan datatype.Event
@@ -85,8 +84,8 @@ func (ns *NodeScheduler) Run() {
 		select {
 		case event := <-ns.chanFromCloudScheduler:
 			e := event.(datatype.SchedulerEvent)
-			logger.Debug.Printf("%s", e.ToString())
 			goals := e.GetEntry("goals").(string)
+			logger.Debug.Printf("%s: %s", e.ToString(), goals)
 			err := ns.ResourceManager.CreateConfigMap(
 				configMapNameForGoals,
 				map[string]string{"goals": goals},
@@ -127,17 +126,18 @@ func (ns *NodeScheduler) Run() {
 							} else {
 								pr.UpdateWithScienceRule(r)
 								// TODO: we enable plugin-controller always. we will want to control this later.
-								// pr.SetPluginController(true)
+								pr.SetPluginController(true)
+								pr.GeneratePodInstance()
 								pr.Queued()
 								msg := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusQueued).
+									AddPluginRuntimeMeta(*pr).
 									AddPluginMeta(pr.Plugin).
 									AddReason(fmt.Sprintf("triggered by %s", r.Condition)).
 									Build().(datatype.SchedulerEvent)
 								ns.LogToBeehive.SendWaggleMessageOnNodeAsync(msg.ToWaggleMessage(), "all")
-								// NOTE: readyQueue mimics a job queue for scheduling policy
 								ns.readyQueue.Push(pr)
 								triggerScheduling = true
-								logger.Debug.Printf("Plugin %s is queued by %s", pr.Plugin.Name, r.Condition)
+								logger.Info.Printf("Plugin %s is queued by %s", pr.Plugin.Name, r.Condition)
 							}
 						case datatype.ScienceRuleActionPublish:
 							eventName := r.ActionObject
@@ -174,10 +174,10 @@ func (ns *NodeScheduler) Run() {
 				}
 			}
 			if triggerScheduling {
-				response := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusQueued).
+				privateMessage := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusQueued).
 					AddReason("kb triggered").
 					Build().(datatype.SchedulerEvent)
-				ns.chanNeedScheduling <- response
+				ns.chanNeedScheduling <- privateMessage
 			}
 		case event := <-ns.chanNeedScheduling:
 			e := event.(datatype.SchedulerEvent)
@@ -199,6 +199,7 @@ func (ns *NodeScheduler) Run() {
 				for _, _pr := range pluginsToRun {
 					pluginEvent := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusSelected).
 						AddReason("Fit to resource").
+						AddPluginRuntimeMeta(*_pr).
 						AddPluginMeta(_pr.Plugin).
 						Build().(datatype.SchedulerEvent)
 					logger.Debug.Printf("%s: %q (%q)", pluginEvent.ToString(), pluginEvent.GetPluginName(), pluginEvent.GetReason())
@@ -212,6 +213,7 @@ func (ns *NodeScheduler) Run() {
 						if err != nil {
 							logger.Error.Printf("Failed to create Kubernetes Pod for %q: %q", pr.Plugin.Name, err.Error())
 							msg := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).
+								AddPluginRuntimeMeta(*pr).
 								AddReason(err.Error()).
 								AddPluginMeta(pr.Plugin).
 								Build().(datatype.SchedulerEvent)
@@ -227,6 +229,7 @@ func (ns *NodeScheduler) Run() {
 						if err != nil {
 							logger.Error.Printf("Failed to run %q: %q", pod.Name, err.Error())
 							msg := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).
+								AddPluginRuntimeMeta(*pr).
 								AddReason(err.Error()).
 								AddPluginMeta(pr.Plugin).
 								Build().(datatype.SchedulerEvent)
@@ -257,36 +260,6 @@ func (ns *NodeScheduler) Run() {
 				// We shouldn't receive unknown type event. If so, we need to implement it here
 				panic(fmt.Sprintf("Unknown event received from Resource Manager: %s", e.Type))
 			}
-			// case datatype.EventPluginStatusFailed:
-			// 	scienceGoal, err := ns.GoalManager.GetScienceGoalByID(e.GetGoalID())
-			// 	if err != nil {
-			// 		logger.Error.Printf("Could not get goal to update plugin status: %q", err.Error())
-			// 	} else {
-			// 		pluginName := e.GetPluginName()
-			// 		if plugin := scienceGoal.GetMySubGoal(ns.NodeID).GetPlugin(pluginName); plugin != nil {
-			// 			p := *plugin
-			// 			_pr := &datatype.PluginRuntime{
-			// 				Plugin: p,
-			// 			}
-			// 			pr := ns.scheduledPlugins.Pop(_pr)
-			// 			ns.waitingQueue.Push(pr)
-			// 			ns.LogToBeehive.SendWaggleMessageOnNodeAsync(e.ToWaggleMessage(), "all")
-			// 		}
-			// 	}
-			// 	// We trigger the scheduling logic for plugins that need to run
-			// 	ns.chanNeedScheduling <- event
-			// case datatype.EventGoalStatusReceivedBulk:
-			// 	// A goal set is received. We add or update the goals.
-			// 	logger.Debug.Printf("A bulk goal is received")
-			// 	data := e.GetEntry("goals").(string)
-			// 	var goals []datatype.ScienceGoal
-			// 	err := json.Unmarshal([]byte(data), &goals)
-			// 	if err != nil {
-			// 		logger.Error.Printf("Failed to load bulk goals %q", err.Error())
-			// 	} else {
-			// 		ns.handleBulkGoals(goals)
-			// 	}
-			// }
 		}
 	}
 }
@@ -334,6 +307,7 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 		pr.Scheduled()
 		pr.SetPodUID(string(pod.UID))
 		msg := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusScheduled).
+			AddPluginRuntimeMeta(*pr).
 			AddPodMeta(pod).
 			AddPluginMeta(pr.Plugin).
 			Build().(datatype.SchedulerEvent)
@@ -346,6 +320,7 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 				logger.Info.Printf("plugin %q is being initialized", pod.Name)
 				pr.Initializing()
 				msg := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusInitializing).
+					AddPluginRuntimeMeta(*pr).
 					AddPodMeta(pod).
 					AddPluginMeta(pr.Plugin).
 					Build().(datatype.SchedulerEvent)
@@ -359,6 +334,7 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 				logger.Info.Printf("Plugin %q starts to run", pod.Name)
 				pr.Running()
 				msg := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusRunning).
+					AddPluginRuntimeMeta(*pr).
 					AddPodMeta(pod).
 					AddPluginMeta(pr.Plugin).
 					Build().(datatype.SchedulerEvent)
@@ -376,15 +352,16 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 				// 	// TODO: The message takes time to get into DB so the rule checker may not notice
 				// 	//       it if the checker is called before the delivery. We will need to make sure
 				// 	//       the message is delivered before triggering rule checking.
-				message := datatype.NewMessage(
+				localMessage := datatype.NewMessage(
 					string(datatype.EventPluginLastExecution),
 					pluginName,
 					time.Now().UnixNano(),
 					map[string]string{},
 				)
-				ns.LogToBeehive.SendWaggleMessageOnNodeAsync(message, "node")
+				ns.LogToBeehive.SendWaggleMessageOnNodeAsync(localMessage, "node")
 
 				message2 := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusCompleted).
+					AddPluginRuntimeMeta(*pr).
 					AddPodMeta(pod).
 					AddPluginMeta(pr.Plugin).
 					Build().(datatype.SchedulerEvent)
@@ -400,7 +377,8 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 			if err != nil {
 				logger.Error.Println(err.Error())
 			}
-			message := messageBuilder.AddPluginMeta(pr.Plugin).
+			message := messageBuilder.AddPluginRuntimeMeta(*pr).
+				AddPluginMeta(pr.Plugin).
 				Build().(datatype.SchedulerEvent)
 			ns.LogToBeehive.SendWaggleMessageOnNodeAsync(message.ToWaggleMessage(), "all")
 			defer ns.ResourceManager.TerminatePod(pod.Name)
@@ -413,17 +391,17 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 		}
 	case KubernetesEventTypeDeleted:
 		logger.Info.Printf("Plugin %q removed", pod.Name)
-		var message datatype.SchedulerEvent
+		var privateMessage datatype.SchedulerEvent
 		switch pr.Status.State {
 		case datatype.Completed:
 			// The Pod is deleted as plugin execution terminated successfully.
 			// We do nothing on this transition
-			message = datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusCompleted).
+			privateMessage = datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusCompleted).
 				AddReason(fmt.Sprintf("plugin %q successfully removed", pod.Name)).
 				Build().(datatype.SchedulerEvent)
 		case datatype.Failed:
 			// The pod failed and should have been already reported. we do nothing
-			message = datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).
+			privateMessage = datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).
 				AddReason(fmt.Sprintf("plugin %q removed due to a failure", pod.Name)).
 				Build().(datatype.SchedulerEvent)
 		default:
@@ -431,8 +409,13 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 			// that the Pod was deleted from external, e.g. kubectl delete pod.
 			// We mark this as a failure.
 			pr.Failed()
-			message = datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).
-				AddReason("plugin deleted externally").
+			privateMessage = datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).
+				AddReason(fmt.Sprintf("plugin %q deleted from external", pod.Name)).
+				Build().(datatype.SchedulerEvent)
+
+			message := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).
+				AddReason("plugin deleted from external").
+				AddPluginRuntimeMeta(*pr).
 				AddPluginMeta(pr.Plugin).
 				AddPodMeta(pod).
 				Build().(datatype.SchedulerEvent)
@@ -441,7 +424,7 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 		// trigger the scheduler to schedule next Plugins
 		ns.scheduledPlugins.Pop(pr)
 		pr.Inactive()
-		ns.chanNeedScheduling <- message
+		ns.chanNeedScheduling <- privateMessage
 	}
 }
 
@@ -466,6 +449,7 @@ func (ns *NodeScheduler) handleKubernetesEventEvent(e KubernetesEvent) {
 	case "Pod":
 		if pr := ns.GoalManager.GetPluginRuntimeByPodUID(string(obj.UID)); pr != nil {
 			message := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusEvent).
+				AddPluginRuntimeMeta(*pr).
 				AddPluginMeta(pr.Plugin).
 				AddReason(event.Reason).
 				AddEntry("message", event.Message).
@@ -474,7 +458,6 @@ func (ns *NodeScheduler) handleKubernetesEventEvent(e KubernetesEvent) {
 		}
 	default:
 	}
-
 }
 
 func (ns *NodeScheduler) handleKubernetesConfigMapEvent(e KubernetesEvent) {
@@ -554,6 +537,7 @@ func (ns *NodeScheduler) cleanUpGoal(goal *datatype.ScienceGoal) {
 						logger.Error.Printf("Failed to get pod of the plugin %q", a.Plugin.Name)
 					} else {
 						e := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).
+							AddPluginRuntimeMeta(*pr).
 							AddPluginMeta(a.Plugin).
 							AddPodMeta(pod).
 							AddReason("Cleaning up the plugin due to deletion of the goal").

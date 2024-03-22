@@ -25,7 +25,7 @@ func (ngm *NodeGoalManager) GetScienceGoalByID(goalID string) (*datatype.Science
 		return &goal, nil
 	}
 
-	return nil, fmt.Errorf("The goal ID %s does not exist", goalID)
+	return nil, fmt.Errorf("the goal ID %s does not exist", goalID)
 }
 
 // GetScienceGoalByJobID returns the goal serving given job ID
@@ -35,7 +35,7 @@ func (ngm *NodeGoalManager) GetScienceGoalByJobID(jobID string) (*datatype.Scien
 			return &goal, nil
 		}
 	}
-	return nil, fmt.Errorf("There is no goal serving the job %q", jobID)
+	return nil, fmt.Errorf("there is no goal serving the job %q", jobID)
 }
 
 func (ngm *NodeGoalManager) GetScienceGoalByName(goalName string) (*datatype.ScienceGoal, error) {
@@ -44,7 +44,7 @@ func (ngm *NodeGoalManager) GetScienceGoalByName(goalName string) (*datatype.Sci
 			return &goal, nil
 		}
 	}
-	return nil, fmt.Errorf("The goal Name %s does not exist", goalName)
+	return nil, fmt.Errorf("the goal Name %s does not exist", goalName)
 }
 
 // DropGoal drops given goal from the list
@@ -55,7 +55,7 @@ func (ngm *NodeGoalManager) DropGoalByName(goalName string) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("The goal %s does not exist", goalName)
+	return fmt.Errorf("the goal %s does not exist", goalName)
 }
 
 func (ngm *NodeGoalManager) DropGoal(goalID string) error {
@@ -63,7 +63,7 @@ func (ngm *NodeGoalManager) DropGoal(goalID string) error {
 		delete(ngm.ScienceGoals, goalID)
 		return nil
 	} else {
-		return fmt.Errorf("Failed to find goal by ID %s", goalID)
+		return fmt.Errorf("failed to find goal by ID %s", goalID)
 	}
 }
 

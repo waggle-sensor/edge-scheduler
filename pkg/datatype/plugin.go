@@ -2,9 +2,14 @@ package datatype
 
 import (
 	"fmt"
+	"math/rand"
 	"path"
 	"strings"
 	"time"
+)
+
+const (
+	letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 )
 
 // Plugin structs plugin metadata from ECR
@@ -126,6 +131,7 @@ type PluginRuntime struct {
 	Resource               Resource
 	PodUID                 string
 	Status                 PluginStatus
+	PodInstance            string
 }
 
 func NewPluginRuntime(p Plugin) *PluginRuntime {
@@ -151,6 +157,12 @@ func (pr *PluginRuntime) UpdateWithScienceRule(runtimeArgs ScienceRule) {
 	// if v, found := runtimeArgs.ActionParameters["duration"]; found {
 	// 	pr.Duration
 	// }
+}
+
+// GeneratePodInstance generates a PodInstance of the PluginRuntime.
+// The format consists of <<plugin name>>-<<6 random characters>>.
+func (pr *PluginRuntime) GeneratePodInstance() {
+	pr.PodInstance = pr.Plugin.Name + "-" + generateRandomString(6)
 }
 
 // Equal checks if given PluginRuntime object is the same in terms of its content.
@@ -245,4 +257,12 @@ type Profile struct {
 	Name    string            `yaml:"name,omitempty"`
 	Knobs   map[string]string `yaml:"knobs,omitempty"`
 	Require Resource          `yaml:"require,omitempty"`
+}
+
+func generateRandomString(n int) string {
+	s := make([]byte, n)
+	for i := range s {
+		s[i] = letters[rand.Intn(len(letters))]
+	}
+	return string(s)
 }

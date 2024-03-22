@@ -103,6 +103,7 @@ func (api *APIServer) handlerSchedule(w http.ResponseWriter, r *http.Request) {
 		// api.nodeScheduler.LogToBeehive.SendWaggleMessageOnNodeAsync(response.ToWaggleMessage(), "node")
 		pr := datatype.NewPluginRuntimeWithScienceRule(newPlugin, datatype.ScienceRule{})
 		pr.EnablePluginController = true
+		// TODO: we need to add the plugin to the goal manager, in addition to adding it to the ready queue
 		api.nodeScheduler.readyQueue.Push(pr)
 		api.nodeScheduler.chanNeedScheduling <- e
 
