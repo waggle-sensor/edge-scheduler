@@ -146,7 +146,7 @@ func (cgm *CloudGoalManager) UpdateJob(job *datatype.Job, submit bool) (err erro
 	if submit {
 		newScienceGoal := job.ScienceGoal
 		cgm.UpdateScienceGoal(newScienceGoal)
-		event := datatype.NewEventBuilder(datatype.EventGoalStatusSubmitted).AddGoal(newScienceGoal).Build()
+		event := datatype.NewSchedulerEventBuilder(datatype.EventGoalStatusSubmitted).AddGoal(newScienceGoal).Build()
 		cgm.Notifier.Notify(event)
 	}
 	return
@@ -176,7 +176,7 @@ func (cgm *CloudGoalManager) SuspendJob(jobID string) (err error) {
 	if err != nil {
 		return
 	}
-	event := datatype.NewEventBuilder(datatype.EventJobStatusSuspended).
+	event := datatype.NewSchedulerEventBuilder(datatype.EventJobStatusSuspended).
 		AddJob(&job).
 		AddReason("Suspended by user").Build()
 	cgm.Notifier.Notify(event)
@@ -210,7 +210,7 @@ func (cgm *CloudGoalManager) RemoveJob(jobID string, force bool) (err error) {
 	if err != nil {
 		return
 	}
-	event := datatype.NewEventBuilder(datatype.EventJobStatusRemoved).
+	event := datatype.NewSchedulerEventBuilder(datatype.EventJobStatusRemoved).
 		AddJob(&job)
 	if job.ScienceGoal != nil {
 		event = event.AddGoal(job.ScienceGoal)

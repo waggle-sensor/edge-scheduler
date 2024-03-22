@@ -7,7 +7,6 @@ import (
 
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
 	"gopkg.in/yaml.v2"
-	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -23,7 +22,7 @@ func TestEnvFromSecret(t *testing.T) {
 	mySecretWord := "helloworld"
 	// A secret which we will retrieve the data from.
 	objects := []runtime.Object{
-		&corev1.Secret{
+		&v1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "mysecret",
 				Namespace: "ses", // ResourceManager uses ses namespace by default

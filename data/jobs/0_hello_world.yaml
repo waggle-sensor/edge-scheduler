@@ -7,10 +7,10 @@ plugins:
     entrypoint: /bin/bash
     args:
     - -c
-    - "echo hello world"
+    - "echo hello world; sleep 10; echo good bye"
 nodes:
   W023:
 scienceRules:
-- "myapp: cronjob('myapp', '0 * * * *')"
+- "schedule(myapp): cronjob('myapp', '*/2 * * * *')"
 successcriteria:
 - WallClock(1d)

@@ -49,22 +49,22 @@ type APIServer struct {
 	apiRouter              *mux.Router
 	managementRouter       *mux.Router
 	cloudScheduler         *CloudScheduler
-	subscribers            map[string]map[chan *datatype.Event]bool
+	subscribers            map[string]map[chan datatype.Event]bool
 	subscriberMutex        sync.Mutex
 	authenticator          Authenticator
 }
 
-func (api *APIServer) subscribe(nodeName string, c chan *datatype.Event) {
+func (api *APIServer) subscribe(nodeName string, c chan datatype.Event) {
 	nodeName = strings.ToLower(nodeName)
 	api.subscriberMutex.Lock()
 	if _, exist := api.subscribers[nodeName]; !exist {
-		api.subscribers[nodeName] = make(map[chan *datatype.Event]bool)
+		api.subscribers[nodeName] = make(map[chan datatype.Event]bool)
 	}
 	api.subscribers[nodeName][c] = true
 	api.subscriberMutex.Unlock()
 }
 
-func (api *APIServer) unsubscribe(nodeName string, c chan *datatype.Event) {
+func (api *APIServer) unsubscribe(nodeName string, c chan datatype.Event) {
 	nodeName = strings.ToLower(nodeName)
 	api.subscriberMutex.Lock()
 	if _, exist := api.subscribers[nodeName]; exist {
@@ -73,7 +73,7 @@ func (api *APIServer) unsubscribe(nodeName string, c chan *datatype.Event) {
 	api.subscriberMutex.Unlock()
 }
 
-func (api *APIServer) Push(nodeName string, event *datatype.Event) {
+func (api *APIServer) Push(nodeName string, event datatype.Event) {
 	nodeName = strings.ToLower(nodeName)
 	api.subscriberMutex.Lock()
 	if _, exist := api.subscribers[nodeName]; exist {
@@ -603,7 +603,7 @@ func (api *APIServer) handlerGoalStreamForNode(w http.ResponseWriter, r *http.Re
 	w.Header().Set("Content-Type", "text/event-stream")
 	// To prevent nginx proxy from keeping buffer of data
 	w.Header().Set("X-Accel-Buffering", "no")
-	c := make(chan *datatype.Event, 1)
+	c := make(chan datatype.Event, 1)
 	api.subscribe(nodeName, c)
 	defer api.unsubscribe(nodeName, c)
 	var goals []*datatype.ScienceGoal
@@ -613,7 +613,9 @@ func (api *APIServer) handlerGoalStreamForNode(w http.ResponseWriter, r *http.Re
 	// if no science goal is assigned to the node return an empty list []
 	// returning null may raise an exception in edge scheduler
 	if len(goals) < 1 {
-		event := datatype.NewEventBuilder(datatype.EventGoalStatusUpdated).AddEntry("goals", "[]").Build()
+		event := datatype.NewSchedulerEventBuilder(datatype.EventGoalStatusUpdated).
+			AddEntry("goals", "[]").
+			Build().(datatype.SchedulerEvent)
 		if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.ToString(), event.GetEntry("goals")); err != nil {
 			return
 		}
@@ -623,7 +625,9 @@ func (api *APIServer) handlerGoalStreamForNode(w http.ResponseWriter, r *http.Re
 		if err != nil {
 			logger.Error.Printf("Failed to compress goals for node %q before pushing", nodeName)
 		} else {
-			event := datatype.NewEventBuilder(datatype.EventGoalStatusUpdated).AddEntry("goals", string(blob)).Build()
+			event := datatype.NewSchedulerEventBuilder(datatype.EventGoalStatusUpdated).
+				AddEntry("goals", string(blob)).
+				Build().(datatype.SchedulerEvent)
 			if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.ToString(), event.GetEntry("goals")); err != nil {
 				return
 			}
@@ -633,7 +637,8 @@ func (api *APIServer) handlerGoalStreamForNode(w http.ResponseWriter, r *http.Re
 	for {
 		select {
 		case event := <-c:
-			if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.ToString(), event.GetEntry("goals")); err != nil {
+			e := event.(datatype.SchedulerEvent)
+			if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", e.ToString(), e.GetEntry("goals")); err != nil {
 				return
 			}
 			// option 1. send a small heartbeat to the client to keep the connection and notify if it fails

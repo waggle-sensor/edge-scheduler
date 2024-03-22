@@ -59,6 +59,17 @@ func (q *Queue) Push(p *PluginRuntime) {
 	q.mu.Unlock()
 }
 
+func (q *Queue) IsExist(pr *PluginRuntime) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	for _, _pr := range q.entities {
+		if pr.Equal(_pr) {
+			return true
+		}
+	}
+	return false
+}
+
 func (q *Queue) Pop(pr *PluginRuntime) *PluginRuntime {
 	q.mu.Lock()
 	var found *PluginRuntime

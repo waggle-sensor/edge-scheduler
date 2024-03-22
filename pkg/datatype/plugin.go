@@ -2,8 +2,14 @@ package datatype
 
 import (
 	"fmt"
+	"math/rand"
 	"path"
 	"strings"
+	"time"
+)
+
+const (
+	letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 )
 
 // Plugin structs plugin metadata from ECR
@@ -67,21 +73,7 @@ const (
 	// Runnable indicates a plugin is runnable wrt the current context
 	Runnable ContextStatus = "Runnable"
 	// Stoppable indicates a plugin is stoppable wrt the current context
-	Stoppable = "Stoppable"
-)
-
-// SchedulingStatus represents scheduling status of a plugin
-type SchedulingStatus string
-
-const (
-	// Waiting indicates a plugin is not activated and in waiting
-	Waiting SchedulingStatus = "Waiting"
-	// Ready indicates a plugin is ready to be scheduled
-	Ready SchedulingStatus = "Ready"
-	// Running indicates a plugin is assigned resource and running
-	Running SchedulingStatus = "Running"
-	// Stopped indicates a plugin is stopped by scheduler
-	Stopped SchedulingStatus = "Stopped"
+	Stoppable ContextStatus = "Stoppable"
 )
 
 // EventPluginContext structs a message about plugin context change
@@ -89,6 +81,42 @@ type EventPluginContext struct {
 	GoalID     string        `json:"goal_id"`
 	PluginName string        `json:"plugin_name"`
 	Status     ContextStatus `json:"status"`
+}
+
+// PluginState is a label of Plugin state
+type PluginState string
+
+const (
+	// Inactive indicates that plugin is not considered for scheduling
+	// Science rules when valid can make a transition for plugin
+	Inactive PluginState = "inactive"
+	// Queued indicates that plugin is waiting for resource to be executed
+	Queued PluginState = "queued"
+	// Scheduled indicates that plugin is assigned resource and is created
+	// in the system
+	Scheduled PluginState = "scheduled"
+	// Initializing indicates that plugin is being initialized
+	Initializing PluginState = "initializing"
+	// Running indicates that plugin's main container starts to run
+	Running PluginState = "running"
+	// Completed indicates that plugin has completed its run by examining
+	// return code from plugin's main container, only for 0 as a return code
+	Completed PluginState = "completed"
+	// Failed indicates that plugin has failed to reach to Completed state.
+	// Many reasons can transition to this state including,
+	//
+	// - Scheduled fails to create plugin in the system
+	//
+	// - Initializing fails to initialize plugin containers
+	//
+	// - Running fails to run plugin's program or the program exited with non-zero return code
+	Failed PluginState = "failed"
+)
+
+type PluginStatus struct {
+	State       PluginState `json:"state" yaml:"state"`
+	LastState   PluginState `json:"last_state" yaml:"lastState"`
+	LastUpdated time.Time   `json:"last_updated" yaml:"lastUpdated"`
 }
 
 type PluginCredential struct {
@@ -101,21 +129,91 @@ type PluginRuntime struct {
 	Duration               int
 	EnablePluginController bool
 	Resource               Resource
+	PodUID                 string
+	Status                 PluginStatus
+	PodInstance            string
 }
 
-func NewPluginRuntimeWithScienceRule(p Plugin, runtimeArgs ScienceRule) *PluginRuntime {
+func NewPluginRuntime(p Plugin) *PluginRuntime {
 	pr := &PluginRuntime{
 		Plugin: p,
 	}
-	// TODO: any runtime parameters of the plugin should be parsed and added to the runtime
-	// if v, found := runtimeArgs.ActionParameters["duration"]; found {
-	// 	pr.Duration
-	// }
+	pr.UpdateState(Inactive)
+	return pr
+}
+
+func NewPluginRuntimeWithScienceRule(p Plugin, runtimeArgs ScienceRule) *PluginRuntime {
+	pr := NewPluginRuntime(p)
+	pr.UpdateWithScienceRule(runtimeArgs)
 	return pr
 }
 
 func (pr *PluginRuntime) SetPluginController(flag bool) {
 	pr.EnablePluginController = flag
+}
+
+func (pr *PluginRuntime) UpdateWithScienceRule(runtimeArgs ScienceRule) {
+	// TODO: any runtime parameters of the plugin should be parsed and added to the runtime
+	// if v, found := runtimeArgs.ActionParameters["duration"]; found {
+	// 	pr.Duration
+	// }
+}
+
+// GeneratePodInstance generates a PodInstance of the PluginRuntime.
+// The format consists of <<plugin name>>-<<6 random characters>>.
+func (pr *PluginRuntime) GeneratePodInstance() {
+	pr.PodInstance = pr.Plugin.Name + "-" + generateRandomString(6)
+}
+
+// Equal checks if given PluginRuntime object is the same in terms of its content.
+// It checks Plugin's name, JobID, and GoalID. If matched, returns true, else false.
+func (pr *PluginRuntime) Equal(_pr *PluginRuntime) bool {
+	return pr.Plugin.Name == _pr.Plugin.Name &&
+		pr.Plugin.JobID == _pr.Plugin.JobID &&
+		pr.Plugin.GoalID == _pr.Plugin.GoalID
+}
+
+func (pr *PluginRuntime) UpdateState(s PluginState) {
+	lastState := pr.Status.State
+	pr.Status.State = s
+	pr.Status.LastUpdated = time.Now()
+	pr.Status.LastState = lastState
+}
+
+func (pr *PluginRuntime) IsState(s PluginState) bool {
+	return pr.Status.State == s
+}
+
+func (pr *PluginRuntime) SetPodUID(UID string) {
+	pr.PodUID = UID
+}
+
+func (pr *PluginRuntime) Inactive() {
+	pr.UpdateState(Inactive)
+}
+
+func (pr *PluginRuntime) Queued() {
+	pr.UpdateState(Queued)
+}
+
+func (pr *PluginRuntime) Scheduled() {
+	pr.UpdateState(Scheduled)
+}
+
+func (pr *PluginRuntime) Initializing() {
+	pr.UpdateState(Initializing)
+}
+
+func (pr *PluginRuntime) Running() {
+	pr.UpdateState(Running)
+}
+
+func (pr *PluginRuntime) Completed() {
+	pr.UpdateState(Completed)
+}
+
+func (pr *PluginRuntime) Failed() {
+	pr.UpdateState(Failed)
 }
 
 // type Plugin struct {
@@ -159,4 +257,12 @@ type Profile struct {
 	Name    string            `yaml:"name,omitempty"`
 	Knobs   map[string]string `yaml:"knobs,omitempty"`
 	Require Resource          `yaml:"require,omitempty"`
+}
+
+func generateRandomString(n int) string {
+	s := make([]byte, n)
+	for i := range s {
+		s[i] = letters[rand.Intn(len(letters))]
+	}
+	return string(s)
 }
