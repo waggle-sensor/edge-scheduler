@@ -215,7 +215,7 @@ func (rm *ResourceManager) AnalyzeFailureOfPod(p *v1.Pod) (*datatype.SchedulerEv
 			pluginControllerContainerStatus := rm.GetContainerStatusFromPod(p, PluginControllerContainerName)
 			if _t := pluginControllerContainerStatus.State.Terminated; _t != nil {
 				containerLog, _ := rm.GetContainerLastLog(p.Name, pluginControllerContainerStatus.Name, 1024)
-				logger.Error.Printf("Pod's %s failed: %s; logs: %s", p.Name, t.String(), containerLog)
+				logger.Error.Printf("Pod's %s failed: %s; logs: %s", pluginControllerContainerStatus.Name, t.String(), containerLog)
 			}
 			logger.Info.Printf("Pod failed, but plugin %q succeeded", p.Name)
 			message2 := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusCompleted).
@@ -841,22 +841,28 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(pr *datatype.PluginRun
 		logger.Info.Printf("plugin-controller sidecar is added to %s", pr.Plugin.Name)
 		pluginControllerArgs := []string{
 			"--enable-cpu-performance",
-			"--enable-metrics-publishing",
+			// Disabling metrics publishing since plugin-controller:0.3.0
+			// See more in https://github.com/waggle-sensor/plugin-controller/releases/tag/0.3.0
+			// "--enable-metrics-publishing",
 		}
 		if len(containers[0].Command) >= 1 {
 			pluginProcessName := containers[0].Command[0]
 			logger.Info.Printf("user specified plugin process (%s). it will be passed to the plugin-controller", pluginProcessName)
 			pluginControllerArgs = append(pluginControllerArgs, "--plugin-process-name", pluginProcessName)
 		}
-		if _, found := pr.Plugin.PluginSpec.Selector["resource.gpu"]; found {
-			logger.Info.Printf("%s's plugin-controller will collect GPU performance", pr.Plugin.Name)
-			pluginControllerArgs = append(pluginControllerArgs, "--enable-gpu-performance")
-		}
+		// Disabling GPU metrics publishing until we use the metrics for control
+		// See more in https://github.com/waggle-sensor/plugin-controller/releases/tag/0.3.0
+		// if _, found := pr.Plugin.PluginSpec.Selector["resource.gpu"]; found {
+		// 	logger.Info.Printf("%s's plugin-controller will collect GPU performance", pr.Plugin.Name)
+		// 	pluginControllerArgs = append(pluginControllerArgs, "--enable-gpu-performance")
+		// }
 		// adding plugin-controller to the pod
 		containers = append(containers, apiv1.Container{
 			Name:  PluginControllerContainerName,
-			Image: "waggle/plugin-controller:0.2.0",
-			Args:  pluginControllerArgs,
+			Image: "waggle/plugin-controller:0.3.0",
+			// may use below for debugging
+			// ImagePullPolicy: "Always",
+			Args: pluginControllerArgs,
 			Env: []apiv1.EnvVar{
 				{
 					Name:  "GPU_METRIC_HOST",

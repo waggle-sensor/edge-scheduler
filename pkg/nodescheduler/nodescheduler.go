@@ -266,6 +266,7 @@ func (ns *NodeScheduler) Run() {
 
 func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 	pod := e.Pod
+	logger.Debug.Printf("pod status: %s", string(pod.Status.Phase))
 	for _, i := range pod.Status.InitContainerStatuses {
 		logger.Debug.Printf("%s: (%s) %s", pod.Name, i.Name, &i.State)
 	}
@@ -330,7 +331,28 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 			// we expect the application container starts to run.
 			// we may not consider the start of our plugin-controller container
 			pluginContainerStatus := ns.ResourceManager.GetContainerStatusFromPod(pod, pluginName)
-			if pluginContainerStatus.State.Running != nil {
+			if t := pluginContainerStatus.State.Terminated; t != nil {
+				// Whenever the plugin container terminates that the plugin container
+				// does not notice, we should stop!!!
+				// NOTE: https://kubernetes.io/docs/concepts/workloads/pods/sidecar-containers/
+				//       adds a mechanism for sidecar container to exit when the main container exits.
+				//       This behavior will save our effort on checking the condition, in this if statement
+				// NOTE: The mechanism to safely terminate the plugin in this state is complicated.
+				//       We will deal with this issue later.
+
+				// pluginControllerContainerStatus := ns.ResourceManager.GetContainerStatusFromPod(pod, PluginControllerContainerName)
+				// if pluginControllerContainerStatus.State.Terminated != nil {
+				// 	logger.Error.Printf("plugin %q exited with return code %d, but the Pod remains as the plugin-controller still runs", pod.Name, t.ExitCode)
+				// 	if t.ExitCode == 0 {
+				// 		pr.Completed()
+				// 	} else {
+				// 		pr.Failed()
+				// 	}
+				// 	// NOTE: We would not want to terminate the pod because it can mislead users to
+				// 	//       think the plugin is failed because of theirs.
+				// 	defer ns.ResourceManager.TerminatePod(pod.Name)
+				// }
+			} else if pluginContainerStatus.State.Running != nil {
 				logger.Info.Printf("Plugin %q starts to run", pod.Name)
 				pr.Running()
 				msg := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusRunning).
