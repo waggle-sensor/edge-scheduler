@@ -177,13 +177,13 @@ func (*ResourceManager) GetContainerStatusFromPod(p *v1.Pod, containerName strin
 // we consider the Pod as PodSucceeded
 func (rm *ResourceManager) AnalyzeFailureOfPod(p *v1.Pod) (*datatype.SchedulerEventBuilder, error) {
 	pluginName := p.Labels[PodLabelPluginTask]
-	message := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).AddPodMeta(p)
+	message := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).AddReason("Error").AddPodMeta(p)
 
 	// first, check if the init container failed
 	initContainerStatus := rm.GetInitContainerStatusFromPod(p, InitContainerName)
 	if t := initContainerStatus.State.Terminated; t == nil {
 		// Pod failed even before the init container finishes
-		message = message.AddReason(fmt.Sprintf("pod failed: termination state not exist in container %q", InitContainerName))
+		message = message.AddEntry("message", fmt.Sprintf("pod failed: termination state not exist in container %q", InitContainerName))
 		return message, fmt.Errorf("pod %q failed before init container terminates: %s %q", p.Name, p.Status.Reason, p.Status.Message)
 	} else {
 		if t.ExitCode != 0 {
@@ -194,7 +194,7 @@ func (rm *ResourceManager) AnalyzeFailureOfPod(p *v1.Pod) (*datatype.SchedulerEv
 			} else {
 				logger.Error.Printf("failed to get plugin %q container %q log: %s", p.Name, initContainerStatus.Name, err.Error())
 			}
-			message = message.AddReason("init container failed").
+			message = message.AddEntry("message", "init container failed").
 				AddEntry("return_code", t.ExitCode)
 			return message, nil
 		}
