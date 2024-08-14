@@ -218,7 +218,7 @@ func (rm *ResourceManager) AnalyzeFailureOfPod(p *v1.Pod) (*datatype.SchedulerEv
 				logger.Error.Printf("Pod's %s failed: %s; logs: %s", pluginControllerContainerStatus.Name, t.String(), containerLog)
 			}
 			logger.Info.Printf("Pod failed, but plugin %q succeeded", p.Name)
-			message2 := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusCompleted).
+			message2 := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusComplete).
 				AddPodMeta(p)
 			return message2, nil
 		} else {
@@ -565,6 +565,13 @@ func getAppMetaCacheImage() string {
 	return "waggle/app-meta-cache:0.1.2"
 }
 
+func getPluginControllerImage() string {
+	if s, ok := os.LookupEnv("PLUGIN_CONTROLLER_IMAGE"); ok {
+		return s
+	}
+	return "waggle/plugin-controller:0.3.0"
+}
+
 func (rm *ResourceManager) createPodTemplateSpecForPlugin(pr *datatype.PluginRuntime) (v1.PodTemplateSpec, error) {
 	// We put user environmental variables first, so that they don't
 	// override our environmental variagbles.
@@ -859,7 +866,7 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(pr *datatype.PluginRun
 		// adding plugin-controller to the pod
 		containers = append(containers, apiv1.Container{
 			Name:  PluginControllerContainerName,
-			Image: "waggle/plugin-controller:0.3.0",
+			Image: getPluginControllerImage(),
 			// may use below for debugging
 			// ImagePullPolicy: "Always",
 			Args: pluginControllerArgs,
@@ -891,6 +898,12 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(pr *datatype.PluginRun
 							FieldPath: "metadata.uid",
 						},
 					},
+				},
+			},
+			Ports: []apiv1.ContainerPort{
+				{
+					Name:          "http",
+					ContainerPort: 9100,
 				},
 			},
 			VolumeMounts: []apiv1.VolumeMount{
@@ -1437,7 +1450,7 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(pr *datatype.PluginRuntime) {
 				// case v1.PodPending:
 				// 	_pod.Status.ContainerStatuses
 				case v1.PodSucceeded:
-					rm.Notifier.Notify(datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusCompleted).
+					rm.Notifier.Notify(datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusComplete).
 						AddPodMeta(_pod).
 						AddPluginMeta(pr.Plugin).
 						Build())
@@ -1526,7 +1539,7 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(pr *datatype.PluginRuntime) {
 								)
 							}
 							logger.Info.Printf("Pod failed, but plugin %q succeeded", _pod.Name)
-							rm.Notifier.Notify(datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusCompleted).
+							rm.Notifier.Notify(datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusComplete).
 								AddPodMeta(_pod).
 								AddPluginMeta(pr.Plugin).
 								Build())

@@ -129,7 +129,7 @@ func (ns *NodeScheduler) Run() {
 								pr.SetPluginController(true)
 								pr.GeneratePodInstance()
 								pr.Queued()
-								msg := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusQueued).
+								msg := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusPromoted).
 									AddPluginRuntimeMeta(*pr).
 									AddPluginMeta(pr.Plugin).
 									AddReason(fmt.Sprintf("triggered by %s", r.Condition)).
@@ -174,7 +174,7 @@ func (ns *NodeScheduler) Run() {
 				}
 			}
 			if triggerScheduling {
-				privateMessage := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusQueued).
+				privateMessage := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusPromoted).
 					AddReason("kb triggered").
 					Build().(datatype.SchedulerEvent)
 				ns.chanNeedScheduling <- privateMessage
@@ -382,7 +382,7 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 				)
 				ns.LogToBeehive.SendWaggleMessageOnNodeAsync(localMessage, "node")
 
-				message2 := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusCompleted).
+				message2 := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusComplete).
 					AddPluginRuntimeMeta(*pr).
 					AddPodMeta(pod).
 					AddPluginMeta(pr.Plugin).
@@ -418,7 +418,7 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 		case datatype.Completed:
 			// The Pod is deleted as plugin execution terminated successfully.
 			// We do nothing on this transition
-			privateMessage = datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusCompleted).
+			privateMessage = datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusComplete).
 				AddReason(fmt.Sprintf("plugin %q successfully removed", pod.Name)).
 				Build().(datatype.SchedulerEvent)
 		case datatype.Failed:
