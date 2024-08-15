@@ -313,6 +313,14 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 			AddPluginMeta(pr.Plugin).
 			Build().(datatype.SchedulerEvent)
 		ns.LogToBeehive.SendWaggleMessageOnNodeAsync(msg.ToWaggleMessage(), "all")
+
+		// NOTE: To support backward compatibility, we also send the "launched" event
+		msg2 := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusLaunched).
+			AddPluginRuntimeMeta(*pr).
+			AddPodMeta(pod).
+			AddPluginMeta(pr.Plugin).
+			Build().(datatype.SchedulerEvent)
+		ns.LogToBeehive.SendWaggleMessageOnNodeAsync(msg2.ToWaggleMessage(), "all")
 	case KubernetesEventTypeModified:
 		switch pod.Status.Phase {
 		case v1.PodPending:
@@ -393,17 +401,23 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 		case v1.PodFailed:
 			// one of the containers failed
 			// if plugin-controller container failed, we consider the Pod as success
-			logger.Info.Printf("Plugin %q failed", pod.Name)
-			pr.Failed()
-			messageBuilder, err := ns.ResourceManager.AnalyzeFailureOfPod(pod)
-			if err != nil {
-				logger.Error.Println(err.Error())
+
+			// Note: The PodFailed event can be received multiple times from Kubernetes.
+			//       Yongho checked the content of the events and they look the same.
+			//       Thus, we ignore duplicated events.
+			if !pr.IsState(datatype.Failed) {
+				logger.Info.Printf("Plugin %q failed", pod.Name)
+				pr.Failed()
+				messageBuilder, err := ns.ResourceManager.AnalyzeFailureOfPod(pod)
+				if err != nil {
+					logger.Error.Println(err.Error())
+				}
+				message := messageBuilder.AddPluginRuntimeMeta(*pr).
+					AddPluginMeta(pr.Plugin).
+					Build().(datatype.SchedulerEvent)
+				ns.LogToBeehive.SendWaggleMessageOnNodeAsync(message.ToWaggleMessage(), "all")
+				defer ns.ResourceManager.TerminatePod(pod.Name)
 			}
-			message := messageBuilder.AddPluginRuntimeMeta(*pr).
-				AddPluginMeta(pr.Plugin).
-				Build().(datatype.SchedulerEvent)
-			ns.LogToBeehive.SendWaggleMessageOnNodeAsync(message.ToWaggleMessage(), "all")
-			defer ns.ResourceManager.TerminatePod(pod.Name)
 		case v1.PodUnknown:
 			fallthrough
 		default:
