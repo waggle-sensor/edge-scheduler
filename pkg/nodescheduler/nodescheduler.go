@@ -129,7 +129,7 @@ func (ns *NodeScheduler) Run() {
 								pr.SetPluginController(true)
 								pr.GeneratePodInstance()
 								pr.Queued()
-								msg := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusPromoted).
+								msg := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusQueued).
 									AddPluginRuntimeMeta(*pr).
 									AddPluginMeta(pr.Plugin).
 									AddReason(fmt.Sprintf("triggered by %s", r.Condition)).
@@ -174,7 +174,7 @@ func (ns *NodeScheduler) Run() {
 				}
 			}
 			if triggerScheduling {
-				privateMessage := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusPromoted).
+				privateMessage := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusQueued).
 					AddReason("kb triggered").
 					Build().(datatype.SchedulerEvent)
 				ns.chanNeedScheduling <- privateMessage

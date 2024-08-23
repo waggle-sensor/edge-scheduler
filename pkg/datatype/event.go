@@ -201,7 +201,7 @@ const (
 	EventGoalStatusReceivedBulk EventType = "sys.scheduler.status.goal.received.bulk"
 	EventGoalStatusRemoved      EventType = "sys.scheduler.status.goal.removed"
 
-	EventPluginStatusPromoted     EventType = "sys.scheduler.status.plugin.promoted"
+	EventPluginStatusQueued       EventType = "sys.scheduler.status.plugin.queued"
 	EventPluginStatusSelected     EventType = "sys.scheduler.status.plugin.selected"
 	EventPluginStatusScheduled    EventType = "sys.scheduler.status.plugin.scheduled"
 	EventPluginStatusInitializing EventType = "sys.scheduler.status.plugin.initializing"
