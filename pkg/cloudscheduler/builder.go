@@ -58,7 +58,7 @@ func (csb *CloudSchedulerBuilder) AddAPIServer() *CloudSchedulerBuilder {
 		port:                   csb.cloudScheduler.Config.Port,
 		managementPort:         csb.cloudScheduler.Config.ManagementPort,
 		enablePushNotification: csb.cloudScheduler.Config.PushNotification,
-		subscribers:            make(map[string]map[chan *datatype.Event]bool),
+		subscribers:            make(map[string]map[chan datatype.Event]bool),
 		authenticator:          NewAuthenticator(csb.cloudScheduler.Config.AuthServerURL, csb.cloudScheduler.Config.AuthToken),
 	}
 	return csb

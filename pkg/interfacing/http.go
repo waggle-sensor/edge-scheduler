@@ -127,7 +127,7 @@ func (r *HTTPRequest) ParseJSONHTTPResponse(resp *http.Response) (decoder *json.
 	// return body, nil
 }
 
-func (r *HTTPRequest) Subscribe(streamPath string, ch chan *datatype.Event, keepRetry bool) error {
+func (r *HTTPRequest) Subscribe(streamPath string, ch chan datatype.Event, keepRetry bool) error {
 	operation := func() error {
 		resp, err := r.RequestGet(streamPath, nil, nil)
 		if err != nil {
@@ -151,8 +151,8 @@ func (r *HTTPRequest) Subscribe(streamPath string, ch chan *datatype.Event, keep
 				e := line[eStart+6 : eEnd]
 				e = strings.Trim(e, " ")
 				d := line[eEnd+5:]
-				event := datatype.NewEventBuilder(datatype.EventType(e)).AddEntry("goals", d).Build()
-				ch <- &event
+				event := datatype.NewSchedulerEventBuilder(datatype.EventType(e)).AddEntry("goals", d).Build()
+				ch <- event
 				// if match := patternEvent.FindStringSubmatch(line); len(match) > 0 {
 				// 	// if e != nil {
 				// 	// 	fmt.Println("something is wrong")

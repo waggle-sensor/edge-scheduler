@@ -99,10 +99,11 @@ func (api *APIServer) handlerSchedule(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		logger.Info.Printf("locally requested to add plugin %q to schedule", newPlugin.Name)
-		e := datatype.NewEventBuilder(datatype.EventPluginStatusPromoted).AddReason("locally scheduled").Build()
+		e := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusQueued).AddReason("locally submitted").Build()
 		// api.nodeScheduler.LogToBeehive.SendWaggleMessageOnNodeAsync(response.ToWaggleMessage(), "node")
 		pr := datatype.NewPluginRuntimeWithScienceRule(newPlugin, datatype.ScienceRule{})
 		pr.EnablePluginController = true
+		// TODO: we need to add the plugin to the goal manager, in addition to adding it to the ready queue
 		api.nodeScheduler.readyQueue.Push(pr)
 		api.nodeScheduler.chanNeedScheduling <- e
 
