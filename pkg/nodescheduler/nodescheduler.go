@@ -484,19 +484,24 @@ func (ns *NodeScheduler) handleKubernetesEventEvent(e KubernetesEvent) {
 	switch obj.Kind {
 	case "Pod":
 		if pr := ns.GoalManager.GetPluginRuntimeByPodUID(string(obj.UID)); pr != nil {
-			// The event on the failure of FailedPostStartHook can lead the plugin-controller container
+			// There are events on failures that can lead the plugin-controller container
 			// to hang, which causes the Pod hanging as well. We consider this as a failure so we remove
 			// the Pod. Users should treat this message as a failure of their plugin.
-			if event.Reason == "FailedPostStartHook" {
+			switch event.Reason {
+			case "FailedPostStartHook", "Failed", "FailedMount", "FailedCreatePodSandBox":
+				// NOTE: There can be multiple Reasons of a failure. We try to capture them
+				//       as much as possible.
 				logger.Info.Printf("Plugin %q failed due to FailedPostStartHook", obj.Name)
 				pr.Failed()
 				message := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).
 					AddPluginRuntimeMeta(*pr).
 					AddPluginMeta(pr.Plugin).
-					AddReason("plugin failed due to FailedPostStartHook").
+					AddReason(event.Reason).
+					AddEntry("message", event.Message).
 					Build().(datatype.SchedulerEvent)
 				ns.LogToBeehive.SendWaggleMessageOnNodeAsync(message.ToWaggleMessage(), "all")
 				defer ns.ResourceManager.TerminatePod(obj.Name)
+			default:
 			}
 			message := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusEvent).
 				AddPluginRuntimeMeta(*pr).
