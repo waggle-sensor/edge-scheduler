@@ -491,7 +491,7 @@ func (ns *NodeScheduler) handleKubernetesEventEvent(e KubernetesEvent) {
 			case "FailedPostStartHook", "Failed", "FailedMount", "FailedCreatePodSandBox":
 				// NOTE: There can be multiple Reasons of a failure. We try to capture them
 				//       as much as possible.
-				logger.Info.Printf("Plugin %q failed due to FailedPostStartHook", obj.Name)
+				logger.Info.Printf("Plugin %q failed due to %s", obj.Name, event.Reason)
 				pr.Failed()
 				message := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).
 					AddPluginRuntimeMeta(*pr).
