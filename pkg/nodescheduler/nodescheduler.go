@@ -125,8 +125,9 @@ func (ns *NodeScheduler) Run() {
 								logger.Debug.Printf("plugin %q is already active. no need to activate it", pr.Plugin.Name)
 							} else {
 								pr.UpdateWithScienceRule(r)
-								// TODO: we enable plugin-controller always. we will want to control this later.
-								pr.SetPluginController(true)
+								// TODO: We disable the plugin controller until we actually use it.
+								//       This causes problems of Pods not finishing and hanging in StartError
+								// pr.SetPluginController(true)
 								pr.GeneratePodInstance()
 								pr.Queued()
 								msg := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusQueued).
@@ -338,8 +339,23 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 		case v1.PodRunning:
 			// we expect the application container starts to run.
 			// we may not consider the start of our plugin-controller container
-			pluginContainerStatus := ns.ResourceManager.GetContainerStatusFromPod(pod, pluginName)
-			if t := pluginContainerStatus.State.Terminated; t != nil {
+			if pluginContainerStatus, err := ns.ResourceManager.GetContainerStatusFromPod(pod, pluginName); err != nil {
+				// Failed to retrieve the status
+				e := fmt.Sprintf("Failed to get container status: %s", err.Error())
+				logger.Error.Println(e)
+				pr.Failed()
+				messageBuilder, err := ns.ResourceManager.AnalyzeFailureOfPod(pod)
+				if err != nil {
+					logger.Error.Println(err.Error())
+				}
+				message := messageBuilder.AddPluginRuntimeMeta(*pr).
+					AddPodMeta(pod).
+					AddPluginMeta(pr.Plugin).
+					AddReason(e).
+					Build().(datatype.SchedulerEvent)
+				ns.LogToBeehive.SendWaggleMessageOnNodeAsync(message.ToWaggleMessage(), "all")
+				defer ns.ResourceManager.TerminatePod(pod.Name)
+			} else if t := pluginContainerStatus.State.Terminated; t != nil {
 				// Whenever the plugin container terminates that the plugin container
 				// does not notice, we should stop!!!
 				// NOTE: https://kubernetes.io/docs/concepts/workloads/pods/sidecar-containers/

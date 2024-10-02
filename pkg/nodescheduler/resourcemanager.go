@@ -162,13 +162,13 @@ func (*ResourceManager) GetInitContainerStatusFromPod(p *v1.Pod, containerName s
 	return v1.ContainerStatus{}
 }
 
-func (*ResourceManager) GetContainerStatusFromPod(p *v1.Pod, containerName string) v1.ContainerStatus {
+func (*ResourceManager) GetContainerStatusFromPod(p *v1.Pod, containerName string) (v1.ContainerStatus, error) {
 	for _, c := range p.Status.ContainerStatuses {
 		if c.Name == containerName {
-			return c
+			return c, nil
 		}
 	}
-	return v1.ContainerStatus{}
+	return v1.ContainerStatus{}, fmt.Errorf("%s not found", containerName)
 }
 
 // AnalyzeFailureOfPod carefully analyzes the reason of PodFailure.
@@ -202,8 +202,12 @@ func (rm *ResourceManager) AnalyzeFailureOfPod(p *v1.Pod) (*datatype.SchedulerEv
 
 	// even if the pod failed, if the plugin container succeeded
 	// we consider the pod succeeded.
-	pluginContainerStatus := rm.GetContainerStatusFromPod(p, pluginName)
-	if t := pluginContainerStatus.State.Terminated; t == nil {
+	if pluginContainerStatus, err := rm.GetContainerStatusFromPod(p, pluginName); err != nil {
+		e := fmt.Sprintf("Failed to get container status: %s", err.Error())
+		logger.Error.Printf(e)
+		message = message.AddReason(e)
+		return message, fmt.Errorf("failed to get container status: %s", err.Error())
+	} else if t := pluginContainerStatus.State.Terminated; t == nil {
 		// NOTE: This should not happen as PodFailure means all containers have their termination state
 		message = message.AddReason(fmt.Sprintf("pod failed: termination state not exist in container %q", pluginName))
 		return message, fmt.Errorf("pod %q failed, but termination state not exist: %s %q", p.Name, p.Status.Reason, p.Status.Message)
@@ -212,8 +216,10 @@ func (rm *ResourceManager) AnalyzeFailureOfPod(p *v1.Pod) (*datatype.SchedulerEv
 			// for debugging purpose,
 			// we check if the plugin controller failed
 			// TODO: we will want to send this error to the cloud for further analysis
-			pluginControllerContainerStatus := rm.GetContainerStatusFromPod(p, PluginControllerContainerName)
-			if _t := pluginControllerContainerStatus.State.Terminated; _t != nil {
+			if pluginControllerContainerStatus, err := rm.GetContainerStatusFromPod(p, PluginControllerContainerName); err != nil {
+				e := fmt.Sprintf("Failed to get container status: %s", err.Error())
+				logger.Error.Printf(e)
+			} else if _t := pluginControllerContainerStatus.State.Terminated; _t != nil {
 				containerLog, _ := rm.GetContainerLastLog(p.Name, pluginControllerContainerStatus.Name, 1024)
 				logger.Error.Printf("Pod's %s failed: %s; logs: %s", pluginControllerContainerStatus.Name, t.String(), containerLog)
 			}
