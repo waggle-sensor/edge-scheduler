@@ -1,11 +1,14 @@
 package datatype
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"path"
 	"strings"
 	"time"
+
+	"github.com/looplab/fsm"
 )
 
 const (
@@ -130,15 +133,56 @@ type PluginRuntime struct {
 	EnablePluginController bool
 	Resource               Resource
 	PodUID                 string
-	Status                 PluginStatus
+	Status                 *fsm.FSM
 	PodInstance            string
 }
 
 func NewPluginRuntime(p Plugin) *PluginRuntime {
 	pr := &PluginRuntime{
 		Plugin: p,
+		// Creating a finite state machine for PluginRuntme
+		Status: fsm.NewFSM(
+			string(Inactive),
+			fsm.Events{
+				{
+					Name: string(Queued),
+					Src:  []string{string(Inactive)},
+					Dst:  string(Queued),
+				},
+				{
+					Name: string(Scheduled),
+					Src:  []string{string(Queued)},
+					Dst:  string(Scheduled),
+				},
+				{
+					Name: string(Initializing),
+					Src:  []string{string(Scheduled)},
+					Dst:  string(Initializing),
+				},
+				{
+					Name: string(Running),
+					Src:  []string{string(Initializing)},
+					Dst:  string(Running),
+				},
+				{
+					Name: string(Completed),
+					Src:  []string{string(Running)},
+					Dst:  string(Completed),
+				},
+				{
+					Name: string(Failed),
+					Src:  []string{string(Initializing), string(Running)},
+					Dst:  string(Failed),
+				},
+				{
+					Name: string(Inactive),
+					Src:  []string{string(Queued), string(Scheduled), string(Initializing), string(Running), string(Completed), string(Failed)},
+					Dst:  string(Inactive),
+				},
+			},
+			fsm.Callbacks{},
+		),
 	}
-	pr.UpdateState(Inactive)
 	return pr
 }
 
@@ -173,47 +217,43 @@ func (pr *PluginRuntime) Equal(_pr *PluginRuntime) bool {
 		pr.Plugin.GoalID == _pr.Plugin.GoalID
 }
 
-func (pr *PluginRuntime) UpdateState(s PluginState) {
-	lastState := pr.Status.State
-	pr.Status.State = s
-	pr.Status.LastUpdated = time.Now()
-	pr.Status.LastState = lastState
-}
-
-func (pr *PluginRuntime) IsState(s PluginState) bool {
-	return pr.Status.State == s
-}
+// func (pr *PluginRuntime) UpdateState(s PluginState) {
+// 	lastState := pr.Status.Current()
+// 	pr.Status.State = s
+// 	pr.Status.LastUpdated = time.Now()
+// 	pr.Status.LastState = lastState
+// }
 
 func (pr *PluginRuntime) SetPodUID(UID string) {
 	pr.PodUID = UID
 }
 
-func (pr *PluginRuntime) Inactive() {
-	pr.UpdateState(Inactive)
+func (pr *PluginRuntime) Inactive() error {
+	return pr.Status.Event(context.Background(), string(Inactive))
 }
 
-func (pr *PluginRuntime) Queued() {
-	pr.UpdateState(Queued)
+func (pr *PluginRuntime) Queued() error {
+	return pr.Status.Event(context.Background(), string(Queued))
 }
 
-func (pr *PluginRuntime) Scheduled() {
-	pr.UpdateState(Scheduled)
+func (pr *PluginRuntime) Scheduled() error {
+	return pr.Status.Event(context.Background(), string(Scheduled))
 }
 
-func (pr *PluginRuntime) Initializing() {
-	pr.UpdateState(Initializing)
+func (pr *PluginRuntime) Initializing() error {
+	return pr.Status.Event(context.Background(), string(Initializing))
 }
 
-func (pr *PluginRuntime) Running() {
-	pr.UpdateState(Running)
+func (pr *PluginRuntime) Running() error {
+	return pr.Status.Event(context.Background(), string(Running))
 }
 
-func (pr *PluginRuntime) Completed() {
-	pr.UpdateState(Completed)
+func (pr *PluginRuntime) Completed() error {
+	return pr.Status.Event(context.Background(), string(Completed))
 }
 
-func (pr *PluginRuntime) Failed() {
-	pr.UpdateState(Failed)
+func (pr *PluginRuntime) Failed() error {
+	return pr.Status.Event(context.Background(), string(Failed))
 }
 
 // type Plugin struct {
