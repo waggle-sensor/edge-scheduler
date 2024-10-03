@@ -11,7 +11,7 @@ func TestEventWaggleConversion(t *testing.T) {
 		Payload map[string]interface{}
 	}{
 		"simple": {
-			Type: string(EventPluginStatusLaunched),
+			Type: string(EventPluginStatusScheduled),
 			Payload: map[string]interface{}{
 				"test":  "great",
 				"float": 3.14,
@@ -19,7 +19,7 @@ func TestEventWaggleConversion(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		e := NewEventBuilder(EventType(test.Type))
+		e := NewSchedulerEventBuilder(EventType(test.Type))
 		for k, v := range test.Payload {
 			switch v.(type) {
 			case string:
@@ -30,10 +30,10 @@ func TestEventWaggleConversion(t *testing.T) {
 				e.AddEntry(k, v.(float64))
 			}
 		}
-		msg := e.Build()
+		msg := e.Build().(SchedulerEvent)
 		waggleMsg := msg.ToWaggleMessage()
-		unWaggleMsgBuilder, _ := NewEventBuilderFromWaggleMessage(waggleMsg)
-		unWaggleMsg := unWaggleMsgBuilder.Build()
+		unWaggleMsgBuilder, _ := NewSchedulerEventBuilderFromWaggleMessage(waggleMsg)
+		unWaggleMsg := unWaggleMsgBuilder.Build().(SchedulerEvent)
 		if unWaggleMsg.Type != EventType(test.Type) {
 			t.Errorf("Type mismatch: wanted %s, got %s", test.Type, unWaggleMsg.Type)
 		}

@@ -67,8 +67,8 @@ var cmdProfileRun = &cobra.Command{
 			logger.Error.Println("Abort profiling due to the error")
 			return err
 		}
-		// in profiling we always enable plugin controller to collect performance metrics
-		deployment.EnablePluginController = true
+		// TODO: In the future, we always enable plugin controller to collect performance metrics
+		// deployment.EnablePluginController = true
 		deployment.Type = "pod"
 		deployment.ForceToUpdate = false
 		pluginName, err := pluginCtl.Deploy(deployment)

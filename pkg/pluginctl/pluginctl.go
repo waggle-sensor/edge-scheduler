@@ -269,12 +269,12 @@ func (p *PluginCtl) RunAsync(dep *Deployment, chEvent chan<- datatype.Event, out
 	// Run plugin
 	pluginName, err := p.Deploy(dep)
 	if err != nil {
-		eventBuilder := datatype.NewEventBuilder(datatype.EventFailure).AddReason(err.Error())
+		eventBuilder := datatype.NewSchedulerEventBuilder(datatype.EventFailure).AddReason(err.Error())
 		chEvent <- eventBuilder.Build()
 		return
 	}
 	defer p.TerminatePlugin(pluginName)
-	eventBuilder := datatype.NewEventBuilder(datatype.EventPluginStatusLaunched).AddEntry("plugin_name", pluginName)
+	eventBuilder := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusLaunched).AddEntry("plugin_name", pluginName)
 	chEvent <- eventBuilder.Build()
 	pluginStartT := time.Now().UTC()
 	// TODO: We will need to capture when the user does Ctrl + C to kill the caller
@@ -324,7 +324,7 @@ func (p *PluginCtl) RunAsync(dep *Deployment, chEvent chan<- datatype.Event, out
 
 	printLogFunc, terminateLog, err := p.PrintLog(pluginName, true)
 	if err != nil {
-		eventBuilder := datatype.NewEventBuilder(datatype.EventFailure).AddReason(err.Error())
+		eventBuilder := datatype.NewSchedulerEventBuilder(datatype.EventFailure).AddReason(err.Error())
 		chEvent <- eventBuilder.Build()
 		return
 	}

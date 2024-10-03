@@ -213,7 +213,7 @@ func (rh *RabbitMQHandler) GetReceiver(queueName string) (<-chan amqp.Delivery, 
 
 // SubscribeEvents subscribes scheduling events from target exchange
 // it will attempt to reconnect if connection is closed
-func (rh *RabbitMQHandler) SubscribeEvents(exchange string, queueName string, topic string, ch chan *datatype.Event) error {
+func (rh *RabbitMQHandler) SubscribeEvents(exchange string, queueName string, topic string, ch chan datatype.Event) error {
 	operation := func() error {
 		q, err := rh.DeclareQueueAndConnectToExchange(exchange, queueName, topic)
 		if err != nil {
@@ -225,7 +225,7 @@ func (rh *RabbitMQHandler) SubscribeEvents(exchange string, queueName string, to
 		}
 		for msg := range c {
 			if waggleMessage, err := datatype.Load(msg.Body); err == nil {
-				eventBuilder, err := datatype.NewEventBuilderFromWaggleMessage(waggleMessage)
+				eventBuilder, err := datatype.NewSchedulerEventBuilderFromWaggleMessage(waggleMessage)
 				if err != nil {
 					logger.Debug.Printf("Failed to parse %v: %s", waggleMessage, err.Error())
 				} else {

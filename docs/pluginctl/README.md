@@ -31,4 +31,7 @@ The tutorials demonstrate how to use `pluginctl` on Waggle/Sage nodes to test, d
 
 4. [Build plugin](tutorial_build.md) builds a plugin from AI/ML code hosted on a public code repository
 
-5. [Profiling Edge Applications](tutorial_profiling.md) runs an AI plugin and saves plugin performance data into a file after the run
+__NOTE: The application profiling using pluginctl has been deprecated.__
+~~5. [Profiling Edge Applications](tutorial_profiling.md) runs an AI plugin and saves plugin performance data into a file after the run~~
+
+6. [Allocating computing resources](tutorial_resources.md) demonstrates how to set resources for plugins
