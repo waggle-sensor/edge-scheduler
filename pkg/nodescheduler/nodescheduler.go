@@ -2,11 +2,13 @@ package nodescheduler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"sync"
 	"time"
 
+	"github.com/looplab/fsm"
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
 	"github.com/waggle-sensor/edge-scheduler/pkg/interfacing"
 	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
@@ -121,15 +123,16 @@ func (ns *NodeScheduler) Run() {
 							}); pr == nil {
 								logger.Error.Printf("failed to promote plugin: plugin name %q for goal %q not registered", pluginName, goalID)
 								// TODO: we may want to verify what exist and why this happens
-							} else if !pr.IsState(datatype.Inactive) {
+							} else if !pr.Status.Is(string(datatype.Inactive)) {
 								logger.Debug.Printf("plugin %q is already active. no need to activate it", pr.Plugin.Name)
+							} else if err := pr.Queued(); err != nil {
+								logger.Error.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
 							} else {
 								pr.UpdateWithScienceRule(r)
 								// TODO: We disable the plugin controller until we actually use it.
 								//       This causes problems of Pods not finishing and hanging in StartError
 								// pr.SetPluginController(true)
 								pr.GeneratePodInstance()
-								pr.Queued()
 								msg := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusQueued).
 									AddPluginRuntimeMeta(*pr).
 									AddPluginMeta(pr.Plugin).
@@ -182,7 +185,7 @@ func (ns *NodeScheduler) Run() {
 			}
 		case event := <-ns.chanNeedScheduling:
 			e := event.(datatype.SchedulerEvent)
-			logger.Debug.Printf("Reason for (re)scheduling %q", e.Type)
+			logger.Info.Printf("Reason for (re)scheduling %q", e.Type)
 			logger.Debug.Printf("Plugins in ready queue: %+v", ns.readyQueue.GetPluginNames())
 			// Select the best task
 			pluginsToRun, err := ns.SchedulingPolicy.SelectBestPlugins(
@@ -292,7 +295,7 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 		logger.Error.Printf("Failed to find Plugin Runtime using index %v", pluginIndex)
 		return
 	}
-	logger.Debug.Printf("current Plugin %q state %s", pod.Name, pr.Status.State)
+	logger.Debug.Printf("current Plugin %q state %s", pod.Name, pr.Status.Current())
 
 	// we may receive Pod events from Kubernetes on already existing ones
 	// TODO: we need to not sending messages to cloud about those already exist
@@ -306,29 +309,37 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 	switch e.Action {
 	case KubernetesEventTypeAdd:
 		logger.Info.Printf("Plugin %q is scheduled", pod.Name)
-		pr.Scheduled()
-		pr.SetPodUID(string(pod.UID))
-		msg := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusScheduled).
-			AddPluginRuntimeMeta(*pr).
-			AddPodMeta(pod).
-			AddPluginMeta(pr.Plugin).
-			Build().(datatype.SchedulerEvent)
-		ns.LogToBeehive.SendWaggleMessageOnNodeAsync(msg.ToWaggleMessage(), "all")
+		if err := pr.Scheduled(); err != nil {
+			logger.Error.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
+		} else {
+			pr.SetPodUID(string(pod.UID))
+			msg := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusScheduled).
+				AddPluginRuntimeMeta(*pr).
+				AddPodMeta(pod).
+				AddPluginMeta(pr.Plugin).
+				Build().(datatype.SchedulerEvent)
+			ns.LogToBeehive.SendWaggleMessageOnNodeAsync(msg.ToWaggleMessage(), "all")
 
-		// NOTE: To support backward compatibility, we also send the "launched" event
-		msg2 := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusLaunched).
-			AddPluginRuntimeMeta(*pr).
-			AddPodMeta(pod).
-			AddPluginMeta(pr.Plugin).
-			Build().(datatype.SchedulerEvent)
-		ns.LogToBeehive.SendWaggleMessageOnNodeAsync(msg2.ToWaggleMessage(), "all")
+			// NOTE: To support backward compatibility, we also send the "launched" event
+			msg2 := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusLaunched).
+				AddPluginRuntimeMeta(*pr).
+				AddPodMeta(pod).
+				AddPluginMeta(pr.Plugin).
+				Build().(datatype.SchedulerEvent)
+			ns.LogToBeehive.SendWaggleMessageOnNodeAsync(msg2.ToWaggleMessage(), "all")
+		}
 	case KubernetesEventTypeModified:
 		switch pod.Status.Phase {
 		case v1.PodPending:
 			// we expect init container running and completion
-			if !pr.IsState(datatype.Initializing) {
+			if err := pr.Initializing(); err != nil {
+				if errors.Is(err, fsm.NoTransitionError{}) {
+					logger.Debug.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
+				} else {
+					logger.Error.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
+				}
+			} else {
 				logger.Info.Printf("plugin %q is being initialized", pod.Name)
-				pr.Initializing()
 				msg := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusInitializing).
 					AddPluginRuntimeMeta(*pr).
 					AddPodMeta(pod).
@@ -343,18 +354,25 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 				// Failed to retrieve the status
 				e := fmt.Sprintf("Failed to get container status: %s", err.Error())
 				logger.Error.Println(e)
-				pr.Failed()
-				messageBuilder, err := ns.ResourceManager.AnalyzeFailureOfPod(pod)
-				if err != nil {
-					logger.Error.Println(err.Error())
+				if err := pr.Failed(); err != nil {
+					if errors.Is(err, fsm.NoTransitionError{}) {
+						logger.Debug.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
+					} else {
+						logger.Error.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
+					}
+				} else {
+					messageBuilder, err := ns.ResourceManager.AnalyzeFailureOfPod(pod)
+					if err != nil {
+						logger.Error.Println(err.Error())
+					}
+					message := messageBuilder.AddPluginRuntimeMeta(*pr).
+						AddPodMeta(pod).
+						AddPluginMeta(pr.Plugin).
+						AddReason(e).
+						Build().(datatype.SchedulerEvent)
+					ns.LogToBeehive.SendWaggleMessageOnNodeAsync(message.ToWaggleMessage(), "all")
+					defer ns.ResourceManager.TerminatePod(pod.Name)
 				}
-				message := messageBuilder.AddPluginRuntimeMeta(*pr).
-					AddPodMeta(pod).
-					AddPluginMeta(pr.Plugin).
-					AddReason(e).
-					Build().(datatype.SchedulerEvent)
-				ns.LogToBeehive.SendWaggleMessageOnNodeAsync(message.ToWaggleMessage(), "all")
-				defer ns.ResourceManager.TerminatePod(pod.Name)
 			} else if t := pluginContainerStatus.State.Terminated; t != nil {
 				// Whenever the plugin container terminates that the plugin container
 				// does not notice, we should stop!!!
@@ -378,21 +396,33 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 				// }
 			} else if pluginContainerStatus.State.Running != nil {
 				logger.Info.Printf("Plugin %q starts to run", pod.Name)
-				pr.Running()
-				msg := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusRunning).
-					AddPluginRuntimeMeta(*pr).
-					AddPodMeta(pod).
-					AddPluginMeta(pr.Plugin).
-					Build().(datatype.SchedulerEvent)
-				ns.LogToBeehive.SendWaggleMessageOnNodeAsync(msg.ToWaggleMessage(), "all")
+				if err := pr.Running(); err != nil {
+					if errors.Is(err, fsm.NoTransitionError{}) {
+						logger.Warn.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
+					} else {
+						logger.Error.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
+					}
+				} else {
+					msg := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusRunning).
+						AddPluginRuntimeMeta(*pr).
+						AddPodMeta(pod).
+						AddPluginMeta(pr.Plugin).
+						Build().(datatype.SchedulerEvent)
+					ns.LogToBeehive.SendWaggleMessageOnNodeAsync(msg.ToWaggleMessage(), "all")
+				}
 			}
 		case v1.PodSucceeded:
 			// This event occurs when all containers finished successfully
 			// NOTE: we receive multiple of this event for a Pod. We don't want to
 			//       trigger message multiple times.
-			if !pr.IsState(datatype.Completed) {
+			if err := pr.Completed(); err != nil {
+				if errors.Is(err, fsm.NoTransitionError{}) {
+					logger.Warn.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
+				} else {
+					logger.Error.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
+				}
+			} else {
 				logger.Info.Printf("Plugin %q succeeded", pod.Name)
-				pr.Completed()
 				// 	// publish plugin completion message locally so that
 				// 	// rule checker knows when the last execution was
 				// 	// TODO: The message takes time to get into DB so the rule checker may not notice
@@ -421,9 +451,14 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 			// Note: The PodFailed event can be received multiple times from Kubernetes.
 			//       Yongho checked the content of the events and they look the same.
 			//       Thus, we ignore duplicated events.
-			if !pr.IsState(datatype.Failed) {
+			if err := pr.Failed(); err != nil {
+				if errors.Is(err, fsm.NoTransitionError{}) {
+					logger.Warn.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
+				} else {
+					logger.Error.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
+				}
+			} else {
 				logger.Info.Printf("Plugin %q failed", pod.Name)
-				pr.Failed()
 				messageBuilder, err := ns.ResourceManager.AnalyzeFailureOfPod(pod)
 				if err != nil {
 					logger.Error.Println(err.Error())
@@ -444,14 +479,14 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 	case KubernetesEventTypeDeleted:
 		logger.Info.Printf("Plugin %q removed", pod.Name)
 		var privateMessage datatype.SchedulerEvent
-		switch pr.Status.State {
-		case datatype.Completed:
+		switch pr.Status.Current() {
+		case string(datatype.Completed):
 			// The Pod is deleted as plugin execution terminated successfully.
 			// We do nothing on this transition
 			privateMessage = datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusComplete).
 				AddReason(fmt.Sprintf("plugin %q successfully removed", pod.Name)).
 				Build().(datatype.SchedulerEvent)
-		case datatype.Failed:
+		case string(datatype.Failed):
 			// The pod failed and should have been already reported. we do nothing
 			privateMessage = datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).
 				AddReason(fmt.Sprintf("plugin %q removed due to a failure", pod.Name)).
@@ -460,23 +495,37 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 			// The pod was deleted for unknown reason. One of the reasons might be
 			// that the Pod was deleted from external, e.g. kubectl delete pod.
 			// We mark this as a failure.
-			pr.Failed()
-			privateMessage = datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).
-				AddReason(fmt.Sprintf("plugin %q deleted from external", pod.Name)).
-				Build().(datatype.SchedulerEvent)
+			if err := pr.Failed(); err != nil {
+				if errors.Is(err, fsm.NoTransitionError{}) {
+					logger.Warn.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
+				} else {
+					logger.Error.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
+				}
+			} else {
+				privateMessage = datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).
+					AddReason(fmt.Sprintf("plugin %q deleted from external", pod.Name)).
+					Build().(datatype.SchedulerEvent)
 
-			message := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).
-				AddReason("plugin deleted from external").
-				AddPluginRuntimeMeta(*pr).
-				AddPluginMeta(pr.Plugin).
-				AddPodMeta(pod).
-				Build().(datatype.SchedulerEvent)
-			ns.LogToBeehive.SendWaggleMessageOnNodeAsync(message.ToWaggleMessage(), "all")
+				message := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).
+					AddReason("plugin deleted from external").
+					AddPluginRuntimeMeta(*pr).
+					AddPluginMeta(pr.Plugin).
+					AddPodMeta(pod).
+					Build().(datatype.SchedulerEvent)
+				ns.LogToBeehive.SendWaggleMessageOnNodeAsync(message.ToWaggleMessage(), "all")
+			}
 		}
 		// trigger the scheduler to schedule next Plugins
 		ns.scheduledPlugins.Pop(pr)
-		pr.Inactive()
-		ns.chanNeedScheduling <- privateMessage
+		if err := pr.Inactive(); err != nil {
+			if errors.Is(err, fsm.NoTransitionError{}) {
+				logger.Warn.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
+			} else {
+				logger.Error.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
+			}
+		} else {
+			ns.chanNeedScheduling <- privateMessage
+		}
 	}
 }
 

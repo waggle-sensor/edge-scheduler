@@ -118,7 +118,7 @@ func (ngm *NodeGoalManager) GetPluginRuntimeByPodUID(uid string) *datatype.Plugi
 
 func (ngm *NodeGoalManager) GetQueuedPluginRuntime() (r []*datatype.PluginRuntime) {
 	for _, pr := range ngm.LoadedPlugins {
-		if pr.Status.State == datatype.Queued {
+		if pr.Status.Is(string(datatype.Queued)) {
 			r = append(r, pr)
 		}
 	}
