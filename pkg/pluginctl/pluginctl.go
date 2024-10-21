@@ -53,6 +53,7 @@ type Deployment struct {
 	DevelopMode            bool
 	Type                   string
 	ResourceString         string
+	Volume                 []string
 	EnablePluginController bool
 	ForceToUpdate          bool
 }
@@ -72,11 +73,28 @@ func NewPluginCtl(kubeconfig string) (*PluginCtl, error) {
 func parseEnv(envs []string) (map[string]string, error) {
 	items := map[string]string{}
 	for _, s := range envs {
+		logger.Debug.Printf("env is %q", s)
 		s = strings.TrimSpace(s)
 		if s == "" {
 			return items, nil
 		}
-		k, v, err := parseSelectorTerm(s)
+		k, v, err := parseTerm(s, "=")
+		if err != nil {
+			return items, err
+		}
+		items[k] = v
+	}
+	return items, nil
+}
+
+func parseVolume(vols []string) (map[string]string, error) {
+	items := map[string]string{}
+	for _, s := range vols {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return items, nil
+		}
+		k, v, err := parseTerm(s, ":")
 		if err != nil {
 			return items, err
 		}
@@ -103,12 +121,12 @@ func (p *PluginCtl) ConnectToMetricsServer(config MetricsServerConfig) error {
 	}
 	tokenBlob, err := os.ReadFile(path)
 	if err != nil {
-		return fmt.Errorf("Failed to read token at %s: %s", config.InfluxDBTokenPath, err)
+		return fmt.Errorf("failed to read token at %s: %s", config.InfluxDBTokenPath, err)
 	}
 	token := string(tokenBlob)
 	token = strings.TrimSpace(token)
 	if len(token) == 0 {
-		return fmt.Errorf("Token is empty")
+		return fmt.Errorf("token is empty")
 	}
 	influxURL, err := p.GetMetrcisServerURL()
 	if err != nil {
@@ -129,7 +147,7 @@ func (p *PluginCtl) ConnectToMetricsServer(config MetricsServerConfig) error {
 		return err
 	}
 	if !result {
-		return fmt.Errorf("The server %s is not running", influxURL)
+		return fmt.Errorf("the server %s is not running", influxURL)
 	}
 	return nil
 }
@@ -137,13 +155,13 @@ func (p *PluginCtl) ConnectToMetricsServer(config MetricsServerConfig) error {
 func (p *PluginCtl) Deploy(dep *Deployment) (string, error) {
 	selector, err := ParseSelector(dep.SelectorString)
 	if err != nil {
-		return "", fmt.Errorf("Failed to parse selector %q: %s", dep.SelectorString, err.Error())
+		return "", fmt.Errorf("failed to parse selector %q: %s", dep.SelectorString, err.Error())
 	}
 	if dep.EnvFromFile != "" {
 		logger.Debug.Printf("Reading env file %q...", dep.EnvFromFile)
 		file, err := os.Open(dep.EnvFromFile)
 		if err != nil {
-			return "", fmt.Errorf("Failed to open env-from file %q: %s", dep.EnvFromFile, err.Error())
+			return "", fmt.Errorf("failed to open env-from file %q: %s", dep.EnvFromFile, err.Error())
 		}
 		scanner := bufio.NewScanner(file)
 		for scanner.Scan() {
@@ -152,13 +170,13 @@ func (p *PluginCtl) Deploy(dep *Deployment) (string, error) {
 	}
 	resource, err := ParseSelector(dep.ResourceString)
 	if err != nil {
-		return "", fmt.Errorf("Failed to parse resource %q: %s", dep.ResourceString, err.Error())
+		return "", fmt.Errorf("failed to parse resource %q: %s", dep.ResourceString, err.Error())
 	}
 	if dep.EnvFromFile != "" {
 		logger.Debug.Printf("Reading env file %q...", dep.EnvFromFile)
 		file, err := os.Open(dep.EnvFromFile)
 		if err != nil {
-			return "", fmt.Errorf("Failed to open env-from file %q: %s", dep.EnvFromFile, err.Error())
+			return "", fmt.Errorf("failed to open env-from file %q: %s", dep.EnvFromFile, err.Error())
 		}
 		scanner := bufio.NewScanner(file)
 		for scanner.Scan() {
@@ -167,7 +185,11 @@ func (p *PluginCtl) Deploy(dep *Deployment) (string, error) {
 	}
 	envs, err := parseEnv(dep.EnvVarString)
 	if err != nil {
-		return "", fmt.Errorf("Failed to parse env %q", err.Error())
+		return "", fmt.Errorf("failed to parse env %q", err.Error())
+	}
+	volumeMapping, err := parseVolume(dep.Volume)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse volume %q", err.Error())
 	}
 	pluginRuntime := datatype.PluginRuntime{
 		Plugin: datatype.Plugin{
@@ -183,6 +205,7 @@ func (p *PluginCtl) Deploy(dep *Deployment) (string, error) {
 				Env:         envs,
 				DevelopMode: dep.DevelopMode,
 				Resource:    resource,
+				Volume:      volumeMapping,
 			},
 		},
 		EnablePluginController: dep.EnablePluginController,
@@ -229,7 +252,7 @@ func (p *PluginCtl) Deploy(dep *Deployment) (string, error) {
 			return daemonSet.Name, p.ResourceManager.UpdateDaemonSet(daemonSet, dep.ForceToUpdate)
 		}
 	default:
-		return "", fmt.Errorf("Unknown type %q for plugin", dep.Type)
+		return "", fmt.Errorf("unknown type %q for plugin", dep.Type)
 	}
 }
 

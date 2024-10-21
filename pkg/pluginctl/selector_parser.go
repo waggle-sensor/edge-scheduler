@@ -14,7 +14,7 @@ func ParseSelector(s string) (map[string]string, error) {
 	}
 
 	for _, term := range strings.Split(s, ",") {
-		k, v, err := parseSelectorTerm(term)
+		k, v, err := parseTerm(term, "=")
 		if err != nil {
 			return items, err
 		}
@@ -24,10 +24,10 @@ func ParseSelector(s string) (map[string]string, error) {
 	return items, nil
 }
 
-func parseSelectorTerm(s string) (string, string, error) {
-	fields := strings.Split(s, "=")
+func parseTerm(s string, delimiter string) (string, string, error) {
+	fields := strings.Split(s, delimiter)
 	if len(fields) != 2 {
-		return "", "", fmt.Errorf("selector terms must have exactly one =")
+		return "", "", fmt.Errorf("terms must have exactly one %s", delimiter)
 	}
 	return strings.TrimSpace(fields[0]), strings.TrimSpace(fields[1]), nil
 }

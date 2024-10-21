@@ -310,7 +310,7 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 	case KubernetesEventTypeAdd:
 		logger.Info.Printf("Plugin %q is scheduled", pod.Name)
 		if err := pr.Scheduled(); err != nil {
-			logger.Error.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
+			logger.Error.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Scheduled, err.Error())
 		} else {
 			pr.SetPodUID(string(pod.UID))
 			msg := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusScheduled).
@@ -334,9 +334,9 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 			// we expect init container running and completion
 			if err := pr.Initializing(); err != nil {
 				if errors.Is(err, fsm.NoTransitionError{}) {
-					logger.Debug.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
+					logger.Debug.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Initializing, err.Error())
 				} else {
-					logger.Error.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
+					logger.Error.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Initializing, err.Error())
 				}
 			} else {
 				logger.Info.Printf("plugin %q is being initialized", pod.Name)
@@ -356,9 +356,9 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 				logger.Error.Println(e)
 				if err := pr.Failed(); err != nil {
 					if errors.Is(err, fsm.NoTransitionError{}) {
-						logger.Debug.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
+						logger.Debug.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Failed, err.Error())
 					} else {
-						logger.Error.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
+						logger.Error.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Failed, err.Error())
 					}
 				} else {
 					messageBuilder, err := ns.ResourceManager.AnalyzeFailureOfPod(pod)
@@ -398,9 +398,9 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 				logger.Info.Printf("Plugin %q starts to run", pod.Name)
 				if err := pr.Running(); err != nil {
 					if errors.Is(err, fsm.NoTransitionError{}) {
-						logger.Warn.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
+						logger.Warn.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Running, err.Error())
 					} else {
-						logger.Error.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
+						logger.Error.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Running, err.Error())
 					}
 				} else {
 					msg := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusRunning).
@@ -417,9 +417,9 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 			//       trigger message multiple times.
 			if err := pr.Completed(); err != nil {
 				if errors.Is(err, fsm.NoTransitionError{}) {
-					logger.Warn.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
+					logger.Warn.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Completed, err.Error())
 				} else {
-					logger.Error.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
+					logger.Error.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Completed, err.Error())
 				}
 			} else {
 				logger.Info.Printf("Plugin %q succeeded", pod.Name)
@@ -453,9 +453,9 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 			//       Thus, we ignore duplicated events.
 			if err := pr.Failed(); err != nil {
 				if errors.Is(err, fsm.NoTransitionError{}) {
-					logger.Warn.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
+					logger.Warn.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Failed, err.Error())
 				} else {
-					logger.Error.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
+					logger.Error.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Failed, err.Error())
 				}
 			} else {
 				logger.Info.Printf("Plugin %q failed", pod.Name)
@@ -497,9 +497,9 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 			// We mark this as a failure.
 			if err := pr.Failed(); err != nil {
 				if errors.Is(err, fsm.NoTransitionError{}) {
-					logger.Warn.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
+					logger.Warn.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Failed, err.Error())
 				} else {
-					logger.Error.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
+					logger.Error.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Failed, err.Error())
 				}
 			} else {
 				privateMessage = datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).
@@ -519,9 +519,9 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 		ns.scheduledPlugins.Pop(pr)
 		if err := pr.Inactive(); err != nil {
 			if errors.Is(err, fsm.NoTransitionError{}) {
-				logger.Warn.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
+				logger.Warn.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Inactive, err.Error())
 			} else {
-				logger.Error.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
+				logger.Error.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Inactive, err.Error())
 			}
 		} else {
 			ns.chanNeedScheduling <- privateMessage
