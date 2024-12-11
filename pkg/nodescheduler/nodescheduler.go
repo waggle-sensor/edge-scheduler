@@ -8,13 +8,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/shirou/gopsutil/cpu"
+    	"github.com/shirou/gopsutil/mem"
+
 	"github.com/looplab/fsm"
 	"github.com/waggle-sensor/edge-scheduler/pkg/datatype"
 	"github.com/waggle-sensor/edge-scheduler/pkg/interfacing"
 	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
 	"github.com/waggle-sensor/edge-scheduler/pkg/nodescheduler/policy"
-	"github.com/shirou/gopsutil/v4/cpu"
-	"github.com/shirou/gopsutil/v4/mem"
 	v1 "k8s.io/api/core/v1"
 )
 
@@ -41,6 +42,7 @@ type NodeScheduler struct {
 	chanFromCloudScheduler      chan datatype.Event
 	chanNeedScheduling          chan datatype.Event
 }
+
 
 func (ns *NodeScheduler) checkResourceAvailability() error {
     // Get number of CPU cores
@@ -76,7 +78,7 @@ func (ns *NodeScheduler) checkResourceAvailability() error {
     }
 
     availableMemoryMB := vmStat.Available / 1024 / 1024 // Convert bytes to MB
-    if availableMemoryMB < 1024 { // Hard-coded to require 1GB free
+    if availableMemoryMB < 128 { // Hard-coded to require 128MB free
         return fmt.Errorf("insufficient memory available: %d MB (minimum required: 1024 MB)", 
             availableMemoryMB)
     }
@@ -157,39 +159,39 @@ func (ns *NodeScheduler) Run() {
 						logger.Debug.Printf("Science rule %q is valid", r)
 						switch r.ActionType {
 						case datatype.ScienceRuleActionSchedule:
-						    pluginName := r.ActionObject
-						    if pr := ns.GoalManager.GetPluginRuntime(PluginIndex{
-						        name: pluginName,
-						        jobID: sg.JobID,
-						        goalID: sg.ID,
-						    }); pr == nil {
-						        logger.Error.Printf("failed to promote plugin: plugin name %q for goal %q not registered", pluginName, goalID)
-						    } else if !pr.Status.Is(string(datatype.Inactive)) {
-						        logger.Debug.Printf("plugin %q is already active. no need to activate it", pr.Plugin.Name)
-						    } else {
-						        // Check resource availability before scheduling
-						        if err := ns.checkResourceAvailability(); err != nil {
-						            logger.Error.Printf("insufficient resources to schedule plugin %q: %v", pr.Plugin.Name, err)
-						            continue
-						        }
+							pluginName := r.ActionObject
+							if pr := ns.GoalManager.GetPluginRuntime(PluginIndex{
+								name: pluginName,
+								jobID: sg.JobID,
+								goalID: sg.ID,
+							}); pr == nil {
+								logger.Error.Printf("failed to promote plugin: plugin name %q for goal %q not registered", pluginName, goalID)
+							} else if !pr.Status.Is(string(datatype.Inactive)) {
+								logger.Debug.Printf("plugin %q is already active. no need to activate it", pr.Plugin.Name)
+							} else {
+								// Check resource availability before scheduling
+								if err := ns.checkResourceAvailability(); err != nil {
+									logger.Error.Printf("insufficient resources to schedule plugin %q: %v", pr.Plugin.Name, err)
+									continue
+								}
 						
-						        if err := pr.Queued(); err != nil {
-						            logger.Error.Printf("plugin %q failed to transition from %s to %s: %s", 
-						                pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
-						        } else {
-						            pr.UpdateWithScienceRule(r)
-						            pr.GeneratePodInstance()
-						            msg := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusQueued).
-						                AddPluginRuntimeMeta(*pr).
-						                AddPluginMeta(pr.Plugin).
-						                AddReason(fmt.Sprintf("triggered by %s", r.Condition)).
-						                Build().(datatype.SchedulerEvent)
-						            ns.LogToBeehive.SendWaggleMessageOnNodeAsync(msg.ToWaggleMessage(), "all")
-						            ns.readyQueue.Push(pr)
-						            triggerScheduling = true
-						            logger.Info.Printf("Plugin %s is queued by %s", pr.Plugin.Name, r.Condition)
-						        }
-						    }
+								if err := pr.Queued(); err != nil {
+									logger.Error.Printf("plugin %q failed to transition from %s to %s: %s", 
+										pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
+								} else {
+									pr.UpdateWithScienceRule(r)
+									pr.GeneratePodInstance()
+									msg := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusQueued).
+										AddPluginRuntimeMeta(*pr).
+										AddPluginMeta(pr.Plugin).
+										AddReason(fmt.Sprintf("triggered by %s", r.Condition)).
+										Build().(datatype.SchedulerEvent)
+									ns.LogToBeehive.SendWaggleMessageOnNodeAsync(msg.ToWaggleMessage(), "all")
+									ns.readyQueue.Push(pr)
+									triggerScheduling = true
+									logger.Info.Printf("Plugin %s is queued by %s", pr.Plugin.Name, r.Condition)
+								}
+							}
 						case datatype.ScienceRuleActionPublish:
 							eventName := r.ActionObject
 							var value interface{}
