@@ -334,7 +334,6 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 			// we expect init container running and completion
 			if err := pr.Initializing(); err != nil {
 				if errors.Is(err, fsm.NoTransitionError{}) {
-					logger.Debug.Printf("switch TRUE plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Initializing, err.Error())
 					logger.Error.Printf(
 					    "plugin %q failed to transition from %s to %s: %s | PluginRuntime: %+v | Pod Info: Name=%s, Namespace=%s, Phase=%s | Error Details: %+v",
 					    pr.Plugin.Name,                      // Plugin name
@@ -349,7 +348,6 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 					)
 
 				} else {
-					logger.Error.Printf("switch FALSE plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Initializing, err.Error())
 					logger.Error.Printf(
 					    "plugin %q failed to transition from %s to %s: %s | PluginRuntime: %+v | Pod Info: Name=%s, Namespace=%s, Phase=%s | Error Details: %+v",
 					    pr.Plugin.Name,                      // Plugin name
