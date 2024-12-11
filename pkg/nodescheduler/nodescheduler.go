@@ -14,8 +14,6 @@ import (
 	"github.com/waggle-sensor/edge-scheduler/pkg/logger"
 	"github.com/waggle-sensor/edge-scheduler/pkg/nodescheduler/policy"
 	v1 "k8s.io/api/core/v1"
-	"github.com/shirou/gopsutil/v4/cpu"
-    	"github.com/shirou/gopsutil/v4/mem"
 )
 
 const (
@@ -130,29 +128,20 @@ func (ns *NodeScheduler) Run() {
 							} else if err := pr.Queued(); err != nil {
 								logger.Error.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
 							} else {
-								if err := ns.checkResourceAvailability(); err != nil {
-									logger.Error.Printf("insufficient resources to schedule plugin %q: %v", pr.Plugin.Name, err)
-									continue
-								}
-								if err := pr.Queued(); err != nil {
-							        	logger.Error.Printf("plugin %q failed to transition from %s to %s: %s", 
-							        	pr.Plugin.Name, pr.Status.Current(), datatype.Queued, err.Error())
-							        } else {
-									pr.UpdateWithScienceRule(r)
-									// TODO: We disable the plugin controller until we actually use it.
-									//       This causes problems of Pods not finishing and hanging in StartError
-									// pr.SetPluginController(true)
-									pr.GeneratePodInstance()
-									msg := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusQueued).
-										AddPluginRuntimeMeta(*pr).
-										AddPluginMeta(pr.Plugin).
-										AddReason(fmt.Sprintf("triggered by %s", r.Condition)).
-										Build().(datatype.SchedulerEvent)
-									ns.LogToBeehive.SendWaggleMessageOnNodeAsync(msg.ToWaggleMessage(), "all")
-									ns.readyQueue.Push(pr)
-									triggerScheduling = true
-									logger.Info.Printf("Plugin %s is queued by %s", pr.Plugin.Name, r.Condition)
-								}
+								pr.UpdateWithScienceRule(r)
+								// TODO: We disable the plugin controller until we actually use it.
+								//       This causes problems of Pods not finishing and hanging in StartError
+								// pr.SetPluginController(true)
+								pr.GeneratePodInstance()
+								msg := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusQueued).
+									AddPluginRuntimeMeta(*pr).
+									AddPluginMeta(pr.Plugin).
+									AddReason(fmt.Sprintf("triggered by %s", r.Condition)).
+									Build().(datatype.SchedulerEvent)
+								ns.LogToBeehive.SendWaggleMessageOnNodeAsync(msg.ToWaggleMessage(), "all")
+								ns.readyQueue.Push(pr)
+								triggerScheduling = true
+								logger.Info.Printf("Plugin %s is queued by %s", pr.Plugin.Name, r.Condition)
 							}
 						case datatype.ScienceRuleActionPublish:
 							eventName := r.ActionObject
