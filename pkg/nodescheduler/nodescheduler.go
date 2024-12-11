@@ -334,32 +334,9 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 			// we expect init container running and completion
 			if err := pr.Initializing(); err != nil {
 				if errors.Is(err, fsm.NoTransitionError{}) {
-					logger.Error.Printf(
-					    "plugin %q failed to transition from %s to %s: %s | PluginRuntime: %+v | Pod Info: Name=%s, Namespace=%s, Phase=%s | Error Details: %+v",
-					    pr.Plugin.Name,                      // Plugin name
-					    pr.Status.Current(),                 // Current status
-					    datatype.Initializing,               // Target status
-					    err.Error(),                         // Error message
-					    pr,                                  // Full plugin runtime object for context
-					    pod.Name,                            // Pod name
-					    pod.Namespace,                       // Pod namespace
-					    pod.Status.Phase,                    // Pod phase
-					    err,                                 // Full error details
-					)
-
+					logger.Debug.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Initializing, err.Error())
 				} else {
-					logger.Error.Printf(
-					    "plugin %q failed to transition from %s to %s: %s | PluginRuntime: %+v | Pod Info: Name=%s, Namespace=%s, Phase=%s | Error Details: %+v",
-					    pr.Plugin.Name,                      // Plugin name
-					    pr.Status.Current(),                 // Current status
-					    datatype.Initializing,               // Target status
-					    err.Error(),                         // Error message
-					    pr,                                  // Full plugin runtime object for context
-					    pod.Name,                            // Pod name
-					    pod.Namespace,                       // Pod namespace
-					    pod.Status.Phase,                    // Pod phase
-					    err,                                 // Full error details
-					)
+					logger.Error.Printf("plugin %q failed to transition from %s to %s: %s", pr.Plugin.Name, pr.Status.Current(), datatype.Initializing, err.Error())
 				}
 			} else {
 				logger.Info.Printf("plugin %q is being initialized", pod.Name)
