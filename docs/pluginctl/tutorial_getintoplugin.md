@@ -27,6 +27,9 @@ getintoplugin   Running     2022/12/02 22:03:50 UTC   6.906323958s
 Now we run `exec` subcommand with `-ti` options indicating that we attach your terminal to the shell inside the plugin container. This allows you to use your terminal to execute commands inside the container. We then execute date and echo commands there, see the result, and exit. This exit exits the shell and detaches the terminal from the shell.
 ```bash
 pluginctl exec -ti getintoplugin -- /bin/bash
+```
+The output should look like,
+```bash
 root@getintoplugin-nfrcj:/# date
 Wed Jan 19 19:51:05 UTC 2022
 root@getintoplugin-nfrcj:/# echo "I am inside container"
