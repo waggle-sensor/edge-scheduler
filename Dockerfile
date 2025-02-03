@@ -3,7 +3,7 @@ FROM waggle/plugin-base:1.1.1-base as base
 RUN apt-get update \
   && apt-get install -y \
   build-essential \
-  gcc-multilib \
+  # gcc-multilib \
   pkg-config \
   # build-base \
   wget \
