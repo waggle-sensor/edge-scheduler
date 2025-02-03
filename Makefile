@@ -36,12 +36,12 @@ cli:
 scheduler-all-arch: scheduler-amd64 scheduler-arm64
 
 scheduler-amd64:
-	GOOS=linux GOARCH=amd64 go build -o ./out/cloudscheduler-amd64 -ldflags "-X main.Version=${VERSION}" cmd/cloudscheduler/main.go
-	GOOS=linux GOARCH=amd64 go build -o ./out/nodescheduler-amd64 -ldflags "-X main.Version=${VERSION}" cmd/nodescheduler/main.go
+	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o ./out/cloudscheduler-amd64 -ldflags "-X main.Version=${VERSION}" cmd/cloudscheduler/main.go
+	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o ./out/nodescheduler-amd64 -ldflags "-X main.Version=${VERSION}" cmd/nodescheduler/main.go
 
 scheduler-arm64:
-	GOOS=linux GOARCH=arm64 go build -o ./out/cloudscheduler-arm64 -ldflags "-X main.Version=${VERSION}" cmd/cloudscheduler/main.go
-	GOOS=linux GOARCH=arm64 go build -o ./out/nodescheduler-arm64 -ldflags "-X main.Version=${VERSION}" cmd/nodescheduler/main.go
+	CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build -o ./out/cloudscheduler-arm64 -ldflags "-X main.Version=${VERSION}" cmd/cloudscheduler/main.go
+	CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build -o ./out/nodescheduler-arm64 -ldflags "-X main.Version=${VERSION}" cmd/nodescheduler/main.go
 
 scheduler:
 	go build -o ./out/cloudscheduler -ldflags "-X main.Version=${VERSION}" ./cmd/cloudscheduler
