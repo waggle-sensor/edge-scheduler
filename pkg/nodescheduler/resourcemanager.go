@@ -58,7 +58,7 @@ var (
 	hostPathDirectoryOrCreate            = apiv1.HostPathDirectoryOrCreate
 	hostPathDirectory                    = apiv1.HostPathDirectory
 	backOffLimit                   int32 = 0
-	ttlSecondsAfterFinished        int32 = 3600
+	ttlSecondsAfterFinished        int32 = 60
 	pluginEnvFromSecretRegexFormat       = regexp.MustCompile(`^{secret\.([a-z0-9-]+).([a-zA-Z0-9]+)}$`)
 )
 
@@ -1636,31 +1636,26 @@ func (rm *ResourceManager) LaunchAndWatchPlugin(pr *datatype.PluginRuntime) {
 	}
 }
 
-// RunGabageCollector cleans up completed/failed jobs that exceed
-// their lifespan specified in `ttlSecondsAfterFinished`
+// RunGabageCollector cleans up any dangling Pods that are completed or failed.
 //
-// NOTE: This should be done by Kubernetes TTL controller with TTLSecondsAfterFinished specified in job,
-// but it could not get enabled in k3s with Kubernetes v1.20 that has the TTL controller disabled
-// by default. Kubernetes v1.21+ has the controller enabled by default
+// While using Kubernetes Informer, the events of Pod being completed or failed are missed.
+// We suspect that it often occurs when the Kubernetes API server is not responding,
+// maybe due to system throttling. The gabage collector ensures that such Pods remaining
+// after termination are removed and corresponding event is sent to the scheduler from the cluster.
 func (rm *ResourceManager) RunGabageCollector() error {
-	jobList, err := rm.ListJobs()
+	podList, err := rm.ListPods()
 	if err != nil {
-		return fmt.Errorf("failed to get job list: %s", err.Error())
+		return fmt.Errorf("failed to get pod list: %s", err.Error())
 	}
-	for _, job := range jobList.Items {
-		podPhase, err := rm.GetPluginStatus(job.Name)
-		if err != nil {
-			continue
-		}
-		switch podPhase {
-		case apiv1.PodFailed:
-			fallthrough
-		case apiv1.PodSucceeded:
-			elapsedSeconds := time.Now().Sub(job.CreationTimestamp.Time).Seconds()
+	for _, pod := range podList.Items {
+		switch pod.Status.Phase {
+		case apiv1.PodFailed, apiv1.PodSucceeded:
+			elapsedSeconds := time.Since(pod.CreationTimestamp.Time).Seconds()
 			if elapsedSeconds > float64(ttlSecondsAfterFinished) {
-				logger.Debug.Printf("%q exceeded ttlSeconds of %.2f. Cleaning up...", job.Name, elapsedSeconds)
-				rm.TerminateJob(job.Name)
+				logger.Info.Printf("%q exceeded ttlSeconds of %.2f. Cleaning up...", pod.Name, elapsedSeconds)
+				rm.TerminatePod(pod.Name)
 			}
+		default:
 		}
 	}
 	return nil
@@ -1788,19 +1783,27 @@ func (rm *ResourceManager) Run() {
 	//       v1.20 could do it by enabling TTL controller, but could not set it
 	//       via k3s server --kube-control-manager-arg feature-gates=TTL...=true
 	// go ns.ResourceManager.RunGabageCollector()
-	// gabageCollectorTicker := time.NewTicker(1 * time.Minute)
 	// logger.Info.Printf("Pull goals from k3s configmap %s", configMapNameForGoals)
 	// goalConfigMapFunc, _ := rm.GetConfigMapWatcher(configMapNameForGoals, rm.Namespace)
 	// goalWatcher := NewAdvancedWatcher(configMapNameForGoals, goalConfigMapFunc)
 	// goalWatcher.Run()
 	// logger.Info.Println("Starting the main loop of resource manager...")
+
+	gabageCollectorTicker := time.NewTicker(1 * time.Minute)
+	for range gabageCollectorTicker.C {
+		err := rm.RunGabageCollector()
+		if err != nil {
+			logger.Error.Printf("Failed to run gabage collector: %s", err.Error())
+		}
+	}
+
 	// for {
 	// 	select {
-	// 	// case <-gabageCollectorTicker.C:
-	// 	// 	err := rm.RunGabageCollector()
-	// 	// 	if err != nil {
-	// 	// 		logger.Error.Printf("Failed to run gabage collector: %s", err.Error())
-	// 	// 	}
+	// 	case <-gabageCollectorTicker.C:
+	// 		err := rm.RunGabageCollector()
+	// 		if err != nil {
+	// 			logger.Error.Printf("Failed to run gabage collector: %s", err.Error())
+	// 		}
 	// 	case event := <-goalWatcher.C:
 	// 		switch event.Type {
 	// 		case watch.Added, watch.Modified:
