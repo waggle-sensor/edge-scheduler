@@ -615,7 +615,7 @@ func (api *APIServer) handlerGoalStreamForNode(w http.ResponseWriter, r *http.Re
 	if len(goals) < 1 {
 		event := datatype.NewSchedulerEventBuilder(datatype.EventGoalStatusUpdated).
 			AddEntry("goals", "[]").
-			Build().(datatype.SchedulerEvent)
+			Build()
 		if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.ToString(), event.GetEntry("goals")); err != nil {
 			return
 		}
@@ -627,7 +627,7 @@ func (api *APIServer) handlerGoalStreamForNode(w http.ResponseWriter, r *http.Re
 		} else {
 			event := datatype.NewSchedulerEventBuilder(datatype.EventGoalStatusUpdated).
 				AddEntry("goals", string(blob)).
-				Build().(datatype.SchedulerEvent)
+				Build()
 			if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.ToString(), event.GetEntry("goals")); err != nil {
 				return
 			}

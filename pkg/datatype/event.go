@@ -103,7 +103,7 @@ func (s *SchedulerEventBuilder) AddPodMeta(pod *apiv1.Pod) *SchedulerEventBuilde
 	return s
 }
 
-func (s *SchedulerEventBuilder) Build() Event {
+func (s *SchedulerEventBuilder) Build() SchedulerEvent {
 	return s.e
 }
 
