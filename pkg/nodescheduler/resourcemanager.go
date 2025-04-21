@@ -766,36 +766,46 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(pr *datatype.PluginRun
 		})
 	}
 
-	// Mount volumes if specifiedif
+	// Mount volumes if specified
 	// WARNING: This holds a potential security problem because this can mount
 	//     system directories into the container. This feature should remain
 	//     disabled until we resolve this security problem.
 	// NOTE: We check if the source volume is owned by root. For security,
-	// 	we DO NOT allow mounting root-owned volumes into container.
-	// volumeCount := 1
-	// for from, to := range pr.Plugin.PluginSpec.Volume {
-	// 	// TODO: We need to check the owner of the directory! This can raise a security problem.
-	// 	// if result, err := IsOwnedByRoot(from); err != nil {
-	// 	// 	return v1.PodTemplateSpec{}, err
-	// 	// } else if !result {
-	// 	// 	return v1.PodTemplateSpec{}, fmt.Errorf("volume %q is owned by root; for security, we do not mount root-owned directories", from)
-	// 	// }
-	// 	name := fmt.Sprintf("uservolume-%d", volumeCount)
-	// 	volumeCount += 1
-	// 	volumes = append(volumes, apiv1.Volume{
-	// 		Name: name,
-	// 		VolumeSource: apiv1.VolumeSource{
-	// 			HostPath: &apiv1.HostPathVolumeSource{
-	// 				Path: from,
-	// 				Type: &hostPathDirectoryOrCreate,
-	// 			},
-	// 		},
-	// 	})
-	// 	volumeMounts = append(volumeMounts, apiv1.VolumeMount{
-	// 		Name:      name,
-	// 		MountPath: to,
-	// 	})
-	// }
+	// 	we SHOULD NOT allow mounting root-owned volumes into container.
+	volumeCount := 0
+	for from, to := range pr.Plugin.PluginSpec.Volume {
+		// TODO: We need to check the owner of the directory! This can raise a security problem.
+		//   We cannot check until the container is placed on a node. We may utilize initContainer
+		//   to check the owner of the directory and fail the pod if the owner is not root.
+		// if result, err := IsOwnedByRoot(from); err != nil {
+		// 	return v1.PodTemplateSpec{}, err
+		// } else if !result {
+		// 	return v1.PodTemplateSpec{}, fmt.Errorf("volume %q is owned by root; for security, we do not mount root-owned directories", from)
+		// }
+		volumeCount += 1
+		name := fmt.Sprintf("uservolume-%d", volumeCount)
+		volumes = append(volumes, apiv1.Volume{
+			Name: name,
+			VolumeSource: apiv1.VolumeSource{
+				HostPath: &apiv1.HostPathVolumeSource{
+					Path: from,
+					Type: &hostPathDirectoryOrCreate,
+				},
+			},
+		})
+		volumeMounts = append(volumeMounts, apiv1.VolumeMount{
+			Name:      name,
+			MountPath: to,
+		})
+	}
+
+	// NOTE: With the hostPath volume mounting, we probably better to raise an exception
+	//  if the user does not specify the node because the Kubernetes default scheduler
+	//  may not place the Pod on the same node.
+	nodeSelector := nodeSelectorForConfig(pr.Plugin.PluginSpec)
+	if volumeCount > 0 && len(nodeSelector) == 0 {
+		return v1.PodTemplateSpec{}, fmt.Errorf("volume mounting requires nodeSelector. Please specify the node by --selector or --node")
+	}
 
 	appMeta := struct {
 		Host   string `json:"host"`
@@ -978,7 +988,7 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(pr *datatype.PluginRun
 		Spec: apiv1.PodSpec{
 			ServiceAccountName: "wes-plugin-account",
 			PriorityClassName:  "wes-app-priority",
-			NodeSelector:       nodeSelectorForConfig(pr.Plugin.PluginSpec),
+			NodeSelector:       nodeSelector,
 			// TODO: The priority class will be revisited when using resource metrics to schedule plugins
 			// NOTE: ShareProcessNamespace allows containers in a pod to share the process namespace.
 			//       containers in that pod can see other's processes
