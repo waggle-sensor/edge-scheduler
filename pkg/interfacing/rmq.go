@@ -233,7 +233,7 @@ func (rh *RabbitMQHandler) SubscribeEvents(exchange string, queueName string, to
 						eventBuilder.AddEntry("vsn", vsn)
 					}
 					event := eventBuilder.Build()
-					ch <- &event
+					ch <- event
 				}
 			}
 		}

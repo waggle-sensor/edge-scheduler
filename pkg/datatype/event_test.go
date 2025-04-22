@@ -30,10 +30,10 @@ func TestEventWaggleConversion(t *testing.T) {
 				e.AddEntry(k, v.(float64))
 			}
 		}
-		msg := e.Build().(SchedulerEvent)
+		msg := e.Build()
 		waggleMsg := msg.ToWaggleMessage()
 		unWaggleMsgBuilder, _ := NewSchedulerEventBuilderFromWaggleMessage(waggleMsg)
-		unWaggleMsg := unWaggleMsgBuilder.Build().(SchedulerEvent)
+		unWaggleMsg := unWaggleMsgBuilder.Build()
 		if unWaggleMsg.Type != EventType(test.Type) {
 			t.Errorf("Type mismatch: wanted %s, got %s", test.Type, unWaggleMsg.Type)
 		}

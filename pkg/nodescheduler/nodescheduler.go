@@ -137,7 +137,7 @@ func (ns *NodeScheduler) Run() {
 									AddPluginRuntimeMeta(*pr).
 									AddPluginMeta(pr.Plugin).
 									AddReason(fmt.Sprintf("triggered by %s", r.Condition)).
-									Build().(datatype.SchedulerEvent)
+									Build()
 								ns.LogToBeehive.SendWaggleMessageOnNodeAsync(msg.ToWaggleMessage(), "all")
 								ns.readyQueue.Push(pr)
 								triggerScheduling = true
@@ -180,7 +180,7 @@ func (ns *NodeScheduler) Run() {
 			if triggerScheduling {
 				privateMessage := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusQueued).
 					AddReason("kb triggered").
-					Build().(datatype.SchedulerEvent)
+					Build()
 				ns.chanNeedScheduling <- privateMessage
 			}
 		case event := <-ns.chanNeedScheduling:
@@ -205,7 +205,7 @@ func (ns *NodeScheduler) Run() {
 						AddReason("Fit to resource").
 						AddPluginRuntimeMeta(*_pr).
 						AddPluginMeta(_pr.Plugin).
-						Build().(datatype.SchedulerEvent)
+						Build()
 					logger.Debug.Printf("%s: %q (%q)", pluginEvent.ToString(), pluginEvent.GetPluginName(), pluginEvent.GetReason())
 					ns.LogToBeehive.SendWaggleMessageOnNodeAsync(pluginEvent.ToWaggleMessage(), "all")
 					pr := ns.readyQueue.Pop(_pr)
@@ -220,7 +220,7 @@ func (ns *NodeScheduler) Run() {
 								AddPluginRuntimeMeta(*pr).
 								AddReason(err.Error()).
 								AddPluginMeta(pr.Plugin).
-								Build().(datatype.SchedulerEvent)
+								Build()
 							ns.LogToBeehive.SendWaggleMessageOnNodeAsync(msg.ToWaggleMessage(), "all")
 							return
 						}
@@ -236,7 +236,7 @@ func (ns *NodeScheduler) Run() {
 								AddPluginRuntimeMeta(*pr).
 								AddReason(err.Error()).
 								AddPluginMeta(pr.Plugin).
-								Build().(datatype.SchedulerEvent)
+								Build()
 							ns.LogToBeehive.SendWaggleMessageOnNodeAsync(msg.ToWaggleMessage(), "all")
 							if err = ns.ResourceManager.TerminatePod(pod.Name); err != nil {
 								logger.Error.Printf("Failed to delete %s: %s", pod.Name, err.Error())
@@ -317,7 +317,7 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 				AddPluginRuntimeMeta(*pr).
 				AddPodMeta(pod).
 				AddPluginMeta(pr.Plugin).
-				Build().(datatype.SchedulerEvent)
+				Build()
 			ns.LogToBeehive.SendWaggleMessageOnNodeAsync(msg.ToWaggleMessage(), "all")
 
 			// NOTE: To support backward compatibility, we also send the "launched" event
@@ -325,7 +325,7 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 				AddPluginRuntimeMeta(*pr).
 				AddPodMeta(pod).
 				AddPluginMeta(pr.Plugin).
-				Build().(datatype.SchedulerEvent)
+				Build()
 			ns.LogToBeehive.SendWaggleMessageOnNodeAsync(msg2.ToWaggleMessage(), "all")
 		}
 	case KubernetesEventTypeModified:
@@ -344,7 +344,7 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 					AddPluginRuntimeMeta(*pr).
 					AddPodMeta(pod).
 					AddPluginMeta(pr.Plugin).
-					Build().(datatype.SchedulerEvent)
+					Build()
 				ns.LogToBeehive.SendWaggleMessageOnNodeAsync(msg.ToWaggleMessage(), "all")
 			}
 		case v1.PodRunning:
@@ -369,7 +369,7 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 						AddPodMeta(pod).
 						AddPluginMeta(pr.Plugin).
 						AddReason(e).
-						Build().(datatype.SchedulerEvent)
+						Build()
 					ns.LogToBeehive.SendWaggleMessageOnNodeAsync(message.ToWaggleMessage(), "all")
 					defer ns.ResourceManager.TerminatePod(pod.Name)
 				}
@@ -407,7 +407,7 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 						AddPluginRuntimeMeta(*pr).
 						AddPodMeta(pod).
 						AddPluginMeta(pr.Plugin).
-						Build().(datatype.SchedulerEvent)
+						Build()
 					ns.LogToBeehive.SendWaggleMessageOnNodeAsync(msg.ToWaggleMessage(), "all")
 				}
 			}
@@ -440,7 +440,7 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 					AddPluginRuntimeMeta(*pr).
 					AddPodMeta(pod).
 					AddPluginMeta(pr.Plugin).
-					Build().(datatype.SchedulerEvent)
+					Build()
 				ns.LogToBeehive.SendWaggleMessageOnNodeAsync(message2.ToWaggleMessage(), "all")
 				defer ns.ResourceManager.TerminatePod(pod.Name)
 			}
@@ -465,7 +465,7 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 				}
 				message := messageBuilder.AddPluginRuntimeMeta(*pr).
 					AddPluginMeta(pr.Plugin).
-					Build().(datatype.SchedulerEvent)
+					Build()
 				ns.LogToBeehive.SendWaggleMessageOnNodeAsync(message.ToWaggleMessage(), "all")
 				defer ns.ResourceManager.TerminatePod(pod.Name)
 			}
@@ -485,12 +485,12 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 			// We do nothing on this transition
 			privateMessage = datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusComplete).
 				AddReason(fmt.Sprintf("plugin %q successfully removed", pod.Name)).
-				Build().(datatype.SchedulerEvent)
+				Build()
 		case string(datatype.Failed):
 			// The pod failed and should have been already reported. we do nothing
 			privateMessage = datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).
 				AddReason(fmt.Sprintf("plugin %q removed due to a failure", pod.Name)).
-				Build().(datatype.SchedulerEvent)
+				Build()
 		default:
 			// The pod was deleted for unknown reason. One of the reasons might be
 			// that the Pod was deleted from external, e.g. kubectl delete pod.
@@ -504,14 +504,14 @@ func (ns *NodeScheduler) handleKubernetesPodEvent(e KubernetesEvent) {
 			} else {
 				privateMessage = datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).
 					AddReason(fmt.Sprintf("plugin %q deleted from external", pod.Name)).
-					Build().(datatype.SchedulerEvent)
+					Build()
 
 				message := datatype.NewSchedulerEventBuilder(datatype.EventPluginStatusFailed).
 					AddReason("plugin deleted from external").
 					AddPluginRuntimeMeta(*pr).
 					AddPluginMeta(pr.Plugin).
 					AddPodMeta(pod).
-					Build().(datatype.SchedulerEvent)
+					Build()
 				ns.LogToBeehive.SendWaggleMessageOnNodeAsync(message.ToWaggleMessage(), "all")
 			}
 		}
@@ -563,7 +563,7 @@ func (ns *NodeScheduler) handleKubernetesEventEvent(e KubernetesEvent) {
 					AddPluginMeta(pr.Plugin).
 					AddReason(event.Reason).
 					AddEntry("message", event.Message).
-					Build().(datatype.SchedulerEvent)
+					Build()
 				ns.LogToBeehive.SendWaggleMessageOnNodeAsync(message.ToWaggleMessage(), "all")
 				defer ns.ResourceManager.TerminatePod(obj.Name)
 			default:
@@ -573,7 +573,7 @@ func (ns *NodeScheduler) handleKubernetesEventEvent(e KubernetesEvent) {
 				AddPluginMeta(pr.Plugin).
 				AddReason(event.Reason).
 				AddEntry("message", event.Message).
-				Build().(datatype.SchedulerEvent)
+				Build()
 			ns.LogToBeehive.SendWaggleMessageOnNodeAsync(message.ToWaggleMessage(), "all")
 		}
 	default:
@@ -661,7 +661,7 @@ func (ns *NodeScheduler) cleanUpGoal(goal *datatype.ScienceGoal) {
 							AddPluginMeta(a.Plugin).
 							AddPodMeta(pod).
 							AddReason("Cleaning up the plugin due to deletion of the goal").
-							Build().(datatype.SchedulerEvent)
+							Build()
 						ns.LogToBeehive.SendWaggleMessageOnNodeAsync(e.ToWaggleMessage(), "all")
 						ns.ResourceManager.TerminatePod(podName)
 						logger.Info.Printf("plugin %s is removed from running", p.Name)
@@ -702,7 +702,7 @@ func (ns *NodeScheduler) handleBulkGoals(goals []datatype.ScienceGoal) {
 				ns.registerGoal(&goal)
 				e := datatype.NewSchedulerEventBuilder(datatype.EventGoalStatusUpdated).
 					AddGoal(&goal).
-					Build().(datatype.SchedulerEvent)
+					Build()
 				ns.LogToBeehive.SendWaggleMessageOnNodeAsync(e.ToWaggleMessage(), "all")
 			}
 		} else {
@@ -710,7 +710,7 @@ func (ns *NodeScheduler) handleBulkGoals(goals []datatype.ScienceGoal) {
 			ns.registerGoal(&goal)
 			e := datatype.NewSchedulerEventBuilder(datatype.EventGoalStatusReceived).
 				AddGoal(&goal).
-				Build().(datatype.SchedulerEvent)
+				Build()
 			ns.LogToBeehive.SendWaggleMessageOnNodeAsync(e.ToWaggleMessage(), "all")
 		}
 	}
@@ -720,7 +720,7 @@ func (ns *NodeScheduler) handleBulkGoals(goals []datatype.ScienceGoal) {
 			ns.cleanUpGoal(&goal)
 			event := datatype.NewSchedulerEventBuilder(datatype.EventGoalStatusRemoved).
 				AddGoal(&goal).
-				Build().(datatype.SchedulerEvent)
+				Build()
 			ns.LogToBeehive.SendWaggleMessageOnNodeAsync(event.ToWaggleMessage(), "all")
 		}
 	}

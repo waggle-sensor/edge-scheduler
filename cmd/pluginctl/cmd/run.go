@@ -26,8 +26,8 @@ func init() {
 	flags.StringVarP(&deployment.EnvFromFile, "env-from", "", "", "Set environment variables from file")
 	flags.BoolVar(&deployment.DevelopMode, "develop", false, "Enable the following development time features: access to wan network")
 	flags.StringVar(&deployment.ResourceString, "resource", "", "Specify resource requirement for running the plugin as a comma-separated list without spaces. For example, resource.cpu=1,limit.cpu=2.")
-	// The volume feature is disabled as this holds a security problem
-	// flags.StringSliceVarP(&deployment.Volume, "volume", "v", []string{}, "Host path to mount the volume into the plugin")
+	// NOTE: Volume may hold a security problem
+	flags.StringSliceVarP(&deployment.Volume, "volume", "v", []string{}, "Host path to mount the volume into the plugin")
 	rootCmd.AddCommand(cmdRun)
 }
 

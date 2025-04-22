@@ -251,7 +251,7 @@ func (cs *CloudScheduler) updateNodes(nodes []string) {
 			logger.Error.Printf("Failed to compress goals for node %q before pushing", nodeName)
 		} else {
 			event := datatype.NewSchedulerEventBuilder(datatype.EventGoalStatusUpdated).AddEntry("goals", string(blob)).Build()
-			cs.APIServer.Push(nodeName, &event)
+			cs.APIServer.Push(nodeName, event)
 		}
 	}
 }
