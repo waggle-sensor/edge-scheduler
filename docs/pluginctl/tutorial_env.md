@@ -31,7 +31,7 @@ First, let's create a Kubernetes Secret with a literal,
 
 ```bash
 sudo kubectl create secret generic mysecret \
-  --from-literal=MYFOO=MYBAR
+  --from-literal=MYFOO=MYBAR -n ses
 ```
 
 The output is,
