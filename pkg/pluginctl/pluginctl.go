@@ -393,14 +393,14 @@ func (p *PluginCtl) PrintLog(pluginName string, follow bool) (func(), chan os.Si
 				}
 				if err != nil {
 					if err == io.EOF {
-						fmt.Printf(string(buf[:numBytes]))
+						fmt.Print(string(buf[:numBytes]))
 					}
 					logger.Debug.Printf("Log handler closed by error: %s", err.Error())
 					podLog.Close()
 					flag <- nil
 					return
 				}
-				fmt.Printf(string(buf[:numBytes]))
+				fmt.Print(string(buf[:numBytes]))
 			}
 		}
 	}, flag, nil

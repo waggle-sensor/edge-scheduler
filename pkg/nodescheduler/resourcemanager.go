@@ -204,7 +204,7 @@ func (rm *ResourceManager) AnalyzeFailureOfPod(p *v1.Pod) (*datatype.SchedulerEv
 	// we consider the pod succeeded.
 	if pluginContainerStatus, err := rm.GetContainerStatusFromPod(p, pluginName); err != nil {
 		e := fmt.Sprintf("Failed to get container status: %s", err.Error())
-		logger.Error.Printf(e)
+		logger.Error.Print(e)
 		message = message.AddReason(e)
 		return message, fmt.Errorf("failed to get container status: %s", err.Error())
 	} else if t := pluginContainerStatus.State.Terminated; t == nil {
@@ -218,7 +218,7 @@ func (rm *ResourceManager) AnalyzeFailureOfPod(p *v1.Pod) (*datatype.SchedulerEv
 			// TODO: we will want to send this error to the cloud for further analysis
 			if pluginControllerContainerStatus, err := rm.GetContainerStatusFromPod(p, PluginControllerContainerName); err != nil {
 				e := fmt.Sprintf("Failed to get container status: %s", err.Error())
-				logger.Error.Printf(e)
+				logger.Error.Print(e)
 			} else if _t := pluginControllerContainerStatus.State.Terminated; _t != nil {
 				containerLog, _ := rm.GetContainerLastLog(p.Name, pluginControllerContainerStatus.Name, 1024)
 				logger.Error.Printf("Pod's %s failed: %s; logs: %s", pluginControllerContainerStatus.Name, t.String(), containerLog)
@@ -2228,7 +2228,7 @@ func IsOwnedByRoot(p string) (bool, error) {
 	}
 
 	mode := info.Mode()
-	logger.Info.Printf(mode.String())
+	logger.Info.Print(mode.String())
 
 	fmt.Print("Owner: ")
 	for i := 1; i < 4; i++ {
