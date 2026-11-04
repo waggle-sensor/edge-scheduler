@@ -883,6 +883,15 @@ func (rm *ResourceManager) createPodTemplateSpecForPlugin(pr *datatype.PluginRun
 			Env:             envs,
 			Resources:       resources,
 			VolumeMounts:    volumeMounts,
+			EnvFrom: []apiv1.EnvFromSource{
+				// Provides node ID, VSN, and GPS to apps.
+				{
+					ConfigMapRef: &apiv1.ConfigMapEnvSource{
+						LocalObjectReference: apiv1.LocalObjectReference{Name: "wes-identity"},
+						Optional:             booltoPtr(true),
+					},
+				},
+			},
 		},
 	}
 
