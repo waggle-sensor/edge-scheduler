@@ -1,3 +1,5 @@
+# TODO(sean) Fix this Dockerfile... I'm not sure why we're using the plugin-base:1.1.1-base
+# container image for a service?
 FROM waggle/plugin-base:1.1.1-base as base
 
 RUN apt-get update \
@@ -16,10 +18,10 @@ RUN apt-get update \
 
 ARG TARGETARCH
 WORKDIR /tmp
-RUN wget https://golang.org/dl/go1.20.3.linux-${TARGETARCH}.tar.gz \
-  && rm -rf /usr/local/go && tar -C /usr/local -xzf go1.20.3.linux-${TARGETARCH}.tar.gz \
+RUN wget https://golang.org/dl/go1.27.3.linux-${TARGETARCH}.tar.gz \
+  && rm -rf /usr/local/go && tar -C /usr/local -xzf go1.27.3.linux-${TARGETARCH}.tar.gz \
   && echo "PATH=\$PATH:/usr/local/go/bin" | tee -a $HOME/.bashrc \
-  && rm go1.20.3.linux-${TARGETARCH}.tar.gz
+  && rm go1.27.3.linux-${TARGETARCH}.tar.gz
 
 FROM base as builder
 WORKDIR $GOPATH/src/github.com/waggle-sensor/edge-scheduler
