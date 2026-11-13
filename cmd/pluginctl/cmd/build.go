@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -13,7 +14,8 @@ import (
 )
 
 func init() {
-	const registry = "10.31.81.1:5000"
+	const registryInterface = "lan0"
+	const registryPort = "5000"
 	const namespace = "local"
 
 	cmd := &cobra.Command{
@@ -37,6 +39,12 @@ pluginctl build my-plugin -- --build-arg=MY_VAR="hello"`,
 			return fmt.Errorf("invalid plugin path: %s", err.Error())
 		}
 		name := filepath.Base(path)
+
+		registryIP, err := interfaceIPv4(registryInterface)
+		if err != nil {
+			return fmt.Errorf("failed to get registry address: %w", err)
+		}
+		registry := net.JoinHostPort(registryIP.String(), registryPort)
 		image := fmt.Sprintf("%s/%s/%s", registry, namespace, name)
 
 		// build and push to local registry. all output goes to stderr to allow easy piping
@@ -74,4 +82,24 @@ func runCommandContextStderr(ctx context.Context, name string, args ...string) e
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+// interfaceIPv4 returns the first IPv4 address assigned to the named network interface.
+func interfaceIPv4(name string) (net.IP, error) {
+	iface, err := net.InterfaceByName(name)
+	if err != nil {
+		return nil, fmt.Errorf("interface %s: %w", name, err)
+	}
+	addrs, err := iface.Addrs()
+	if err != nil {
+		return nil, fmt.Errorf("interface %s: %w", name, err)
+	}
+	for _, addr := range addrs {
+		if ipnet, ok := addr.(*net.IPNet); ok {
+			if ip4 := ipnet.IP.To4(); ip4 != nil {
+				return ip4, nil
+			}
+		}
+	}
+	return nil, fmt.Errorf("interface %s has no IPv4 address", name)
 }
